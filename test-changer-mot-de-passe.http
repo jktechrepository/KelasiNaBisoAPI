@@ -1,0 +1,88 @@
+### Test de changement de mot de passe avec succès
+POST http://192.168.100.17:5001/api/Utilisateur/changer_mot_de_passe
+Content-Type: application/json
+
+{
+  "idUtilisateur": 1,
+  "ancienMotDePasse": "password123",
+  "nouveauMotDePasse": "nouveauPassword456",
+  "confirmerNouveauMotDePasse": "nouveauPassword456"
+}
+
+###
+
+### Test de changement de mot de passe avec ancien mot de passe incorrect
+POST http://192.168.100.17:5001/api/Utilisateur/changer_mot_de_passe
+Content-Type: application/json
+
+{
+  "idUtilisateur": 1,
+  "ancienMotDePasse": "ancienMotDePasseIncorrect",
+  "nouveauMotDePasse": "nouveauPassword456",
+  "confirmerNouveauMotDePasse": "nouveauPassword456"
+}
+
+###
+
+### Test de changement de mot de passe avec confirmation incorrecte
+POST http://192.168.100.17:5001/api/Utilisateur/changer_mot_de_passe
+Content-Type: application/json
+
+{
+  "idUtilisateur": 1,
+  "ancienMotDePasse": "password123",
+  "nouveauMotDePasse": "nouveauPassword456",
+  "confirmerNouveauMotDePasse": "confirmationIncorrecte"
+}
+
+###
+
+### Test de changement de mot de passe avec utilisateur inexistant
+POST http://192.168.100.17:5001/api/Utilisateur/changer_mot_de_passe
+Content-Type: application/json
+
+{
+  "idUtilisateur": 999,
+  "ancienMotDePasse": "password123",
+  "nouveauMotDePasse": "nouveauPassword456",
+  "confirmerNouveauMotDePasse": "nouveauPassword456"
+}
+
+###
+
+### Test de changement de mot de passe avec mot de passe de 3 caractères (autorisé)
+POST http://192.168.100.17:5001/api/Utilisateur/changer_mot_de_passe
+Content-Type: application/json
+
+{
+  "idUtilisateur": 1,
+  "ancienMotDePasse": "password123",
+  "nouveauMotDePasse": "123",
+  "confirmerNouveauMotDePasse": "123"
+}
+
+###
+
+### Test de changement de mot de passe avec mot de passe trop court (moins de 3 caractères)
+POST http://192.168.100.17:5001/api/Utilisateur/changer_mot_de_passe
+Content-Type: application/json
+
+{
+  "idUtilisateur": 1,
+  "ancienMotDePasse": "password123",
+  "nouveauMotDePasse": "12",
+  "confirmerNouveauMotDePasse": "12"
+}
+
+###
+
+### Test de changement de mot de passe avec données manquantes
+POST http://192.168.100.17:5001/api/Utilisateur/changer_mot_de_passe
+Content-Type: application/json
+
+{
+  "idUtilisateur": 1,
+  "ancienMotDePasse": "",
+  "nouveauMotDePasse": "",
+  "confirmerNouveauMotDePasse": ""
+}

@@ -1,0 +1,25 @@
+### Test de récupération des utilisateurs par école
+
+# Récupérer tous les utilisateurs d'une école spécifique (ID = 1)
+GET http://localhost:5000/api/Utilisateur/ecole/1
+Content-Type: application/json
+
+###
+
+# Récupérer tous les utilisateurs d'une autre école (ID = 2)
+GET http://localhost:5000/api/Utilisateur/ecole/2
+Content-Type: application/json
+
+###
+
+# Test avec un ID d'école qui n'existe pas
+GET http://localhost:5000/api/Utilisateur/ecole/999
+Content-Type: application/json
+
+###
+
+# Test avec un ID d'école invalide (négatif)
+GET http://localhost:5000/api/Utilisateur/ecole/-1
+Content-Type: application/json
+
+###

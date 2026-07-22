@@ -1,0 +1,127 @@
+### Test de la nouvelle méthode d'inscription (sans procédure stockée)
+### Endpoint: POST /api/Inscription/new/{nomEcole}
+
+POST http://localhost:5002/api/Inscription/new/Ekelasi%20School
+Content-Type: application/json
+
+{
+  "type": "Inscription",
+  "idEcole": 1,
+  "idClasse": 1,
+  "idAnneeScolaire": 1,
+  "dateInscription": "2024-09-01T00:00:00Z",
+  "statutInscription": "En attente",
+  
+  "nomEleve": "KABILA",
+  "postnomEleve": "Joseph",
+  "prenomEleve": "Kabila",
+  "genreEleve": "M",
+  "dateNaissanceEleve": "2010-05-15T00:00:00Z",
+  "lieuNaissanceEleve": "Kinshasa",
+  "nationaliteEleve": "Congolaise",
+  "commentaireEleve": "Test nouvelle méthode",
+  "photoEleveUrl": null,
+  "matriculeEleve": "EKS2024KJ001",
+  "provinceEleve": "Kinshasa",
+  "villeEleve": "Kinshasa",
+  "communeEleve": "Lemba",
+  "quartierEleve": "Université",
+  "avenueEleve": "Avenue de l'Université",
+  "numeroEleve": "123",
+  
+  "nomCompletTuteur": "KABILA Laurent-Désiré",
+  "genreTuteur": "M",
+  "emailTuteur": "laurent.kabila@email.com",
+  "telephoneTuteur": "+243123456789",
+  "nomCompletRepresentant": null,
+  "telephoneRepresentant": null,
+  "photoTuteurUrl": null,
+  "pieceIdentiteTuteur": "Passeport",
+  
+  "idEleveExistant": null,
+  "idTuteurExistant": null
+}
+
+### Test de réinscription (élève existant)
+POST http://localhost:5002/api/Inscription/new/Ekelasi%20School
+Content-Type: application/json
+
+{
+  "type": "Réinscription",
+  "idEcole": 1,
+  "idClasse": 2,
+  "idAnneeScolaire": 1,
+  "dateInscription": "2024-09-01T00:00:00Z",
+  "statutInscription": "En attente",
+  
+  "nomEleve": "KABILA",
+  "postnomEleve": "Joseph",
+  "prenomEleve": "Kabila",
+  "genreEleve": "M",
+  "dateNaissanceEleve": "2010-05-15T00:00:00Z",
+  "lieuNaissanceEleve": "Kinshasa",
+  "nationaliteEleve": "Congolaise",
+  "commentaireEleve": "Test réinscription",
+  "photoEleveUrl": null,
+  "matriculeEleve": "EKS2024KJ001",
+  "provinceEleve": "Kinshasa",
+  "villeEleve": "Kinshasa",
+  "communeEleve": "Lemba",
+  "quartierEleve": "Université",
+  "avenueEleve": "Avenue de l'Université",
+  "numeroEleve": "123",
+  
+  "nomCompletTuteur": "KABILA Laurent-Désiré",
+  "genreTuteur": "M",
+  "emailTuteur": "laurent.kabila@email.com",
+  "telephoneTuteur": "+243123456789",
+  "nomCompletRepresentant": null,
+  "telephoneRepresentant": null,
+  "photoTuteurUrl": null,
+  "pieceIdentiteTuteur": "Passeport",
+  
+  "idEleveExistant": 1,
+  "idTuteurExistant": null
+}
+
+### Test avec tuteur existant
+POST http://localhost:5002/api/Inscription/new/Ekelasi%20School
+Content-Type: application/json
+
+{
+  "type": "Inscription",
+  "idEcole": 1,
+  "idClasse": 1,
+  "idAnneeScolaire": 1,
+  "dateInscription": "2024-09-01T00:00:00Z",
+  "statutInscription": "En attente",
+  
+  "nomEleve": "KABILA",
+  "postnomEleve": "Marie",
+  "prenomEleve": "Kabila",
+  "genreEleve": "F",
+  "dateNaissanceEleve": "2012-03-20T00:00:00Z",
+  "lieuNaissanceEleve": "Kinshasa",
+  "nationaliteEleve": "Congolaise",
+  "commentaireEleve": "Test tuteur existant",
+  "photoEleveUrl": null,
+  "matriculeEleve": "EKS2024KM002",
+  "provinceEleve": "Kinshasa",
+  "villeEleve": "Kinshasa",
+  "communeEleve": "Lemba",
+  "quartierEleve": "Université",
+  "avenueEleve": "Avenue de l'Université",
+  "numeroEleve": "123",
+  
+  "nomCompletTuteur": "KABILA Laurent-Désiré",
+  "genreTuteur": "M",
+  "emailTuteur": "laurent.kabila@email.com",
+  "telephoneTuteur": "+243123456789",
+  "nomCompletRepresentant": null,
+  "telephoneRepresentant": null,
+  "photoTuteurUrl": null,
+  "pieceIdentiteTuteur": "Passeport",
+  
+  "idEleveExistant": null,
+  "idTuteurExistant": 1
+}

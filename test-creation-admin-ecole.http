@@ -1,0 +1,264 @@
+### =========================================================================
+### 🧪 TESTS CRÉATION AUTOMATIQUE ADMIN ÉCOLE
+### =========================================================================
+### Objectif : Tester la création automatique du compte admin lors de la création d'une école
+### Date : 27 octobre 2025
+### =========================================================================
+
+@baseUrl = https://localhost:7105/api
+
+### -------------------------------------------------------------------------
+### 1️⃣ CONNEXION SUPER-ADMIN (pour obtenir le token)
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "superadmin@kelasinabiso.cd",
+  "motDePasse": "Super-Admin",
+  "fcmToken": "test-fcm-token",
+  "deviceType": "Web",
+  "deviceModel": "Chrome",
+  "osVersion": "Windows 11"
+}
+
+### -------------------------------------------------------------------------
+### 2️⃣ CRÉER UNE PREMIÈRE ÉCOLE avec email unique
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : 
+###    - École créée avec succès
+###    - Compte admin créé automatiquement
+###    - Username unique généré (ex: JeanMukendi7342)
+###    - Email de bienvenue envoyé
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Ecole
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "nom": "École Primaire Kasai",
+  "slogan": "L'excellence par l'éducation",
+  "type": "Primaire",
+  "emailContact": "directeur.kasai@ecole.cd",
+  "telephone": "+243999111222",
+  "siteWeb": "https://www.ecolekasai.cd",
+  "provinceEducationnel": "Kasaï",
+  "nomCompletResponsable": "Jean Mukendi Kalala",
+  "genreResponsable": "Masculin",
+  "description": "École primaire de qualité",
+  "statut": true,
+  "province": "Kasaï",
+  "ville": "Kananga",
+  "commune": "Kananga",
+  "quartier": "Centre",
+  "avenue": "Avenue Lumumba",
+  "numero": "15",
+  "logo": null,
+  "longitute": null,
+  "latitude": null
+}
+
+### -------------------------------------------------------------------------
+### 3️⃣ VÉRIFIER que le compte admin a été créé
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Utilisateur admin existe avec le bon email
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Utilisateur
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 4️⃣ TESTER LOGIN avec le compte admin créé
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Authentification réussie avec mot de passe "Admin"
+### ⚠️ Utilisez l'email de l'école créée à l'étape 2
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "directeur.kasai@ecole.cd",
+  "motDePasse": "Admin",
+  "fcmToken": "test-fcm-token",
+  "deviceType": "Web",
+  "deviceModel": "Chrome",
+  "osVersion": "Windows 11"
+}
+
+### -------------------------------------------------------------------------
+### 5️⃣ TENTATIVE DE CRÉER UNE DEUXIÈME ÉCOLE avec le MÊME email responsable
+### -------------------------------------------------------------------------
+### ⚠️ RÉSULTAT ATTENDU : 
+###    - École créée avec succès
+###    - Compte admin NON créé (email déjà utilisé)
+###    - Log : "Un utilisateur avec l'email '...' existe déjà"
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Ecole
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "nom": "École Secondaire Kasai",
+  "slogan": "Excellence et discipline",
+  "type": "Secondaire",
+  "emailContact": "directeur.kasai@ecole.cd",
+  "telephone": "+243999111223",
+  "siteWeb": "https://www.ecolesecondaire-kasai.cd",
+  "provinceEducationnel": "Kasaï",
+  "nomCompletResponsable": "Jean Mukendi Kalala",
+  "genreResponsable": "Masculin",
+  "description": "École secondaire de référence",
+  "statut": true,
+  "province": "Kasaï",
+  "ville": "Kananga",
+  "commune": "Kananga",
+  "quartier": "Centre",
+  "avenue": "Avenue Mobutu",
+  "numero": "25",
+  "logo": null,
+  "longitute": null,
+  "latitude": null
+}
+
+### -------------------------------------------------------------------------
+### 6️⃣ CRÉER UNE ÉCOLE avec un nom responsable DIFFÉRENT (même base)
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : 
+###    - École créée avec succès
+###    - Compte admin créé avec username unique (ex: JeanMukendi9876)
+###    - Le nombre aléatoire sera différent de la première école
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Ecole
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "nom": "École Primaire Lubumbashi",
+  "slogan": "Savoir et sagesse",
+  "type": "Primaire",
+  "emailContact": "directeur.lubumbashi@ecole.cd",
+  "telephone": "+243999333444",
+  "siteWeb": "https://www.ecole-lubumbashi.cd",
+  "provinceEducationnel": "Haut-Katanga",
+  "nomCompletResponsable": "Jean Mukendi",
+  "genreResponsable": "Masculin",
+  "description": "École primaire Lubumbashi",
+  "statut": true,
+  "province": "Haut-Katanga",
+  "ville": "Lubumbashi",
+  "commune": "Lubumbashi",
+  "quartier": "Centre-ville",
+  "avenue": "Avenue Mobutu",
+  "numero": "50",
+  "logo": null,
+  "longitute": null,
+  "latitude": null
+}
+
+### -------------------------------------------------------------------------
+### 7️⃣ CRÉER UNE ÉCOLE avec un nom responsable très LONG
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : 
+###    - École créée avec succès
+###    - Username tronqué à 20 caractères + nombre
+###    - Exemple: "JeanPierreMarieMuk3456" (max 20 car. pour le nom de base)
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Ecole
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "nom": "École Mixte Kinshasa",
+  "slogan": "Formation d'excellence",
+  "type": "Mixte",
+  "emailContact": "directeur.kinshasa@ecole.cd",
+  "telephone": "+243999555666",
+  "siteWeb": "https://www.ecole-kinshasa.cd",
+  "provinceEducationnel": "Kinshasa",
+  "nomCompletResponsable": "Jean-Pierre Marie-Claire Mukendi Kabongo",
+  "genreResponsable": "Masculin",
+  "description": "École mixte de qualité",
+  "statut": true,
+  "province": "Kinshasa",
+  "ville": "Kinshasa",
+  "commune": "Gombe",
+  "quartier": "Centre",
+  "avenue": "Avenue du Port",
+  "numero": "100",
+  "logo": null,
+  "longitute": null,
+  "latitude": null
+}
+
+### -------------------------------------------------------------------------
+### 8️⃣ CRÉER UNE ÉCOLE sans email de contact (utilise email par défaut)
+### -------------------------------------------------------------------------
+### ⚠️ RÉSULTAT ATTENDU : 
+###    - École créée avec succès
+###    - Compte admin créé avec email par défaut : "kelasinabiso@gmail.com"
+###    - OU échec si "kelasinabiso@gmail.com" existe déjà
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Ecole
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "nom": "École Test Sans Email",
+  "slogan": "Test",
+  "type": "Primaire",
+  "emailContact": null,
+  "telephone": "+243999777888",
+  "siteWeb": null,
+  "provinceEducationnel": "Kinshasa",
+  "nomCompletResponsable": "Administrateur Test",
+  "genreResponsable": "Masculin",
+  "description": "École de test",
+  "statut": true,
+  "province": "Kinshasa",
+  "ville": "Kinshasa",
+  "commune": "Gombe",
+  "quartier": "Test",
+  "avenue": "Avenue Test",
+  "numero": "1",
+  "logo": null,
+  "longitute": null,
+  "latitude": null
+}
+
+### -------------------------------------------------------------------------
+### 9️⃣ RÉCUPÉRER TOUS LES UTILISATEURS pour vérifier les admins créés
+### -------------------------------------------------------------------------
+### Vérifiez que les usernames sont tous différents et uniques
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Utilisateur
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### =========================================================================
+### 📋 RÉSUMÉ DES AMÉLIORATIONS
+### =========================================================================
+### 
+### ✅ 1. VÉRIFICATION UNICITÉ EMAIL
+###    - Vérifie si l'email existe avant création
+###    - Si existe → Arrêt gracieux, école créée sans admin
+###    - Log clair : "Email existe déjà"
+### 
+### ✅ 2. GÉNÉRATION USERNAME UNIQUE EN BOUCLE
+###    - Plage étendue : 1-9999 (au lieu de 1-999)
+###    - Seed unique : Guid.GetHashCode()
+###    - Vérification en BDD à chaque tentative
+###    - Fallback GUID si 100 collisions
+###    - Limite sécurité : Max 100 tentatives
+### 
+### ✅ 3. PROTECTION DOUBLE NIVEAU
+###    - Application : Boucle de vérification
+###    - Base de données : Index unique (IX_Utilisateurs_DefaultUsername_Unique)
+### 
+### 📊 SCENARIOS COUVERTS
+###    1. Email unique + Nom unique → ✅ Admin créé
+###    2. Email existant → ⚠️ École créée, admin NON créé
+###    3. Username collision → ✅ Nouvelle tentative automatique
+###    4. Nom responsable très courant → ✅ Username unique garanti
+###    5. Nom très long → ✅ Tronqué à 20 caractères
+###    6. Email NULL → ✅ Email par défaut utilisé
+### 
+### =========================================================================
+

@@ -1,0 +1,81 @@
+### ✅ TEST SOFT DELETE - SYSTÈME DE POINTAGE PRÉSENCE
+### Date: 16 Octobre 2025
+
+@baseUrl = http://localhost:5002
+@presenceId = 1
+
+### 1️⃣ Créer une nouvelle présence pour tester
+POST {{baseUrl}}/api/Presence
+Content-Type: application/json
+
+{
+  "idEleve": 1,
+  "heureArrivee": "08:30",
+  "heureDepart": "12:00",
+  "dateDuJour": "2025-10-16T00:00:00",
+  "statutPresence": "Present",
+  "longitute": "-4.3250",
+  "latitude": "15.3229",
+  "idHoraire": 1
+}
+
+### 2️⃣ Récupérer toutes les présences (doit inclure celle créée)
+GET {{baseUrl}}/api/Presence
+
+### 3️⃣ Récupérer la présence par ID (doit fonctionner)
+GET {{baseUrl}}/api/Presence/{{presenceId}}
+
+### 4️⃣ SOFT DELETE - Désactiver la présence (toggle statut)
+PUT {{baseUrl}}/api/Presence/toggle-statut/{{presenceId}}
+
+### 5️⃣ Vérifier que la présence est absente de GetAll (soft delete actif)
+GET {{baseUrl}}/api/Presence
+
+### 6️⃣ Vérifier que GetById ne retourne plus la présence
+GET {{baseUrl}}/api/Presence/{{presenceId}}
+
+### 7️⃣ RÉACTIVATION - Réactiver la présence (toggle statut à nouveau)
+PUT {{baseUrl}}/api/Presence/toggle-statut/{{presenceId}}
+
+### 8️⃣ Vérifier que la présence est de nouveau visible dans GetAll
+GET {{baseUrl}}/api/Presence
+
+### 9️⃣ Vérifier que GetById retourne la présence
+GET {{baseUrl}}/api/Presence/{{presenceId}}
+
+### 🔟 Tester avec un ID inexistant (doit retourner 404)
+PUT {{baseUrl}}/api/Presence/toggle-statut/999999
+
+### 1️⃣1️⃣ Tester GetByEleve avec présences actives uniquement
+GET {{baseUrl}}/api/Presence/eleve/1
+
+### 1️⃣2️⃣ Tester GetByDate avec présences actives uniquement
+GET {{baseUrl}}/api/Presence/date/2025-10-16
+
+### 1️⃣3️⃣ Suppression DÉFINITIVE (DELETE) - À utiliser avec précaution
+# DELETE {{baseUrl}}/api/Presence/{{presenceId}}
+
+###
+### ✅ CHECKLIST DE VALIDATION
+###
+### Scénario 1: Soft Delete
+### □ Étape 1: Créer présence → Retourne 201 Created
+### □ Étape 2: GetAll → Présence visible
+### □ Étape 3: GetById → Retourne la présence
+### □ Étape 4: Toggle statut → Retourne 200 OK avec nouveauStatut = false
+### □ Étape 5: GetAll → Présence NON visible (filtrée)
+### □ Étape 6: GetById → Retourne 404 Not Found
+###
+### Scénario 2: Réactivation
+### □ Étape 7: Toggle statut → Retourne 200 OK avec nouveauStatut = true
+### □ Étape 8: GetAll → Présence visible à nouveau
+### □ Étape 9: GetById → Retourne la présence
+###
+### Scénario 3: Erreurs
+### □ Étape 10: Toggle avec ID inexistant → 404 Not Found
+###
+### Scénario 4: Filtrage dans toutes les requêtes
+### □ Étape 11: GetByEleve → Uniquement présences actives
+### □ Étape 12: GetByDate → Uniquement présences actives
+###
+

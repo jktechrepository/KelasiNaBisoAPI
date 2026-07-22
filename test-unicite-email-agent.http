@@ -1,0 +1,228 @@
+### =========================================================================
+### 🧪 TESTS UNICITÉ EMAIL AGENT
+### =========================================================================
+### Objectif : Vérifier que le champ EmailAgent est unique pour chaque agent
+### Date : 27 octobre 2025
+### =========================================================================
+
+@baseUrl = https://localhost:7105/api
+
+### -------------------------------------------------------------------------
+### 1️⃣ CONNEXION ADMIN (pour obtenir le token)
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "admin@test.com",
+  "motDePasse": "Admin123!",
+  "fcmToken": "test-fcm-token",
+  "deviceType": "Web",
+  "deviceModel": "Chrome",
+  "osVersion": "Windows 11"
+}
+
+### -------------------------------------------------------------------------
+### 2️⃣ CRÉER UN PREMIER AGENT avec un email
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : L'agent est créé avec succès
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Agent
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "nom": "MBALA",
+  "postnom": "KABILA",
+  "prenom": "Jean",
+  "genre": "Masculin",
+  "dateNaissance": "1985-05-15",
+  "lieuNaissance": "Kinshasa",
+  "nationalite": "Congolaise",
+  "telephone": "+243998877665",
+  "emailAgent": "jean.mbala@test.com",
+  "adresse": "15 Avenue du Port, Kinshasa",
+  "fonction": "Professeur",
+  "specialite": "Mathématiques",
+  "diplome": "Licence en Mathématiques",
+  "dateEngagement": "2024-01-10",
+  "salaireBase": 500.00,
+  "statut": true,
+  "idEcole": 1,
+  "photo": null
+}
+
+### -------------------------------------------------------------------------
+### 3️⃣ TENTATIVE DE CRÉER UN DEUXIÈME AGENT avec le MÊME email
+### -------------------------------------------------------------------------
+### ❌ RÉSULTAT ATTENDU : Erreur 400 - "Un agent avec l'email 'jean.mbala@test.com' existe déjà"
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Agent
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "nom": "KABONGO",
+  "postnom": "MBUYI",
+  "prenom": "Marie",
+  "genre": "Féminin",
+  "dateNaissance": "1990-08-22",
+  "lieuNaissance": "Lubumbashi",
+  "nationalite": "Congolaise",
+  "telephone": "+243998877666",
+  "emailAgent": "jean.mbala@test.com",
+  "adresse": "25 Avenue Kabalo, Lubumbashi",
+  "fonction": "Professeur",
+  "specialite": "Français",
+  "diplome": "Licence en Lettres",
+  "dateEngagement": "2024-02-15",
+  "salaireBase": 450.00,
+  "statut": true,
+  "idEcole": 1,
+  "photo": null
+}
+
+### -------------------------------------------------------------------------
+### 4️⃣ CRÉER UN TROISIÈME AGENT avec un email DIFFÉRENT
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : L'agent est créé avec succès
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Agent
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "nom": "TSHISEKEDI",
+  "postnom": "NGANDU",
+  "prenom": "Paul",
+  "genre": "Masculin",
+  "dateNaissance": "1988-03-10",
+  "lieuNaissance": "Kananga",
+  "nationalite": "Congolaise",
+  "telephone": "+243998877667",
+  "emailAgent": "paul.tshisekedi@test.com",
+  "adresse": "30 Avenue Lumumba, Kananga",
+  "fonction": "Professeur",
+  "specialite": "Physique",
+  "diplome": "Licence en Physique",
+  "dateEngagement": "2024-03-20",
+  "salaireBase": 480.00,
+  "statut": true,
+  "idEcole": 1,
+  "photo": null
+}
+
+### -------------------------------------------------------------------------
+### 5️⃣ RÉCUPÉRER L'ID DU PREMIER AGENT (Jean MBALA)
+### -------------------------------------------------------------------------
+### Utilisez cette requête pour obtenir l'ID de l'agent créé
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Agent
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 6️⃣ METTRE À JOUR LE PREMIER AGENT avec un nouvel email
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : La mise à jour réussit
+### ⚠️ REMPLACER {idAgent} par l'ID réel obtenu à l'étape 5
+### -------------------------------------------------------------------------
+PUT {{baseUrl}}/Agent/{idAgent}
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "idAgent": {idAgent},
+  "nom": "MBALA",
+  "postnom": "KABILA",
+  "prenom": "Jean",
+  "genre": "Masculin",
+  "dateNaissance": "1985-05-15",
+  "lieuNaissance": "Kinshasa",
+  "nationalite": "Congolaise",
+  "telephone": "+243998877665",
+  "emailAgent": "jean.mbala.new@test.com",
+  "adresse": "15 Avenue du Port, Kinshasa",
+  "fonction": "Professeur Senior",
+  "specialite": "Mathématiques",
+  "diplome": "Licence en Mathématiques",
+  "dateEngagement": "2024-01-10",
+  "salaireBase": 550.00,
+  "statut": true,
+  "idEcole": 1,
+  "photo": null
+}
+
+### -------------------------------------------------------------------------
+### 7️⃣ TENTATIVE DE METTRE À JOUR LE TROISIÈME AGENT avec l'email du premier
+### -------------------------------------------------------------------------
+### ❌ RÉSULTAT ATTENDU : Erreur 400 - "Un autre agent avec l'email 'jean.mbala.new@test.com' existe déjà"
+### ⚠️ REMPLACER {idAgentPaul} par l'ID réel de Paul TSHISEKEDI
+### -------------------------------------------------------------------------
+PUT {{baseUrl}}/Agent/{idAgentPaul}
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "idAgent": {idAgentPaul},
+  "nom": "TSHISEKEDI",
+  "postnom": "NGANDU",
+  "prenom": "Paul",
+  "genre": "Masculin",
+  "dateNaissance": "1988-03-10",
+  "lieuNaissance": "Kananga",
+  "nationalite": "Congolaise",
+  "telephone": "+243998877667",
+  "emailAgent": "jean.mbala.new@test.com",
+  "adresse": "30 Avenue Lumumba, Kananga",
+  "fonction": "Professeur",
+  "specialite": "Physique",
+  "diplome": "Licence en Physique",
+  "dateEngagement": "2024-03-20",
+  "salaireBase": 480.00,
+  "statut": true,
+  "idEcole": 1,
+  "photo": null
+}
+
+### -------------------------------------------------------------------------
+### 8️⃣ METTRE À JOUR LE TROISIÈME AGENT en gardant son propre email
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : La mise à jour réussit (pas de conflit)
+### ⚠️ REMPLACER {idAgentPaul} par l'ID réel de Paul TSHISEKEDI
+### -------------------------------------------------------------------------
+PUT {{baseUrl}}/Agent/{idAgentPaul}
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "idAgent": {idAgentPaul},
+  "nom": "TSHISEKEDI",
+  "postnom": "NGANDU",
+  "prenom": "Paul",
+  "genre": "Masculin",
+  "dateNaissance": "1988-03-10",
+  "lieuNaissance": "Kananga",
+  "nationalite": "Congolaise",
+  "telephone": "+243998877667",
+  "emailAgent": "paul.tshisekedi@test.com",
+  "adresse": "30 Avenue Lumumba, Kananga - Nouvelle adresse",
+  "fonction": "Professeur Senior",
+  "specialite": "Physique Quantique",
+  "diplome": "Master en Physique",
+  "dateEngagement": "2024-03-20",
+  "salaireBase": 520.00,
+  "statut": true,
+  "idEcole": 1,
+  "photo": null
+}
+
+### =========================================================================
+### 📋 RÉSUMÉ DES TESTS
+### =========================================================================
+### ✅ Test 1 : Création agent avec email unique → SUCCÈS
+### ❌ Test 2 : Création agent avec email existant → ERREUR 400
+### ✅ Test 3 : Création agent avec nouvel email unique → SUCCÈS
+### ✅ Test 4 : Mise à jour agent avec nouvel email → SUCCÈS
+### ❌ Test 5 : Mise à jour agent avec email d'un autre agent → ERREUR 400
+### ✅ Test 6 : Mise à jour agent en gardant son email → SUCCÈS
+### =========================================================================

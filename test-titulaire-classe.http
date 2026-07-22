@@ -1,0 +1,170 @@
+### 🎓 TESTS TITULAIRE DE CLASSE - MATERNELLE/PRIMAIRE
+### Système d'affectation intelligent pour enseignants titulaires
+
+@baseUrl = http://localhost:5000
+@token = YOUR_JWT_TOKEN_HERE
+
+################################################################################
+# 📚 SECTION 1 : CRÉATION DE TITULAIRES
+################################################################################
+
+### ✅ TEST 1.1 : Affecter un titulaire à une classe de Maternelle
+POST {{baseUrl}}/api/TitulaireClasse
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "idAgent": 1,
+  "idClasse": 1,
+  "idAnneeScolaire": 1,
+  "dateDebut": "2025-01-27T00:00:00",
+  "commentaire": "Titulaire de la classe Maternelle A"
+}
+
+### ✅ TEST 1.2 : Affecter un titulaire à une classe de Primaire
+POST {{baseUrl}}/api/TitulaireClasse
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "idAgent": 2,
+  "idClasse": 2,
+  "idAnneeScolaire": 1,
+  "dateDebut": "2025-01-27T00:00:00",
+  "commentaire": "Titulaire de 1ère Primaire B"
+}
+
+### ❌ TEST 1.3 : Tentative d'affecter 2 titulaires à la même classe (doit échouer)
+POST {{baseUrl}}/api/TitulaireClasse
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "idAgent": 3,
+  "idClasse": 1,
+  "idAnneeScolaire": 1,
+  "dateDebut": "2025-01-27T00:00:00",
+  "commentaire": "Second titulaire - devrait échouer"
+}
+
+################################################################################
+# 📊 SECTION 2 : RÉCUPÉRATION DE TITULAIRES (PAGINÉE)
+################################################################################
+
+### ✅ TEST 2.1 : Tous les titulaires (paginé)
+GET {{baseUrl}}/api/TitulaireClasse/paged?PageSize=10&PageNumber=1
+Authorization: Bearer {{token}}
+
+### ✅ TEST 2.2 : Titulaires par agent (historique enseignant)
+GET {{baseUrl}}/api/TitulaireClasse/agent/1/paged?PageSize=5
+Authorization: Bearer {{token}}
+
+### ✅ TEST 2.3 : Historique des titulaires d'une classe
+GET {{baseUrl}}/api/TitulaireClasse/classe/1/paged?PageSize=10
+Authorization: Bearer {{token}}
+
+### ✅ TEST 2.4 : Titulaires d'une année scolaire
+GET {{baseUrl}}/api/TitulaireClasse/annee/1/paged?PageSize=20
+Authorization: Bearer {{token}}
+
+### ✅ TEST 2.5 : Recherche par nom d'enseignant
+GET {{baseUrl}}/api/TitulaireClasse/paged?SearchTerm=Mukendi&PageSize=10
+Authorization: Bearer {{token}}
+
+################################################################################
+# 🔍 SECTION 3 : RÉCUPÉRATION SPÉCIFIQUE
+################################################################################
+
+### ✅ TEST 3.1 : Titulaire actif d'une classe pour l'année en cours
+GET {{baseUrl}}/api/TitulaireClasse/classe/1/annee/1/actif
+Authorization: Bearer {{token}}
+
+### ✅ TEST 3.2 : Classes titularisées par un agent
+GET {{baseUrl}}/api/TitulaireClasse/agent/1
+Authorization: Bearer {{token}}
+
+### ✅ TEST 3.3 : Récupérer un titulaire par ID
+GET {{baseUrl}}/api/TitulaireClasse/1
+Authorization: Bearer {{token}}
+
+################################################################################
+# 🔄 SECTION 4 : MISE À JOUR
+################################################################################
+
+### ✅ TEST 4.1 : Modifier les informations d'un titulaire
+PUT {{baseUrl}}/api/TitulaireClasse/1
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "idTitulaireClasse": 1,
+  "idAgent": 1,
+  "idClasse": 1,
+  "idAnneeScolaire": 1,
+  "dateDebut": "2025-01-27T00:00:00",
+  "commentaire": "Titulaire principal - Excellent enseignant"
+}
+
+### ✅ TEST 4.2 : Désactiver un titulaire (fin d'affectation)
+PATCH {{baseUrl}}/api/TitulaireClasse/1/toggle-statut
+Authorization: Bearer {{token}}
+
+### ✅ TEST 4.3 : Réactiver un titulaire
+PATCH {{baseUrl}}/api/TitulaireClasse/1/toggle-statut
+Authorization: Bearer {{token}}
+
+################################################################################
+# ✔️ SECTION 5 : VALIDATION MÉTIER
+################################################################################
+
+### ✅ TEST 5.1 : Vérifier si une classe a déjà un titulaire
+GET {{baseUrl}}/api/TitulaireClasse/classe/1/annee/1/has-titulaire
+Authorization: Bearer {{token}}
+
+### ✅ TEST 5.2 : Vérifier si un agent est disponible (pas déjà titulaire)
+GET {{baseUrl}}/api/TitulaireClasse/agent/1/annee/1/disponible
+Authorization: Bearer {{token}}
+
+################################################################################
+# 🗑️ SECTION 6 : SUPPRESSION
+################################################################################
+
+### ❌ TEST 6.1 : Supprimer un titulaire (hard delete)
+DELETE {{baseUrl}}/api/TitulaireClasse/1
+Authorization: Bearer {{token}}
+
+################################################################################
+# 📖 DOCUMENTATION
+################################################################################
+
+### 📌 MODÈLE TitulaireClasse
+# {
+#   "idTitulaireClasse": 0,
+#   "idAgent": 0,                  // ID de l'enseignant titulaire
+#   "idClasse": 0,                 // ID de la classe (Maternelle/Primaire)
+#   "idAnneeScolaire": 0,          // ID de l'année scolaire
+#   "dateDebut": "2025-01-27",     // Date de début d'affectation
+#   "dateFin": null,               // Date de fin (null si toujours actif)
+#   "statut": true,                // true = actif, false = inactif
+#   "commentaire": "..."           // Remarque (optionnel)
+# }
+
+### 💡 RÈGLES MÉTIER
+# ✅ Un seul titulaire actif par classe et par année scolaire
+# ✅ Un agent ne peut être titulaire que d'une seule classe par année
+# ✅ L'agent doit avoir le rôle "ENSEIGNANT"
+# ⚠️  Recommandé pour MATERNELLE et PRIMAIRE uniquement
+# ⚠️  Pour SECONDAIRE, utiliser AffectationCours (plusieurs profs par classe)
+
+### 🎯 DIFFÉRENCE AVEC AFFECTATIONCOURS
+# 
+# TITULAIRECLASSE (Maternelle/Primaire):
+#   → 1 enseignant pour TOUTE la classe
+#   → Tous les cours enseignés par le même prof
+#   → Relation simple : Agent → Classe
+#
+# AFFECTATIONCOURS (Secondaire):
+#   → Plusieurs enseignants par classe
+#   → Chaque prof enseigne 1 ou plusieurs cours
+#   → Relation : Agent → Cours → Classe
+

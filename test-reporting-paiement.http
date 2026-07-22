@@ -1,0 +1,210 @@
+### =========================================================================
+### 🧪 TESTS REPORTING PAIEMENT
+### =========================================================================
+### Objectif : Tester les nouveaux endpoints de reporting de paiement
+### Date : 27 octobre 2025
+### =========================================================================
+
+@baseUrl = https://localhost:7102/api
+
+### -------------------------------------------------------------------------
+### 1️⃣ CONNEXION (pour obtenir le token)
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "superadmin@kelasinabiso.cd",
+  "motDePasse": "Super-Admin",
+  "fcmToken": "test-fcm-token",
+  "deviceType": "Web",
+  "deviceModel": "Chrome",
+  "osVersion": "Windows 11"
+}
+
+### =========================================================================
+### 📘 SECTION 1 : DASHBOARD ÉCOLE PAIEMENT
+### =========================================================================
+
+### -------------------------------------------------------------------------
+### 2️⃣ DASHBOARD ÉCOLE - Mois en cours
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Vue d'ensemble paiements du mois
+### ⚠️ REMPLACER YOUR_TOKEN_HERE par le token obtenu
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Paiement/dashboard/ecole/1?periode=mois
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 3️⃣ DASHBOARD ÉCOLE - Intervalle personnalisé (Janvier 2025)
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Stats janvier complet
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Paiement/dashboard/ecole/1?dateDebut=2025-01-01&dateFin=2025-01-31
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 4️⃣ DASHBOARD ÉCOLE - Semaine en cours
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Stats de la semaine
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Paiement/dashboard/ecole/1?periode=semaine
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 5️⃣ DASHBOARD ÉCOLE - Trimestre en cours
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Stats du trimestre
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Paiement/dashboard/ecole/1?periode=trimestre
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 6️⃣ DASHBOARD ÉCOLE - Année en cours
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Stats annuelles
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Paiement/dashboard/ecole/1?periode=annee
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### =========================================================================
+### 📗 SECTION 2 : TAUX PAIEMENT ÉLÈVE
+### =========================================================================
+
+### -------------------------------------------------------------------------
+### 7️⃣ TAUX PAIEMENT ÉLÈVE - Mois en cours
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Taux de paiement de l'élève + détails frais
+### ⚠️ REMPLACER {idEleve} par un ID réel
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Paiement/eleves/{idEleve}/taux?periode=mois
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 8️⃣ TAUX PAIEMENT ÉLÈVE - Intervalle personnalisé
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Taux sur janvier 2025
+### ⚠️ REMPLACER {idEleve} par un ID réel
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Paiement/eleves/{idEleve}/taux?dateDebut=2025-01-01&dateFin=2025-01-31
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 9️⃣ TAUX PAIEMENT ÉLÈVE - Trimestre en cours
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Taux trimestriel
+### ⚠️ REMPLACER {idEleve} par un ID réel
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Paiement/eleves/{idEleve}/taux?periode=trimestre
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 🔟 TAUX PAIEMENT ÉLÈVE - Année scolaire
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Bilan annuel complet
+### ⚠️ REMPLACER {idEleve} par un ID réel
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Paiement/eleves/{idEleve}/taux?periode=annee
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### =========================================================================
+### 📙 SECTION 3 : TAUX PAIEMENT CLASSE
+### =========================================================================
+
+### -------------------------------------------------------------------------
+### 1️⃣1️⃣ TAUX PAIEMENT CLASSE - Mois en cours (sans détails)
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Statistiques globales classe
+### ⚠️ REMPLACER {idClasse} par un ID réel
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Paiement/classe/{idClasse}/taux?periode=mois
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 1️⃣2️⃣ TAUX PAIEMENT CLASSE - Mois avec détails par élève
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Stats classe + liste détaillée élèves
+### ⚠️ REMPLACER {idClasse} par un ID réel
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Paiement/classe/{idClasse}/taux?periode=mois&includeDetails=true
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 1️⃣3️⃣ TAUX PAIEMENT CLASSE - Intervalle personnalisé
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Stats janvier 2025
+### ⚠️ REMPLACER {idClasse} par un ID réel
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Paiement/classe/{idClasse}/taux?dateDebut=2025-01-01&dateFin=2025-01-31
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 1️⃣4️⃣ TAUX PAIEMENT CLASSE - Trimestre avec détails
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Stats trimestrielles complètes
+### ⚠️ REMPLACER {idClasse} par un ID réel
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Paiement/classe/{idClasse}/taux?periode=trimestre&includeDetails=true
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 1️⃣5️⃣ TAUX PAIEMENT CLASSE - Année scolaire
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Bilan annuel classe
+### ⚠️ REMPLACER {idClasse} par un ID réel
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Paiement/classe/{idClasse}/taux?periode=annee
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### =========================================================================
+### 📋 RÉSUMÉ DES NOUVEAUX ENDPOINTS
+### =========================================================================
+### 
+### ✅ IMPLÉMENTÉS (3 endpoints)
+###    1. GET /api/Paiement/dashboard/ecole/{id}
+###       • Vue d'ensemble paiements école
+###       • Montants totaux, taux recouvrement
+###       • Répartition par mode de paiement
+###       • Top 5 des frais
+###
+###    2. GET /api/Paiement/eleves/{id}/taux
+###       • Taux de paiement élève
+###       • Liste des frais (payés/en attente)
+###       • Montants détaillés
+###
+###    3. GET /api/Paiement/classe/{id}/taux
+###       • Taux de recouvrement classe
+###       • Statistiques globales
+###       • Optionnel : détails par élève
+### 
+### 📊 PÉRIODICITÉ SUPPORTÉE
+###    - ?date=2025-01-15 (jour spécifique)
+###    - ?dateDebut=2025-01-01&dateFin=2025-01-31 (intervalle)
+###    - ?periode=semaine|mois|trimestre|annee (prédéfini)
+###    - Par défaut : mois en cours
+### 
+### 📈 DONNÉES RETOURNÉES
+###    - Dashboard : Montants, taux, répartition modes, top frais
+###    - Taux élève : Montants payés/attendus, liste frais détaillée
+###    - Taux classe : Recouvrement, élèves à jour/en retard, optionnel détails
+### 
+### 🎯 PROCHAINES AMÉLIORATIONS POSSIBLES
+###    - Analyse des retards de paiement
+###    - Comparaisons (élève vs moyenne classe)
+###    - Reporting par section/option/direction
+###    - Prévisions de recouvrement
+###    - Tendances et évolutions
+### 
+### =========================================================================
+### 💡 CONSEILS D'UTILISATION
+### =========================================================================
+###
+### 1. Obtenez d'abord un token en utilisant le test #1
+### 2. Remplacez YOUR_TOKEN_HERE par le token obtenu
+### 3. Remplacez {idEleve} et {idClasse} par des IDs réels de votre base
+### 4. L'idEcole=1 correspond généralement à "Ekelasi School"
+### 5. Testez d'abord le dashboard pour avoir une vue d'ensemble
+### 6. Utilisez includeDetails=true pour obtenir les détails par élève
+###
+### =========================================================================
+

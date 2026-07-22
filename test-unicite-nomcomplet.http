@@ -1,0 +1,450 @@
+### ═══════════════════════════════════════════════════════════════════
+### 🧪 TESTS : Critères d'Unicité par NomComplet
+### Critères : (NomCompletEleve normalisé, DateNaissance, NomCompletTuteur normalisé)
+### ═══════════════════════════════════════════════════════════════════
+
+@baseUrl = https://localhost:7102
+@token = YOUR_JWT_TOKEN_HERE
+
+### ═══════════════════════════════════════════════════════════════════
+### ÉTAPE 0 : Authentification (obtenir le token)
+### ═══════════════════════════════════════════════════════════════════
+
+POST {{baseUrl}}/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "email": "admin@example.com",
+  "motDePasse": "Admin"
+}
+
+### ═══════════════════════════════════════════════════════════════════
+### TEST 1 : Doublon Exact
+### Objectif : Vérifier que le système détecte un doublon exact
+### ═══════════════════════════════════════════════════════════════════
+
+### Étape 1.1 : Créer la première inscription
+POST {{baseUrl}}/api/Inscription
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "Inscription",
+  "idEcole": 1,
+  "idClasse": 5,
+  "idAnneeScolaire": 3,
+  "dateInscription": "2025-01-16T10:00:00Z",
+  "statutInscription": "En attente",
+  "nomEleve": "MUKENDI",
+  "postnomEleve": "KALALA",
+  "prenomEleve": "Jean",
+  "genreEleve": "M",
+  "dateNaissanceEleve": "2010-05-15T00:00:00Z",
+  "lieuNaissanceEleve": "Kinshasa",
+  "nationaliteEleve": "Congolaise",
+  "nomCompletTuteur": "MUKENDI Pierre",
+  "genreTuteur": "M"
+}
+
+### Étape 1.2 : Créer la deuxième inscription (DOUBLON EXACT)
+### Résultat attendu : Élève existant réutilisé (pas de doublon créé)
+POST {{baseUrl}}/api/Inscription
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "Inscription",
+  "idEcole": 1,
+  "idClasse": 5,
+  "idAnneeScolaire": 3,
+  "dateInscription": "2025-01-16T10:00:00Z",
+  "statutInscription": "En attente",
+  "nomEleve": "MUKENDI",
+  "postnomEleve": "KALALA",
+  "prenomEleve": "Jean",
+  "genreEleve": "M",
+  "dateNaissanceEleve": "2010-05-15T00:00:00Z",
+  "lieuNaissanceEleve": "Kinshasa",
+  "nationaliteEleve": "Congolaise",
+  "nomCompletTuteur": "MUKENDI Pierre",
+  "genreTuteur": "M"
+}
+
+### ═══════════════════════════════════════════════════════════════════
+### TEST 2 : Variations d'Espacement
+### Objectif : Vérifier que le système détecte un doublon même avec des espaces multiples
+### ═══════════════════════════════════════════════════════════════════
+
+### Étape 2.1 : Créer la première inscription
+POST {{baseUrl}}/api/Inscription
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "Inscription",
+  "idEcole": 1,
+  "idClasse": 5,
+  "idAnneeScolaire": 3,
+  "dateInscription": "2025-01-16T10:00:00Z",
+  "statutInscription": "En attente",
+  "nomEleve": "MUKENDI",
+  "postnomEleve": "KALALA",
+  "prenomEleve": "Jean",
+  "genreEleve": "M",
+  "dateNaissanceEleve": "2010-05-20T00:00:00Z",
+  "lieuNaissanceEleve": "Kinshasa",
+  "nationaliteEleve": "Congolaise",
+  "nomCompletTuteur": "MUKENDI Pierre",
+  "genreTuteur": "M"
+}
+
+### Étape 2.2 : Créer la deuxième inscription avec ESPACES MULTIPLES
+### Résultat attendu : Détection du doublon (normalisation des espaces)
+POST {{baseUrl}}/api/Inscription
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "Inscription",
+  "idEcole": 1,
+  "idClasse": 5,
+  "idAnneeScolaire": 3,
+  "dateInscription": "2025-01-16T10:00:00Z",
+  "statutInscription": "En attente",
+  "nomEleve": "MUKENDI",
+  "postnomEleve": "KALALA",
+  "prenomEleve": "Jean  Pierre",
+  "genreEleve": "M",
+  "dateNaissanceEleve": "2010-05-20T00:00:00Z",
+  "lieuNaissanceEleve": "Kinshasa",
+  "nationaliteEleve": "Congolaise",
+  "nomCompletTuteur": "MUKENDI  Pierre",
+  "genreTuteur": "M"
+}
+
+### ═══════════════════════════════════════════════════════════════════
+### TEST 3 : Variations d'Accents
+### Objectif : Vérifier que le système détecte un doublon même avec des accents différents
+### ═══════════════════════════════════════════════════════════════════
+
+### Étape 3.1 : Créer la première inscription avec ACCENTS
+POST {{baseUrl}}/api/Inscription
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "Inscription",
+  "idEcole": 1,
+  "idClasse": 5,
+  "idAnneeScolaire": 3,
+  "dateInscription": "2025-01-16T10:00:00Z",
+  "statutInscription": "En attente",
+  "nomEleve": "MUKENDI",
+  "postnomEleve": "KALALA",
+  "prenomEleve": "José",
+  "genreEleve": "M",
+  "dateNaissanceEleve": "2010-05-25T00:00:00Z",
+  "lieuNaissanceEleve": "Kinshasa",
+  "nationaliteEleve": "Congolaise",
+  "nomCompletTuteur": "MUKENDI François",
+  "genreTuteur": "M"
+}
+
+### Étape 3.2 : Créer la deuxième inscription SANS ACCENTS
+### Résultat attendu : Détection du doublon (normalisation des accents)
+POST {{baseUrl}}/api/Inscription
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "Inscription",
+  "idEcole": 1,
+  "idClasse": 5,
+  "idAnneeScolaire": 3,
+  "dateInscription": "2025-01-16T10:00:00Z",
+  "statutInscription": "En attente",
+  "nomEleve": "MUKENDI",
+  "postnomEleve": "KALALA",
+  "prenomEleve": "Jose",
+  "genreEleve": "M",
+  "dateNaissanceEleve": "2010-05-25T00:00:00Z",
+  "lieuNaissanceEleve": "Kinshasa",
+  "nationaliteEleve": "Congolaise",
+  "nomCompletTuteur": "MUKENDI Francois",
+  "genreTuteur": "M"
+}
+
+### ═══════════════════════════════════════════════════════════════════
+### TEST 4 : Variations de Caractères Spéciaux
+### Objectif : Vérifier que le système détecte un doublon même avec des caractères spéciaux
+### ═══════════════════════════════════════════════════════════════════
+
+### Étape 4.1 : Créer la première inscription avec TIRET
+POST {{baseUrl}}/api/Inscription
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "Inscription",
+  "idEcole": 1,
+  "idClasse": 5,
+  "idAnneeScolaire": 3,
+  "dateInscription": "2025-01-16T10:00:00Z",
+  "statutInscription": "En attente",
+  "nomEleve": "MUKENDI",
+  "postnomEleve": "KALALA",
+  "prenomEleve": "Jean-Pierre",
+  "genreEleve": "M",
+  "dateNaissanceEleve": "2010-05-30T00:00:00Z",
+  "lieuNaissanceEleve": "Kinshasa",
+  "nationaliteEleve": "Congolaise",
+  "nomCompletTuteur": "MUKENDI Pierre",
+  "genreTuteur": "M"
+}
+
+### Étape 4.2 : Créer la deuxième inscription SANS TIRET
+### Résultat attendu : Détection du doublon (normalisation des caractères spéciaux)
+POST {{baseUrl}}/api/Inscription
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "Inscription",
+  "idEcole": 1,
+  "idClasse": 5,
+  "idAnneeScolaire": 3,
+  "dateInscription": "2025-01-16T10:00:00Z",
+  "statutInscription": "En attente",
+  "nomEleve": "MUKENDI",
+  "postnomEleve": "KALALA",
+  "prenomEleve": "Jean Pierre",
+  "genreEleve": "M",
+  "dateNaissanceEleve": "2010-05-30T00:00:00Z",
+  "lieuNaissanceEleve": "Kinshasa",
+  "nationaliteEleve": "Congolaise",
+  "nomCompletTuteur": "MUKENDI Pierre",
+  "genreTuteur": "M"
+}
+
+### ═══════════════════════════════════════════════════════════════════
+### TEST 5 : Ordre des Mots
+### Objectif : Vérifier que le système détecte un doublon même si l'ordre des mots est différent
+### ═══════════════════════════════════════════════════════════════════
+
+### Étape 5.1 : Créer la première inscription
+POST {{baseUrl}}/api/Inscription
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "Inscription",
+  "idEcole": 1,
+  "idClasse": 5,
+  "idAnneeScolaire": 3,
+  "dateInscription": "2025-01-16T10:00:00Z",
+  "statutInscription": "En attente",
+  "nomEleve": "MUKENDI",
+  "postnomEleve": "KALALA",
+  "prenomEleve": "Jean Pierre",
+  "genreEleve": "M",
+  "dateNaissanceEleve": "2011-01-01T00:00:00Z",
+  "lieuNaissanceEleve": "Kinshasa",
+  "nationaliteEleve": "Congolaise",
+  "nomCompletTuteur": "MUKENDI Pierre",
+  "genreTuteur": "M"
+}
+
+### Étape 5.2 : Créer la deuxième inscription avec ORDRE DIFFÉRENT
+### Résultat attendu : Détection du doublon (tri des mots)
+POST {{baseUrl}}/api/Inscription
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "Inscription",
+  "idEcole": 1,
+  "idClasse": 5,
+  "idAnneeScolaire": 3,
+  "dateInscription": "2025-01-16T10:00:00Z",
+  "statutInscription": "En attente",
+  "nomEleve": "MUKENDI",
+  "postnomEleve": "KALALA",
+  "prenomEleve": "Pierre Jean",
+  "genreEleve": "M",
+  "dateNaissanceEleve": "2011-01-01T00:00:00Z",
+  "lieuNaissanceEleve": "Kinshasa",
+  "nationaliteEleve": "Congolaise",
+  "nomCompletTuteur": "Pierre MUKENDI",
+  "genreTuteur": "M"
+}
+
+### ═══════════════════════════════════════════════════════════════════
+### TEST 6 : Jumeaux (Dates Différentes)
+### Objectif : Vérifier que le système permet l'inscription de jumeaux avec des dates de naissance différentes
+### ═══════════════════════════════════════════════════════════════════
+
+### Étape 6.1 : Créer la première inscription (Jumeau 1)
+POST {{baseUrl}}/api/Inscription
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "Inscription",
+  "idEcole": 1,
+  "idClasse": 5,
+  "idAnneeScolaire": 3,
+  "dateInscription": "2025-01-16T10:00:00Z",
+  "statutInscription": "En attente",
+  "nomEleve": "MUKENDI",
+  "postnomEleve": "KALALA",
+  "prenomEleve": "Jean",
+  "genreEleve": "M",
+  "dateNaissanceEleve": "2012-06-15T00:00:00Z",
+  "lieuNaissanceEleve": "Kinshasa",
+  "nationaliteEleve": "Congolaise",
+  "nomCompletTuteur": "MUKENDI Pierre",
+  "genreTuteur": "M"
+}
+
+### Étape 6.2 : Créer la deuxième inscription (Jumeau 2 - DATE DIFFÉRENTE)
+### Résultat attendu : Création de deux élèves distincts (dates différentes)
+POST {{baseUrl}}/api/Inscription
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "Inscription",
+  "idEcole": 1,
+  "idClasse": 5,
+  "idAnneeScolaire": 3,
+  "dateInscription": "2025-01-16T10:00:00Z",
+  "statutInscription": "En attente",
+  "nomEleve": "MUKENDI",
+  "postnomEleve": "KALALA",
+  "prenomEleve": "Jean",
+  "genreEleve": "M",
+  "dateNaissanceEleve": "2012-06-16T00:00:00Z",
+  "lieuNaissanceEleve": "Kinshasa",
+  "nationaliteEleve": "Congolaise",
+  "nomCompletTuteur": "MUKENDI Pierre",
+  "genreTuteur": "M"
+}
+
+### ═══════════════════════════════════════════════════════════════════
+### TEST 7 : Recherche Globale (Autre École)
+### Objectif : Vérifier que le système détecte un doublon même si l'élève est dans une autre école
+### ═══════════════════════════════════════════════════════════════════
+
+### Étape 7.1 : Créer la première inscription (École 1)
+POST {{baseUrl}}/api/Inscription
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "Inscription",
+  "idEcole": 1,
+  "idClasse": 5,
+  "idAnneeScolaire": 3,
+  "dateInscription": "2025-01-16T10:00:00Z",
+  "statutInscription": "En attente",
+  "nomEleve": "MUKENDI",
+  "postnomEleve": "KALALA",
+  "prenomEleve": "Marie",
+  "genreEleve": "F",
+  "dateNaissanceEleve": "2013-03-20T00:00:00Z",
+  "lieuNaissanceEleve": "Kinshasa",
+  "nationaliteEleve": "Congolaise",
+  "nomCompletTuteur": "MUKENDI Pierre",
+  "genreTuteur": "M"
+}
+
+### Étape 7.2 : Créer la deuxième inscription (École 2 - AUTRE ÉCOLE)
+### Résultat attendu : Détection du doublon (recherche globale) et réutilisation de l'élève existant
+POST {{baseUrl}}/api/Inscription
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "Inscription",
+  "idEcole": 2,
+  "idClasse": 10,
+  "idAnneeScolaire": 3,
+  "dateInscription": "2025-01-16T10:00:00Z",
+  "statutInscription": "En attente",
+  "nomEleve": "MUKENDI",
+  "postnomEleve": "KALALA",
+  "prenomEleve": "Marie",
+  "genreEleve": "F",
+  "dateNaissanceEleve": "2013-03-20T00:00:00Z",
+  "lieuNaissanceEleve": "Kinshasa",
+  "nationaliteEleve": "Congolaise",
+  "nomCompletTuteur": "MUKENDI Pierre",
+  "genreTuteur": "M"
+}
+
+### ═══════════════════════════════════════════════════════════════════
+### TEST 8 : Tuteur Différent
+### Objectif : Vérifier le comportement si le tuteur est différent
+### ═══════════════════════════════════════════════════════════════════
+
+### Étape 8.1 : Créer la première inscription
+POST {{baseUrl}}/api/Inscription
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "Inscription",
+  "idEcole": 1,
+  "idClasse": 5,
+  "idAnneeScolaire": 3,
+  "dateInscription": "2025-01-16T10:00:00Z",
+  "statutInscription": "En attente",
+  "nomEleve": "MUKENDI",
+  "postnomEleve": "KALALA",
+  "prenomEleve": "Paul",
+  "genreEleve": "M",
+  "dateNaissanceEleve": "2014-04-10T00:00:00Z",
+  "lieuNaissanceEleve": "Kinshasa",
+  "nationaliteEleve": "Congolaise",
+  "nomCompletTuteur": "MUKENDI Pierre",
+  "genreTuteur": "M"
+}
+
+### Étape 8.2 : Créer la deuxième inscription avec TUTEUR DIFFÉRENT
+### Résultat attendu : Création d'un nouvel élève (tuteur différent = élève différent selon les critères)
+POST {{baseUrl}}/api/Inscription
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "Inscription",
+  "idEcole": 1,
+  "idClasse": 5,
+  "idAnneeScolaire": 3,
+  "dateInscription": "2025-01-16T10:00:00Z",
+  "statutInscription": "En attente",
+  "nomEleve": "MUKENDI",
+  "postnomEleve": "KALALA",
+  "prenomEleve": "Paul",
+  "genreEleve": "M",
+  "dateNaissanceEleve": "2014-04-10T00:00:00Z",
+  "lieuNaissanceEleve": "Kinshasa",
+  "nationaliteEleve": "Congolaise",
+  "nomCompletTuteur": "KALALA Marie",
+  "genreTuteur": "F"
+}
+
+### ═══════════════════════════════════════════════════════════════════
+### VÉRIFICATION : Récupérer les inscriptions créées
+### ═══════════════════════════════════════════════════════════════════
+
+GET {{baseUrl}}/api/Inscription
+Authorization: Bearer {{token}}
+
+### ═══════════════════════════════════════════════════════════════════
+### NETTOYAGE : Supprimer les inscriptions de test (optionnel)
+### ═══════════════════════════════════════════════════════════════════
+
+### Supprimer une inscription (remplacer {id} par l'ID réel)
+# DELETE {{baseUrl}}/api/Inscription/{id}
+# Authorization: Bearer {{token}}

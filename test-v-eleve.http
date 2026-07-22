@@ -1,0 +1,211 @@
+### Test de la vue V_Eleve
+
+### Récupérer tous les élèves avec leurs informations complètes
+GET https://localhost:7001/api/V_Eleve
+Content-Type: application/json
+
+###
+
+### Récupérer un élève par son ID
+GET https://localhost:7001/api/V_Eleve/1
+Content-Type: application/json
+
+###
+
+### Récupérer un élève par sa référence
+GET https://localhost:7001/api/V_Eleve/reference/{{eleveReference}}
+Content-Type: application/json
+
+###
+
+### Récupérer un élève par son matricule
+GET https://localhost:7001/api/V_Eleve/matricule/ELEVE001
+Content-Type: application/json
+
+###
+
+### Récupérer tous les élèves d'une école
+GET https://localhost:7001/api/V_Eleve/ecole/1
+Content-Type: application/json
+
+###
+
+### Récupérer tous les élèves d'une classe
+GET https://localhost:7001/api/V_Eleve/classe/1
+Content-Type: application/json
+
+###
+
+### Récupérer tous les élèves d'un tuteur
+GET https://localhost:7001/api/V_Eleve/tuteur/1
+Content-Type: application/json
+
+###
+
+### Récupérer tous les élèves actifs
+GET https://localhost:7001/api/V_Eleve/statut/True
+Content-Type: application/json
+
+###
+
+### Récupérer tous les élèves par genre
+GET https://localhost:7001/api/V_Eleve/genre/M
+Content-Type: application/json
+
+###
+
+### Récupérer tous les élèves par nationalité
+GET https://localhost:7001/api/V_Eleve/nationalite/Congolais
+Content-Type: application/json
+
+###
+
+### Récupérer tous les élèves par province
+GET https://localhost:7001/api/V_Eleve/province/Kinshasa
+Content-Type: application/json
+
+###
+
+### Récupérer tous les élèves par ville
+GET https://localhost:7001/api/V_Eleve/ville/Kinshasa
+Content-Type: application/json
+
+###
+
+### Récupérer tous les élèves par commune
+GET https://localhost:7001/api/V_Eleve/commune/Gombe
+Content-Type: application/json
+
+###
+
+### Récupérer tous les élèves créés à une date spécifique
+GET https://localhost:7001/api/V_Eleve/date-creation/2024-01-15
+Content-Type: application/json
+
+###
+
+### Récupérer tous les élèves créés dans une plage de dates
+GET https://localhost:7001/api/V_Eleve/date-creation-range?dateDebut=2024-01-01&dateFin=2024-12-31
+Content-Type: application/json
+
+###
+
+### Récupérer tous les élèves nés à une date spécifique
+GET https://localhost:7001/api/V_Eleve/date-naissance/2010-05-15
+Content-Type: application/json
+
+###
+
+### Récupérer tous les élèves nés dans une plage de dates
+GET https://localhost:7001/api/V_Eleve/date-naissance-range?dateDebut=2010-01-01&dateFin=2010-12-31
+Content-Type: application/json
+
+###
+
+### Rechercher des élèves par nom complet
+GET https://localhost:7001/api/V_Eleve/nom-complet/Jean
+Content-Type: application/json
+
+###
+
+### Rechercher des élèves par nom
+GET https://localhost:7001/api/V_Eleve/nom/Dupont
+Content-Type: application/json
+
+###
+
+### Rechercher des élèves par prénom
+GET https://localhost:7001/api/V_Eleve/prenom/Pierre
+Content-Type: application/json
+
+###
+
+### Rechercher des élèves par lieu de naissance
+GET https://localhost:7001/api/V_Eleve/lieu-naissance/Kinshasa
+Content-Type: application/json
+
+###
+
+### Récupérer tous les élèves d'une section
+GET https://localhost:7001/api/V_Eleve/section/1
+Content-Type: application/json
+
+###
+
+### Récupérer tous les élèves d'une option
+GET https://localhost:7001/api/V_Eleve/option/1
+Content-Type: application/json
+
+###
+
+### Récupérer tous les élèves avec des tuteurs actifs
+GET https://localhost:7001/api/V_Eleve/statut-tuteur/True
+Content-Type: application/json
+
+###
+
+### Récupérer tous les élèves par email du tuteur
+GET https://localhost:7001/api/V_Eleve/email-tuteur/parent@example.com
+Content-Type: application/json
+
+###
+
+### Récupérer tous les élèves par téléphone du tuteur
+GET https://localhost:7001/api/V_Eleve/telephone-tuteur/+243123456789
+Content-Type: application/json
+
+###
+
+### Compter le nombre total d'élèves
+GET https://localhost:7001/api/V_Eleve/count
+Content-Type: application/json
+
+###
+
+### Compter le nombre d'élèves par école
+GET https://localhost:7001/api/V_Eleve/count/ecole/1
+Content-Type: application/json
+
+###
+
+### Compter le nombre d'élèves par classe
+GET https://localhost:7001/api/V_Eleve/count/classe/1
+Content-Type: application/json
+
+###
+
+### Compter le nombre d'élèves par tuteur
+GET https://localhost:7001/api/V_Eleve/count/tuteur/1
+Content-Type: application/json
+
+###
+
+### Compter le nombre d'élèves par statut
+GET https://localhost:7001/api/V_Eleve/count/statut/True
+Content-Type: application/json
+
+###
+
+### Compter le nombre d'élèves par genre
+GET https://localhost:7001/api/V_Eleve/count/genre/M
+Content-Type: application/json
+
+###
+
+### Vérifier si un élève existe par ID
+GET https://localhost:7001/api/V_Eleve/exists/1
+Content-Type: application/json
+
+###
+
+### Vérifier si un élève existe par référence
+GET https://localhost:7001/api/V_Eleve/exists/reference/{{eleveReference}}
+Content-Type: application/json
+
+###
+
+### Vérifier si un élève existe par matricule
+GET https://localhost:7001/api/V_Eleve/exists/matricule/ELEVE001
+Content-Type: application/json
+
+###

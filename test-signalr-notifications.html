@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Notifications Push - KelasiNaBiso</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .content {
+            padding: 30px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .left-panel, .right-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .section {
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            background: #f9f9f9;
+        }
+        .section h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+        .input-group {
+            margin-bottom: 10px;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+            font-size: 0.9em;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 0.95em;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.95em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 10px;
+            width: 100%;
+        }
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+        .btn-success {
+            background: #4caf50;
+            color: white;
+        }
+        .btn-warning {
+            background: #ff9800;
+            color: white;
+        }
+        .btn-info {
+            background: #00bcd4;
+            color: white;
+        }
+        .status {
+            display: inline-block;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .status.disconnected {
+            background: #ffebee;
+            color: #c62828;
+        }
+        .status.connected {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        .notifications-container {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .notification-card {
+            background: white;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateX(-20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        .notification-card.paiement {
+            border-left-color: #4caf50;
+        }
+        .notification-card.presence {
+            border-left-color: #00bcd4;
+        }
+        .notification-card.inscription {
+            border-left-color: #ff9800;
+        }
+        .notification-card h4 {
+            margin-bottom: 5px;
+            color: #333;
+        }
+        .notification-card p {
+            color: #666;
+            margin-bottom: 5px;
+            font-size: 0.95em;
+        }
+        .notification-card .time {
+            font-size: 0.8em;
+            color: #999;
+        }
+        .notification-card .badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            font-weight: bold;
+            margin-right: 5px;
+        }
+        .badge.paiement {
+            background: #4caf50;
+            color: white;
+        }
+        .badge.presence {
+            background: #00bcd4;
+            color: white;
+        }
+        .badge.inscription {
+            background: #ff9800;
+            color: white;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-card h3 {
+            font-size: 1.8em;
+            margin-bottom: 5px;
+        }
+        .stat-card p {
+            font-size: 0.85em;
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔔 Test Notifications Push en Temps Réel</h1>
+            <p>Paiements • Présences • Inscriptions</p>
+        </div>
+        
+        <div class="content">
+            <!-- Panneau gauche: Connexion et Actions -->
+            <div class="left-panel">
+                <!-- Connexion -->
+                <div class="section">
+                    <h2>🔌 Connexion SignalR</h2>
+                    <div class="input-group">
+                        <label>Email</label>
+                        <input type="email" id="email" value="elsynchropos@gmail.com">
+                    </div>
+                    <div class="input-group">
+                        <label>Mot de passe</label>
+                        <input type="password" id="password" value="Admin">
+                    </div>
+                    <button class="btn-success" onclick="connectSignalR()">▶️ Connecter</button>
+                    <div style="margin-top: 10px;">
+                        <span class="status disconnected" id="connectionStatus">● Déconnecté</span>
+                    </div>
+                </div>
+
+                <!-- Actions de test -->
+                <div class="section">
+                    <h2>🧪 Actions de Test</h2>
+                    <button class="btn-success" onclick="testPaiement()">💰 Tester Paiement</button>
+                    <button class="btn-info" onclick="testPresence()">✓ Tester Présence</button>
+                    <button class="btn-warning" onclick="testInscription()">📝 Tester Inscription</button>
+                    <button class="btn-primary" onclick="testTous()">🚀 Tester Tout</button>
+                </div>
+
+                <!-- Statistiques -->
+                <div class="section">
+                    <h2>📊 Statistiques</h2>
+                    <div class="stats">
+                        <div class="stat-card">
+                            <h3 id="countPaiement">0</h3>
+                            <p>Paiements</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3 id="countPresence">0</h3>
+                            <p>Présences</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3 id="countInscription">0</h3>
+                            <p>Inscriptions</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panneau droit: Notifications reçues -->
+            <div class="right-panel">
+                <div class="section" style="flex: 1;">
+                    <h2>📬 Notifications Reçues</h2>
+                    <div class="notifications-container" id="notificationsContainer">
+                        <p style="color: #999; text-align: center; padding: 40px;">En attente de notifications...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@latest/dist/browser/signalr.min.js"></script>
+    
+    <script>
+        const apiUrl = "https://localhost:7103";
+        let connection = null;
+        let token = null;
+        let userId = null;
+        let counts = { paiement: 0, presence: 0, inscription: 0 };
+
+        function updateStatus(isConnected) {
+            const statusEl = document.getElementById('connectionStatus');
+            if (isConnected) {
+                statusEl.className = 'status connected';
+                statusEl.textContent = '● Connecté';
+            } else {
+                statusEl.className = 'status disconnected';
+                statusEl.textContent = '● Déconnecté';
+            }
+        }
+
+        function updateCounts() {
+            document.getElementById('countPaiement').textContent = counts.paiement;
+            document.getElementById('countPresence').textContent = counts.presence;
+            document.getElementById('countInscription').textContent = counts.inscription;
+        }
+
+        function addNotification(notif) {
+            const container = document.getElementById('notificationsContainer');
+            
+            // Supprimer le message "En attente"
+            if (container.querySelector('p')) {
+                container.innerHTML = '';
+            }
+
+            const type = notif.type?.toLowerCase() || 'info';
+            const typeClass = type.includes('paiement') ? 'paiement' : 
+                            type.includes('presence') ? 'presence' : 
+                            type.includes('inscription') ? 'inscription' : 'info';
+
+            const card = document.createElement('div');
+            card.className = `notification-card ${typeClass}`;
+            card.innerHTML = `
+                <span class="badge ${typeClass}">${type.toUpperCase()}</span>
+                <h4>${notif.title || notif.titre || 'Notification'}</h4>
+                <p>${notif.message || notif.corps || notif.contenu || ''}</p>
+                <span class="time">🕐 ${new Date().toLocaleTimeString('fr-FR')}</span>
+            `;
+            
+            container.insertBefore(card, container.firstChild);
+
+            // Mettre à jour les compteurs
+            if (typeClass === 'paiement') counts.paiement++;
+            else if (typeClass === 'presence') counts.presence++;
+            else if (typeClass === 'inscription') counts.inscription++;
+            updateCounts();
+
+            // Effet sonore (optionnel)
+            try {
+                const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuByPLaizsIHGm98OScTgwOUKrk7bllHgU2k9n0yHksBSp+zPDajj0JFmS98+mjUBELTKXh8bplHwU3k9n0yHksBSt+zPDajj4JFmS98+mjUBELTKXh8bplHwU3k9n0yHksBSt+zPDajj4JFmS98+mjUBELTKXh8bplHwU3k9n0yHksBSt+zPDajj4JFmS98+mjUBELTKXh8bplHwU3k9n0yHksBSt+zPDajj4JFmS98+mjUBELTKXh8bplHwU3k9n0yHksBSt+zPDajj4JFmS98+mjUBELTKXh8bplHwU3k9n0yHksBSt+zPDajj4JFmS98+mjUBELTKXh8bplHwU3k9n0yHksBSt+zPDajj4JFmS98+mjUBELTKXh8bplHwU3k9n0yHksBSt+zPDajj4JFmS98+mjUBELTKXh8bplHwU3k9n0yHksBSt+zPDajj4JFmS98+mjUBELTKXh8bplHwU3k9n0yHksBSt+zPDajj4JFmS98+mjUBELTKXh8bplHwU3k9n0yHksBSt+zPDajj4JFmS98+mjUBELTKXh8bplHwU3k9n0yHksBSt+zPDajj4JFmS98+mjUBELTKXh8bplHwU3k9n0yHksBSt+zPDajj4JFmS98+mjUBELTKXh8bplHwU3k9n0yHksBSt+zPDajj4JFmS98+mjUBELTKXh8bplHwU3k9n0yHksBSt+zPDajj4JFmS98+mjUBELTKXh8bplHwU3k9n0yHksBSt+zPDajj4JFmS98+mjUBELTKXh8bplHwU3k9n0yHksBSt+zPDajj4JFmS98+mjUBEL');
+                audio.volume = 0.3;
+                audio.play().catch(() => {});
+            } catch (e) {}
+        }
+
+        async function connectSignalR() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                // 1. Authentification
+                console.log('🔐 Authentification...');
+                const loginResponse = await fetch(`${apiUrl}/api/Utilisateur/authentifier`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ emailOuTelephone: email, motDePasse: password })
+                });
+
+                const loginData = await loginResponse.json();
+                token = loginData.accessToken;
+                userId = loginData.utilisateur.idUtilisateur;
+                console.log(`✅ Authentifié: User ID ${userId}`);
+
+                // 2. Connexion SignalR
+                console.log('🔌 Connexion à SignalR...');
+                connection = new signalR.HubConnectionBuilder()
+                    .withUrl(`${apiUrl}/hubs/notifications`, {
+                        accessTokenFactory: () => token
+                    })
+                    .withAutomaticReconnect()
+                    .build();
+
+                // Écouter les notifications
+                connection.on("ReceiveNotification", (notification) => {
+                    console.log('📩 Notification reçue:', notification);
+                    addNotification(notification);
+                });
+
+                await connection.start();
+                updateStatus(true);
+                console.log('✅ Connecté à SignalR');
+
+                // Rejoindre automatiquement certains groupes
+                await connection.invoke("JoinGroup", `user_${userId}`);
+                await connection.invoke("JoinGroup", "ecole_2");
+                console.log('✅ Groupes rejoints');
+
+            } catch (error) {
+                console.error('❌ Erreur:', error);
+                alert('Erreur de connexion: ' + error.message);
+            }
+        }
+
+        async function testPaiement() {
+            if (!token) {
+                alert('Veuillez d\'abord vous connecter !');
+                return;
+            }
+
+            console.log('💰 Test paiement...');
+            const response = await fetch(`${apiUrl}/api/TestSignalR/broadcast`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    type: 'PAIEMENT',
+                    titre: 'Nouveau Paiement Reçu',
+                    message: 'Un paiement de 150 USD a été enregistré pour Jean MUKOKO.',
+                    data: { montant: 150, devise: 'USD', eleve: 'Jean MUKOKO' }
+                })
+            });
+
+            if (response.ok) {
+                console.log('✅ Test paiement envoyé');
+            }
+        }
+
+        async function testPresence() {
+            if (!token) {
+                alert('Veuillez d\'abord vous connecter !');
+                return;
+            }
+
+            console.log('✓ Test présence...');
+            const response = await fetch(`${apiUrl}/api/TestSignalR/broadcast`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    type: 'PRESENCE',
+                    titre: 'Confirmation de Présence',
+                    message: 'Marie KABONGO est PRÉSENTE aujourd\'hui à 07:30.',
+                    data: { eleve: 'Marie KABONGO', statut: 'PRESENT', heure: '07:30' }
+                })
+            });
+
+            if (response.ok) {
+                console.log('✅ Test présence envoyé');
+            }
+        }
+
+        async function testInscription() {
+            if (!token) {
+                alert('Veuillez d\'abord vous connecter !');
+                return;
+            }
+
+            console.log('📝 Test inscription...');
+            const response = await fetch(`${apiUrl}/api/TestSignalR/broadcast`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    type: 'INSCRIPTION',
+                    titre: 'Nouvelle Inscription',
+                    message: 'L\'élève Pierre MUKENDI a été inscrit en 1ère A.',
+                    data: { eleve: 'Pierre MUKENDI', classe: '1ère A' }
+                })
+            });
+
+            if (response.ok) {
+                console.log('✅ Test inscription envoyé');
+            }
+        }
+
+        async function testTous() {
+            await testPaiement();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            await testPresence();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            await testInscription();
+        }
+    </script>
+</body>
+</html>
+

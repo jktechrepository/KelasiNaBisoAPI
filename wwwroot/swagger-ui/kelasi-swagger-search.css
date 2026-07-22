@@ -1,0 +1,22 @@
+.swagger-ui .filter-container {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  background: #f0f7f7;
+  border: 1px solid #c5dede;
+  border-radius: 8px;
+}
+
+.swagger-ui .filter-container input[type="text"] {
+  width: 100%;
+  max-width: 480px;
+  padding: 10px 14px;
+  font-size: 14px;
+  border: 1px solid #9bb8b8;
+  border-radius: 6px;
+}
+
+.swagger-ui .filter-container input[type="text"]:focus {
+  outline: none;
+  border-color: #0b6e6e;
+  box-shadow: 0 0 0 3px rgba(11, 110, 110, 0.15);
+}

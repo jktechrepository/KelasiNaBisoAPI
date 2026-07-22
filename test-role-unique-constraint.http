@@ -1,0 +1,53 @@
+### Test de la contrainte unique sur le nom du rôle
+
+# 1. Créer un premier rôle
+POST http://localhost:5000/api/Role
+Content-Type: application/json
+
+{
+  "nom": "Enseignant"
+}
+
+###
+
+# 2. Essayer de créer un deuxième rôle avec le même nom (doit échouer)
+POST http://localhost:5000/api/Role
+Content-Type: application/json
+
+{
+  "nom": "Enseignant"
+}
+
+###
+
+# 3. Créer un rôle avec un nom différent (doit réussir)
+POST http://localhost:5000/api/Role
+Content-Type: application/json
+
+{
+  "nom": "Élève"
+}
+
+###
+
+# 4. Essayer de mettre à jour un rôle avec un nom qui existe déjà (doit échouer)
+PUT http://localhost:5000/api/Role/2
+Content-Type: application/json
+
+{
+  "idRole": 2,
+  "nom": "Enseignant"
+}
+
+###
+
+# 5. Mettre à jour un rôle avec un nom unique (doit réussir)
+PUT http://localhost:5000/api/Role/2
+Content-Type: application/json
+
+{
+  "idRole": 2,
+  "nom": "Parent"
+}
+
+###

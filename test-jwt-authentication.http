@@ -1,0 +1,123 @@
+### Test JWT Authentication - KelasiNaBisoAPI
+### Base URL: http://localhost:5002
+
+### 1. Test de connexion avec Super-Admin (utilisateur par défaut)
+POST http://localhost:5002/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "superadmin@kelasinabiso.cd",
+  "password": "Super-Admin"
+}
+
+### 2. Test de connexion avec Admin (utilisateur par défaut)
+POST http://localhost:5002/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@kelasinabiso.cd",
+  "password": "Admin"
+}
+
+### 3. Test de connexion avec des identifiants invalides
+POST http://localhost:5002/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "wrongpassword"
+}
+
+### 4. Obtenir les informations de l'utilisateur connecté
+# Remplacez {token} par le token reçu lors de la connexion
+GET http://localhost:5002/api/auth/me
+Authorization: Bearer {token}
+
+### 5. Vérifier la validité d'un token
+# Remplacez {token} par le token reçu lors de la connexion
+GET http://localhost:5002/api/auth/validate
+Authorization: Bearer {token}
+
+### 6. Déconnexion
+# Remplacez {token} par le token reçu lors de la connexion
+POST http://localhost:5002/api/auth/logout
+Authorization: Bearer {token}
+
+### 7. Test d'accès à un endpoint protégé sans token
+GET http://localhost:5002/api/eleve
+
+### 8. Test d'accès à un endpoint protégé avec token valide
+# Remplacez {token} par le token reçu lors de la connexion
+GET http://localhost:5002/api/eleve
+Authorization: Bearer {token}
+
+### 9. Test d'accès à un endpoint protégé avec token invalide
+GET http://localhost:5002/api/eleve
+Authorization: Bearer invalid_token_here
+
+### 10. Test de connexion avec email vide
+POST http://localhost:5002/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "",
+  "password": "password"
+}
+
+### 11. Test de connexion avec mot de passe vide
+POST http://localhost:5002/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": ""
+}
+
+### 12. Test de connexion sans body
+POST http://localhost:5002/api/auth/login
+Content-Type: application/json
+
+{}
+
+### 13. Test de connexion avec format JSON invalide
+POST http://localhost:5002/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "password",
+}
+
+### 14. Test d'accès à Swagger UI
+GET http://localhost:5002/swagger
+
+### 15. Test d'accès à un endpoint public (sans authentification)
+GET http://localhost:5002/api/ecole
+
+### 16. Test avec token expiré (simuler en attendant que le token expire)
+# Le token expire après 24 heures par défaut
+# GET http://localhost:5002/api/auth/me
+# Authorization: Bearer {expired_token}
+
+### 17. Test de validation de token avec format incorrect
+GET http://localhost:5002/api/auth/validate
+Authorization: InvalidFormat {token}
+
+### 18. Test de validation de token sans préfixe Bearer
+GET http://localhost:5002/api/auth/validate
+Authorization: {token}
+
+### 19. Test de déconnexion sans token
+POST http://localhost:5002/api/auth/logout
+
+### 20. Test de déconnexion avec token invalide
+POST http://localhost:5002/api/auth/logout
+Authorization: Bearer invalid_token_here
+
+### Instructions d'utilisation :
+### 1. Lancez l'API avec : dotnet run
+### 2. Remplacez {token} par le token JWT reçu lors de la connexion
+### 3. Les utilisateurs par défaut sont créés automatiquement au démarrage
+### 4. Super-Admin : superadmin@kelasinabiso.cd / Super-Admin
+### 5. Admin : admin@kelasinabiso.cd / Admin
+### 6. Consultez les logs pour voir les événements JWT

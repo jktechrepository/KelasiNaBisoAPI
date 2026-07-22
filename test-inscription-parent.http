@@ -1,0 +1,163 @@
+### ✅ Test d'inscription avec génération automatique du username Parent
+### Format username : NomCompletTuteur (sans espaces) + nombre aléatoire (1-999)
+### Exemple : "Marie Dupont" → "MarieDupont456"
+
+### 1️⃣ Inscription avec Tutrice Féminine - "Marie Dupont"
+POST https://localhost:7102/api/Inscription/new/Ekelasi School
+Content-Type: application/json
+
+{
+  "type": "Inscription",
+  "idEcole": 1,
+  "idClasse": 1,
+  "idAnneeScolaire": 2,
+  "dateInscription": "2025-10-25T10:00:00",
+  "statutInscription": "Actif",
+  "nomEleve": "Dupont",
+  "postnomEleve": "Marie",
+  "prenomEleve": "Sophie",
+  "genreEleve": "Feminin",
+  "dateNaissanceEleve": "2015-03-15",
+  "lieuNaissanceEleve": "Kinshasa",
+  "nationaliteEleve": "Congolaise",
+  "provinceEleve": "Kinshasa",
+  "villeEleve": "Kinshasa",
+  "communeEleve": "Gombe",
+  "quartierEleve": "Centre",
+  "avenueEleve": "Avenue du Commerce",
+  "numeroEleve": "123",
+  "nomCompletTuteur": "Marie Dupont",
+  "genreTuteur": "Feminin",
+  "emailTuteur": "marie.dupont@example.com",
+  "telephoneTuteur": "+243812345678"
+}
+
+### ✅ Résultat attendu :
+### - defaultUsername : "MarieDupont" + nombre (ex: "MarieDupont723")
+### - Salutation email : "Bonjour Madame Marie Dupont"
+
+### ───────────────────────────────────────────────────────────────────
+
+### 2️⃣ Inscription avec Tuteur Masculin - "Jean Pierre Mukendi"
+POST https://localhost:7102/api/Inscription/new/Ekelasi School
+Content-Type: application/json
+
+{
+  "type": "Inscription",
+  "idEcole": 1,
+  "idClasse": 1,
+  "idAnneeScolaire": 2,
+  "dateInscription": "2025-10-25T10:00:00",
+  "statutInscription": "Actif",
+  "nomEleve": "Mukendi",
+  "postnomEleve": "Kabongo",
+  "prenomEleve": "Grâce",
+  "genreEleve": "Feminin",
+  "dateNaissanceEleve": "2014-08-20",
+  "lieuNaissanceEleve": "Lubumbashi",
+  "nationaliteEleve": "Congolaise",
+  "provinceEleve": "Haut-Katanga",
+  "villeEleve": "Lubumbashi",
+  "communeEleve": "Lubumbashi",
+  "quartierEleve": "Kenya",
+  "avenueEleve": "Avenue Sendwe",
+  "numeroEleve": "45",
+  "nomCompletTuteur": "Jean Pierre Mukendi",
+  "genreTuteur": "Masculin",
+  "emailTuteur": "jp.mukendi@example.com",
+  "telephoneTuteur": "+243998765432"
+}
+
+### ✅ Résultat attendu :
+### - defaultUsername : "JeanPierreMukendi" + nombre (ex: "JeanPierreMukendi158")
+### - Salutation email : "Bonjour Monsieur Jean Pierre Mukendi"
+
+### ───────────────────────────────────────────────────────────────────
+
+### 3️⃣ Inscription avec nom long - "Marie-Claire N'Sele Kabamba"
+POST https://localhost:7102/api/Inscription/new/Ekelasi School
+Content-Type: application/json
+
+{
+  "type": "Inscription",
+  "idEcole": 1,
+  "idClasse": 1,
+  "idAnneeScolaire": 2,
+  "dateInscription": "2025-10-25T10:00:00",
+  "statutInscription": "Actif",
+  "nomEleve": "N'Sele",
+  "postnomEleve": "Kabamba",
+  "prenomEleve": "Emmanuel",
+  "genreEleve": "Masculin",
+  "dateNaissanceEleve": "2016-05-10",
+  "lieuNaissanceEleve": "Kinshasa",
+  "nationaliteEleve": "Congolaise",
+  "provinceEleve": "Kinshasa",
+  "villeEleve": "Kinshasa",
+  "communeEleve": "Ngaliema",
+  "quartierEleve": "Binza",
+  "avenueEleve": "Avenue Kasa-Vubu",
+  "numeroEleve": "78",
+  "nomCompletTuteur": "Marie-Claire N'Sele Kabamba",
+  "genreTuteur": "Feminin",
+  "emailTuteur": "mck.nsele@example.com",
+  "telephoneTuteur": "+243823456789"
+}
+
+### ✅ Résultat attendu :
+### - defaultUsername : "MarieClaireNSeleKa" + nombre (ex: "MarieClaireNSeleKa891")
+### - Note : Le nom est tronqué à 20 caractères si trop long
+### - Les caractères spéciaux (-, ') sont supprimés
+### - Salutation email : "Bonjour Madame Marie-Claire N'Sele Kabamba"
+
+### ───────────────────────────────────────────────────────────────────
+
+### 📋 RÈGLES DE GÉNÉRATION DU USERNAME :
+
+### ✅ Format de base :
+### - NomCompletTuteur (sans espaces, tirets, apostrophes) + nombre aléatoire (1-999)
+
+### ✅ Transformations appliquées :
+### 1. Suppression des espaces : "Marie Dupont" → "MarieDupont"
+### 2. Suppression des tirets : "Marie-Claire" → "MarieClaire"
+### 3. Suppression des apostrophes : "N'Sele" → "NSele"
+### 4. Troncature à 20 caractères si trop long
+### 5. Ajout d'un nombre aléatoire entre 1 et 999
+
+### ✅ Exemples :
+### - "Marie Dupont" → "MarieDupont456"
+### - "Jean Pierre Mukendi" → "JeanPierreMukendi723"
+### - "Marie-Claire N'Sele Kabamba" → "MarieClaireNSeleKa891" (tronqué)
+
+### ───────────────────────────────────────────────────────────────────
+
+### 📧 EMAIL DE BIENVENUE INCLUT :
+
+### ✅ Pour TOUS les parents :
+### - Salutation personnalisée : "Bonjour Monsieur/Madame [NomComplet]"
+### - Username généré : Ex: "MarieDupont456"
+### - Mot de passe par défaut : "123456"
+
+### ✅ Informations de l'enfant (boîte orange) :
+### - Nom complet de l'enfant
+### - Classe de l'enfant
+### - Matricule de l'enfant
+
+### ✅ Message personnalisé (boîte violette) :
+### - Liste des fonctionnalités disponibles pour les parents
+### - Suivi scolarité, notes, bulletins, notifications, etc.
+
+### ───────────────────────────────────────────────────────────────────
+
+### 🔍 VÉRIFICATIONS POST-INSCRIPTION :
+
+### Récupérer les détails du compte parent créé
+GET https://localhost:7102/api/Utilisateur/36
+### Remplacer 36 par l'idUtilisateur retourné dans la réponse
+
+### Vérifier que :
+### ✅ defaultUsername utilise le format NomComplet + nombre (ex: "MarieDupont456")
+### ✅ DoitChangerMotDePasse = true
+### ✅ Email contient le bon username
+### ✅ Salutation correcte selon le genre
+

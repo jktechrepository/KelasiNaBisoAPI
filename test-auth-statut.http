@@ -1,0 +1,42 @@
+### Test d'authentification avec utilisateur actif (statut = true)
+POST http://192.168.100.17:5001/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "admin@example.com",
+  "motDePasse": "password123"
+}
+
+###
+
+### Test d'authentification avec utilisateur inactif (statut = false)
+### Note: Ce test devrait échouer avec le message "Compte désactivé"
+POST http://192.168.100.17:5001/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "inactive@example.com",
+  "motDePasse": "password123"
+}
+
+###
+
+### Test d'authentification avec email inexistant
+POST http://192.168.100.17:5001/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "nonexistent@example.com",
+  "motDePasse": "password123"
+}
+
+###
+
+### Test d'authentification avec mot de passe incorrect
+POST http://192.168.100.17:5001/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "admin@example.com",
+  "motDePasse": "wrongpassword"
+}

@@ -1,0 +1,46 @@
+### Test des Permissions Admin - Devoirs à Domicile
+### Compte Admin: jk2@kelasinabiso.cd / 12345678
+
+@baseUrl = https://localhost:7102
+@email = jk2@kelasinabiso.cd
+@password = 12345678
+
+### 1. Authentification Admin
+POST {{baseUrl}}/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "{{email}}",
+  "motDePasse": "{{password}}"
+}
+
+### 2. Voir mes devoirs (Admin devrait voir TOUS les devoirs de son école)
+GET {{baseUrl}}/api/DevoirADomicile/mes-devoirs
+Authorization: Bearer {{token}}
+
+### 3. Voir les devoirs d'une classe (remplacer {idClasse} par un ID valide)
+GET {{baseUrl}}/api/DevoirADomicile/classe/1
+Authorization: Bearer {{token}}
+
+### 4. Voir un devoir spécifique (remplacer {id} par un ID valide)
+GET {{baseUrl}}/api/DevoirADomicile/1
+Authorization: Bearer {{token}}
+
+### 5. Télécharger un devoir (remplacer {id} par un ID valide)
+GET {{baseUrl}}/api/DevoirADomicile/1/telecharger
+Authorization: Bearer {{token}}
+
+### 6. Publier un devoir (nécessite un fichier PDF)
+# Note: Utilisez Postman ou curl pour tester avec un fichier
+# POST {{baseUrl}}/api/DevoirADomicile
+# Authorization: Bearer {{token}}
+# Content-Type: multipart/form-data
+#
+# {
+#   "titre": "Test Devoir Admin",
+#   "description": "Description du devoir",
+#   "idClasse": 1,
+#   "dateLimite": "2025-12-15T23:59:59",
+#   "fichier": [FICHIER_PDF]
+# }
+

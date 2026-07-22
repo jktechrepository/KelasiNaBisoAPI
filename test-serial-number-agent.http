@@ -1,0 +1,268 @@
+### =========================================================================
+### 🧪 TESTS SERIAL NUMBER AGENT
+### =========================================================================
+### Objectif : Tester la gestion du SerialNumber pour les agents
+### Date : 27 octobre 2025
+### =========================================================================
+
+@baseUrl = https://localhost:7105/api
+
+### -------------------------------------------------------------------------
+### 1️⃣ CONNEXION ADMIN (pour obtenir le token)
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "superadmin@kelasinabiso.cd",
+  "motDePasse": "Super-Admin",
+  "fcmToken": "test-fcm-token",
+  "deviceType": "Web",
+  "deviceModel": "Chrome",
+  "osVersion": "Windows 11"
+}
+
+### -------------------------------------------------------------------------
+### 2️⃣ CRÉER UN AGENT avec un SerialNumber
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : L'agent est créé avec le SerialNumber fourni
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Agent
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "nom": "MUKENDI",
+  "postnom": "KABONGO",
+  "prenom": "Pierre",
+  "genre": "Masculin",
+  "dateNaissance": "1985-06-15",
+  "telephoneAgent": "+243998877701",
+  "emailAgent": "pierre.mukendi@agent.com",
+  "etatCivil": "Marié",
+  "serialNumber": "SN-AGENT-001",
+  "fonction": "Professeur",
+  "roleAgent": "Enseignant",
+  "statut": true,
+  "idEcole": 1,
+  "photoUrl": null,
+  "province": "Kinshasa",
+  "ville": "Kinshasa",
+  "commune": "Gombe",
+  "quartier": "Centre-ville",
+  "avenue": "Avenue du Port",
+  "numero": "15"
+}
+
+### -------------------------------------------------------------------------
+### 3️⃣ CRÉER UN AGENT sans SerialNumber
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : L'agent est créé, SerialNumber est NULL
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Agent
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "nom": "KALALA",
+  "postnom": "MUTOMBO",
+  "prenom": "André",
+  "genre": "Masculin",
+  "dateNaissance": "1990-03-20",
+  "telephoneAgent": "+243998877702",
+  "emailAgent": "andre.kalala@agent.com",
+  "etatCivil": "Célibataire",
+  "serialNumber": null,
+  "fonction": "Professeur",
+  "roleAgent": "Enseignant",
+  "statut": true,
+  "idEcole": 1,
+  "photoUrl": null,
+  "province": "Kinshasa",
+  "ville": "Kinshasa",
+  "commune": "Limete",
+  "quartier": "Kingabwa",
+  "avenue": "Avenue Luambo Makiadi",
+  "numero": "25"
+}
+
+### -------------------------------------------------------------------------
+### 4️⃣ RÉCUPÉRER LA LISTE DES AGENTS
+### -------------------------------------------------------------------------
+### Utilisez cette requête pour obtenir les IDs et matricules des agents
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Agent
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 5️⃣ RÉCUPÉRER UN AGENT par SerialNumber
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : L'agent avec le SerialNumber "SN-AGENT-001" est retourné
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Agent/serial-number/SN-AGENT-001
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 6️⃣ METTRE À JOUR le SerialNumber d'un agent par son ID
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Le SerialNumber est mis à jour avec succès
+### ⚠️ REMPLACER {idAgent} par l'ID réel obtenu à l'étape 4
+### -------------------------------------------------------------------------
+PUT {{baseUrl}}/Agent/{idAgent}/serial-number
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "serialNumber": "SN-AGENT-UPDATED-001"
+}
+
+### -------------------------------------------------------------------------
+### 7️⃣ METTRE À JOUR le SerialNumber d'un agent par son Matricule
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Le SerialNumber est mis à jour avec succès
+### ⚠️ REMPLACER {matricule} par le matricule réel obtenu à l'étape 4
+### -------------------------------------------------------------------------
+PUT {{baseUrl}}/Agent/matricule/{matricule}/serial-number
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "serialNumber": "SN-AGENT-BY-MATRICULE"
+}
+
+### -------------------------------------------------------------------------
+### 8️⃣ VÉRIFIER que le SerialNumber a été mis à jour
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : L'agent retourné a le nouveau SerialNumber
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Agent/serial-number/SN-AGENT-UPDATED-001
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 9️⃣ TENTATIVE de créer un agent avec un SerialNumber existant
+### -------------------------------------------------------------------------
+### ❌ RÉSULTAT ATTENDU : Erreur 400 - "Un agent avec le SerialNumber '...' existe déjà"
+### ⚠️ Utilisez le même SerialNumber que celui créé à l'étape 2
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Agent
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "nom": "DUPLICATE",
+  "postnom": "TEST",
+  "prenom": "Agent",
+  "genre": "Masculin",
+  "dateNaissance": "1992-08-10",
+  "telephoneAgent": "+243998877799",
+  "emailAgent": "duplicate.test@agent.com",
+  "etatCivil": "Célibataire",
+  "serialNumber": "SN-AGENT-001",
+  "fonction": "Professeur",
+  "roleAgent": "Enseignant",
+  "statut": true,
+  "idEcole": 1,
+  "photoUrl": null,
+  "province": "Kinshasa",
+  "ville": "Kinshasa",
+  "commune": "Kalamu",
+  "quartier": "Matonge",
+  "avenue": "Avenue Kalemie",
+  "numero": "50"
+}
+
+### -------------------------------------------------------------------------
+### 🔟 TENTATIVE de mettre à jour avec un SerialNumber déjà utilisé
+### -------------------------------------------------------------------------
+### ❌ RÉSULTAT ATTENDU : Erreur 400 - "Un autre agent avec le SerialNumber '...' existe déjà"
+### ⚠️ REMPLACER {idAgent} par l'ID de l'agent créé à l'étape 3
+### ⚠️ Utilisez le SerialNumber de l'agent créé à l'étape 2
+### -------------------------------------------------------------------------
+PUT {{baseUrl}}/Agent/{idAgent}/serial-number
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "serialNumber": "SN-AGENT-001"
+}
+
+### -------------------------------------------------------------------------
+### 1️⃣1️⃣ TENTATIVE de récupérer un agent avec un SerialNumber inexistant
+### -------------------------------------------------------------------------
+### ❌ RÉSULTAT ATTENDU : Erreur 404 - "Aucun agent trouvé avec le numéro de série..."
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Agent/serial-number/SN-INEXISTANT-999
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 1️⃣2️⃣ RÉCUPÉRER UN AGENT PAR ID pour vérifier toutes les informations
+### -------------------------------------------------------------------------
+### ⚠️ REMPLACER {idAgent} par l'ID réel
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Agent/{idAgent}
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### =========================================================================
+### 📋 RÉSUMÉ DES FONCTIONNALITÉS SERIAL NUMBER AGENT
+### =========================================================================
+### 
+### 1️⃣ MODÈLE AGENT (Agent.cs)
+###    - Champ: SerialNumber (string?, nullable)
+###    - Stocke l'identifiant unique du device physique de l'agent
+###    - Permet de lier un agent à un appareil spécifique
+###    - ✅ UNICITÉ GARANTIE par index unique en base de données
+### 
+### 2️⃣ ENDPOINTS DISPONIBLES
+###    GET    /api/Agent/serial-number/{serialNumber}
+###           → Récupérer un agent par son SerialNumber
+###    
+###    PUT    /api/Agent/{idAgent}/serial-number
+###           → Mettre à jour le SerialNumber par ID
+###    
+###    PUT    /api/Agent/matricule/{matricule}/serial-number
+###           → Mettre à jour le SerialNumber par Matricule
+### 
+### 3️⃣ CAS D'USAGE
+###    - Associer un agent à son device lors du premier login mobile
+###    - Sécuriser l'accès en vérifiant le SerialNumber du device
+###    - Permettre à un agent de pointer sa présence uniquement depuis son device
+###    - Gérer les changements de device (mise à jour du SerialNumber)
+###    - Empêcher qu'un device soit lié à plusieurs agents (unicité)
+### 
+### 4️⃣ DIFFÉRENCES AVEC ELEVE
+###    - Même logique et structure que pour les élèves
+###    - Les agents utilisent la table Agents (pas Eleves)
+###    - Endpoints similaires mais sur /api/Agent au lieu de /api/Eleve
+### 
+### 5️⃣ SÉCURITÉ
+###    - Tous les endpoints nécessitent une authentification JWT
+###    - SerialNumber peut être NULL (facultatif)
+###    - Filtrage sur agents actifs uniquement (Statut = true)
+###    - ✅ UNICITÉ STRICTE: Un SerialNumber ne peut être lié qu'à un seul agent
+### 
+### =========================================================================
+### 📝 NOTES IMPORTANTES
+### =========================================================================
+### 
+### ⚠️ Le SerialNumber est FACULTATIF
+###    Un agent peut être créé sans SerialNumber
+###    Il peut être ajouté/modifié plus tard
+### 
+### ✅ CONTRAINTE D'UNICITÉ ACTIVE
+###    Un SerialNumber ne peut être lié qu'à un seul agent
+###    Protection double: Application + Index BDD (IX_Agents_SerialNumber_Unique)
+###    Tentative de doublon → Erreur 400
+### 
+### ⚠️ Format du SerialNumber
+###    Aucune contrainte de format imposée
+###    Peut être un UUID, un IMEI, ou tout autre identifiant
+###    Exemples: "SN-AGENT-001", "IMEI-123456789", "UUID-abc-def"
+### 
+### ✅ VALIDATION
+###    - Création: Vérification que le SerialNumber n'existe pas déjà
+###    - Mise à jour: Vérification que le nouveau SerialNumber n'est pas utilisé
+###    - Message d'erreur clair en cas de doublon
+### 
+### =========================================================================
+
+

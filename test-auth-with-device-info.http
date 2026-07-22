@@ -1,0 +1,175 @@
+### ==========================================
+### TEST AUTHENTIFICATION AVEC DEVICE INFO
+### ==========================================
+
+### 1. Authentification SANS device info (fonctionnement classique)
+POST https://localhost:7105/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "admin@kelasinabiso.cd",
+  "motDePasse": "Admin"
+}
+
+### 2. Authentification AVEC device info complet (Android)
+POST https://localhost:7105/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "admin@kelasinabiso.cd",
+  "motDePasse": "Admin",
+  "fcmToken": "fKx7YzQ9mT3pNvB8sH2jL5wC1dX6rA4eG0uJ7iM9kP3qN8hT2vR5",
+  "deviceType": "Android",
+  "deviceModel": "Samsung Galaxy S21",
+  "osVersion": "Android 12"
+}
+
+### 3. Authentification AVEC device info (iPhone)
+POST https://localhost:7105/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "admin@kelasinabiso.cd",
+  "motDePasse": "Admin",
+  "fcmToken": "cZ5k2WmL8iQ1pX7vN3bT9yH6jR4fD0aS2gK5uM8eP7wC1qJ6tL3",
+  "deviceType": "iOS",
+  "deviceModel": "iPhone 13",
+  "osVersion": "iOS 15.2"
+}
+
+### 4. Authentification AVEC device info (Web)
+POST https://localhost:7105/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "admin@kelasinabiso.cd",
+  "motDePasse": "Admin",
+  "fcmToken": "aB3x9PqN7mK2wL5hC8tR1vJ4fD6gS0eM9uY3iP7bT2qX5nW8jL1",
+  "deviceType": "Web",
+  "deviceModel": "Chrome 120 on Windows 11",
+  "osVersion": "Windows 11"
+}
+
+### 5. Authentification avec valeurs "string" par défaut (sera rejeté)
+POST https://localhost:7105/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "admin@kelasinabiso.cd",
+  "motDePasse": "Admin",
+  "fcmToken": "string",
+  "deviceType": "string",
+  "deviceModel": "string",
+  "osVersion": "string"
+}
+
+### 6. Récupérer les devices de l'utilisateur admin (ID: 2)
+GET https://localhost:7105/api/UserDevice/utilisateur/2
+Authorization: Bearer {{accessToken}}
+
+### 7. Lister tous les devices actifs
+GET https://localhost:7105/api/UserDevice
+Authorization: Bearer {{accessToken}}
+
+### ==========================================
+### TEST DE MIS À JOUR DU TOKEN FCM
+### ==========================================
+
+### 8. Première connexion Android (création)
+POST https://localhost:7105/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "admin@kelasinabiso.cd",
+  "motDePasse": "Admin",
+  "fcmToken": "OLD_TOKEN_123456789",
+  "deviceType": "Android",
+  "deviceModel": "Samsung Galaxy S21",
+  "osVersion": "Android 12"
+}
+
+### 9. Deuxième connexion Android avec nouveau token (mise à jour)
+POST https://localhost:7105/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "admin@kelasinabiso.cd",
+  "motDePasse": "Admin",
+  "fcmToken": "NEW_TOKEN_987654321",
+  "deviceType": "Android",
+  "deviceModel": "Samsung Galaxy S21",
+  "osVersion": "Android 12"
+}
+
+### ==========================================
+### TEST MULTI-DEVICE (un utilisateur, plusieurs devices)
+### ==========================================
+
+### 10. Connexion depuis Android
+POST https://localhost:7105/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "admin@kelasinabiso.cd",
+  "motDePasse": "Admin",
+  "fcmToken": "ANDROID_TOKEN_ABC123",
+  "deviceType": "Android",
+  "deviceModel": "Samsung Galaxy S21",
+  "osVersion": "Android 12"
+}
+
+### 11. Connexion depuis iPhone (même utilisateur)
+POST https://localhost:7105/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "admin@kelasinabiso.cd",
+  "motDePasse": "Admin",
+  "fcmToken": "IOS_TOKEN_XYZ789",
+  "deviceType": "iOS",
+  "deviceModel": "iPhone 13",
+  "osVersion": "iOS 15.2"
+}
+
+### 12. Connexion depuis Web (même utilisateur)
+POST https://localhost:7105/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "admin@kelasinabiso.cd",
+  "motDePasse": "Admin",
+  "fcmToken": "WEB_TOKEN_DEF456",
+  "deviceType": "Web",
+  "deviceModel": "Chrome 120",
+  "osVersion": "Windows 11"
+}
+
+### 13. Vérifier que l'utilisateur a maintenant 3 devices actifs
+GET https://localhost:7105/api/UserDevice/utilisateur/2
+Authorization: Bearer {{accessToken}}
+
+### ==========================================
+### NOTES
+### ==========================================
+# 1. Les champs device sont OPTIONNELS
+#    → L'authentification fonctionne même sans ces champs
+#
+# 2. Valeurs rejetées :
+#    - null
+#    - "" (chaîne vide)
+#    - "string" (valeur par défaut Swagger)
+#    - "null" (chaîne "null")
+#
+# 3. Multi-device support :
+#    - Un utilisateur peut avoir plusieurs devices (Android, iOS, Web)
+#    - Recherche par UserId + DeviceType
+#    - UPDATE si device existant (même type)
+#    - CREATE si nouveau type de device
+#
+# 4. Logging :
+#    - ✅ Succès : "Token FCM enregistré"
+#    - ⚠️ Warning : "Données device invalides"
+#    - ❌ Erreur : Problème technique
+#
+# 5. L'échec de l'enregistrement du device NE BLOQUE PAS l'authentification
+

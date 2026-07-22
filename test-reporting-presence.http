@@ -1,0 +1,203 @@
+### =========================================================================
+### 🧪 TESTS REPORTING PRÉSENCE
+### =========================================================================
+### Objectif : Tester les nouveaux endpoints de reporting de présence
+### Date : 27 octobre 2025
+### =========================================================================
+
+@baseUrl = https://localhost:7105/api
+
+### -------------------------------------------------------------------------
+### 1️⃣ CONNEXION (pour obtenir le token)
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "superadmin@kelasinabiso.cd",
+  "motDePasse": "Super-Admin",
+  "fcmToken": "test-fcm-token",
+  "deviceType": "Web",
+  "deviceModel": "Chrome",
+  "osVersion": "Windows 11"
+}
+
+### =========================================================================
+### 📘 SECTION 1 : REPORTING ÉLÈVES
+### =========================================================================
+
+### -------------------------------------------------------------------------
+### 2️⃣ POURCENTAGE ÉLÈVE - Mois en cours
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Pourcentages de présence de l'élève pour le mois
+### ⚠️ REMPLACER {idEleve} par un ID réel
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Presence/eleves/{idEleve}/pourcentage?periode=mois
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 3️⃣ POURCENTAGE ÉLÈVE - Intervalle personnalisé
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Pourcentages sur janvier 2025
+### ⚠️ REMPLACER {idEleve} par un ID réel
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Presence/eleves/{idEleve}/pourcentage?dateDebut=2025-01-01&dateFin=2025-01-31
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 4️⃣ RETARDS ÉLÈVE - Analyse sur le mois
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Liste des retards avec statistiques
+### ⚠️ REMPLACER {idEleve} par un ID réel
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Presence/eleves/{idEleve}/retards?periode=mois&heureReference=08:00
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 5️⃣ PRÉSENCES CLASSE - Jour spécifique
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Présences de la classe pour le 15 janvier
+### ⚠️ REMPLACER {idClasse} par un ID réel
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Presence/eleves/classe/{idClasse}?date=2025-01-15
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 6️⃣ PRÉSENCES CLASSE - Mois complet avec détails par élève
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Stats mois + détails pour chaque élève
+### ⚠️ REMPLACER {idClasse} par un ID réel
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Presence/eleves/classe/{idClasse}?dateDebut=2025-01-01&dateFin=2025-01-31&includeDetails=true
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 7️⃣ PRÉSENCES CLASSE - Période prédéfinie (semaine en cours)
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Stats de la semaine en cours
+### ⚠️ REMPLACER {idClasse} par un ID réel
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Presence/eleves/classe/{idClasse}?periode=semaine
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### =========================================================================
+### 📗 SECTION 2 : REPORTING AGENTS
+### =========================================================================
+
+### -------------------------------------------------------------------------
+### 8️⃣ POURCENTAGE AGENT - Mois en cours
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Pourcentages + heures travaillées de l'agent
+### ⚠️ REMPLACER {idAgent} par un ID réel
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Presence/agents/{idAgent}/pourcentage?periode=mois
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 9️⃣ POURCENTAGE AGENT - Intervalle personnalisé
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Pourcentages sur janvier 2025
+### ⚠️ REMPLACER {idAgent} par un ID réel
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Presence/agents/{idAgent}/pourcentage?dateDebut=2025-01-01&dateFin=2025-01-31
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 🔟 PRÉSENCES PAR FONCTION - Jour spécifique
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Présences des Professeurs du 15 janvier
+### ⚠️ REMPLACER {idEcole} par un ID réel
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Presence/agents/fonction/Professeur?idEcole={idEcole}&date=2025-01-15
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 1️⃣1️⃣ PRÉSENCES PAR FONCTION - Mois complet
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Stats mensuelles des Professeurs
+### ⚠️ REMPLACER {idEcole} par un ID réel
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Presence/agents/fonction/Professeur?idEcole={idEcole}&dateDebut=2025-01-01&dateFin=2025-01-31
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 1️⃣2️⃣ PRÉSENCES PAR FONCTION - Manager Général
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Stats du Manager Général
+### ⚠️ REMPLACER {idEcole} par un ID réel
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Presence/agents/fonction/Manager Général?idEcole={idEcole}&periode=mois
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### =========================================================================
+### 📙 SECTION 3 : DASHBOARDS
+### =========================================================================
+
+### -------------------------------------------------------------------------
+### 1️⃣3️⃣ DASHBOARD ÉCOLE - Jour spécifique
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Vue d'ensemble élèves + agents pour aujourd'hui
+### ⚠️ REMPLACER {idEcole} par un ID réel
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Presence/dashboard/ecole/{idEcole}?date=2025-01-15
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 1️⃣4️⃣ DASHBOARD ÉCOLE - Mois complet
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Vue d'ensemble du mois avec tendances
+### ⚠️ REMPLACER {idEcole} par un ID réel
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Presence/dashboard/ecole/{idEcole}?dateDebut=2025-01-01&dateFin=2025-01-31
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 1️⃣5️⃣ DASHBOARD ÉCOLE - Période prédéfinie (semaine)
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Vue d'ensemble de la semaine en cours
+### ⚠️ REMPLACER {idEcole} par un ID réel (généralement 1 pour Ekelasi School)
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Presence/dashboard/ecole/1?periode=semaine
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### =========================================================================
+### 📋 RÉSUMÉ DES NOUVEAUX ENDPOINTS
+### =========================================================================
+### 
+### ✅ ÉLÈVES (3 endpoints implémentés)
+###    1. GET /api/Presence/eleves/{id}/pourcentage
+###    2. GET /api/Presence/eleves/{id}/retards
+###    3. GET /api/Presence/eleves/classe/{id}
+### 
+### ✅ AGENTS (2 endpoints implémentés)
+###    1. GET /api/Presence/agents/{id}/pourcentage
+###    2. GET /api/Presence/agents/fonction/{fonction}
+### 
+### ✅ DASHBOARDS (1 endpoint implémenté)
+###    1. GET /api/Presence/dashboard/ecole/{id}
+### 
+### 📊 PÉRIODICITÉ SUPPORTÉE
+###    - ?date=2025-01-15 (jour spécifique)
+###    - ?dateDebut=2025-01-01&dateFin=2025-01-31 (intervalle)
+###    - ?periode=semaine|mois|trimestre|annee (prédéfini)
+### 
+### 📈 DONNÉES RETOURNÉES
+###    - Pourcentages : Présence, Absence, Retard, Ponctualité
+###    - Statistiques retards : Nombre, durée moyenne, max
+###    - Groupements : Par classe, fonction, école
+###    - Comparaisons : Vs moyenne classe/école/fonction
+### 
+### ⏭️ ENDPOINTS SUPPLÉMENTAIRES (À IMPLÉMENTER)
+###    - GET /api/Presence/eleves/option/{id}
+###    - GET /api/Presence/eleves/section/{id}
+###    - GET /api/Presence/eleves/direction/{id}
+###    - GET /api/Presence/eleves/ecole/{id}
+###    - GET /api/Presence/eleves/retards/analyse
+###    - GET /api/Presence/agents/{id}/retards
+###    - GET /api/Presence/agents/fonctions (comparatif)
+###    - GET /api/Presence/agents/ecole/{id}
+###    - GET /api/Presence/agents/retards/analyse
+###    - GET /api/Presence/hierarchie/{id}
+### 
+### =========================================================================
+

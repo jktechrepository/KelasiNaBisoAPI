@@ -1,0 +1,307 @@
+### 🧪 TESTS : UNICITÉ DES MATRICULES (ÉLÈVES ET AGENTS)
+### Objectif : Vérifier la génération de matricules uniques avec format GUID partiel
+
+@baseUrl = https://localhost:7105
+@token = {{auth_response.response.body.accessToken}}
+
+################################################################################
+### ÉTAPE 1 : Authentification
+################################################################################
+
+### 1. Authentifier un utilisateur pour obtenir le token JWT
+# @name auth_response
+POST {{baseUrl}}/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "admin@kelasinabiso.cd",
+  "motDePasse": "Admin"
+}
+
+################################################################################
+### ÉTAPE 2 : TESTS MATRICULE ÉLÈVE
+################################################################################
+
+### 2. ✅ Créer une inscription (élève) - Premier matricule généré
+# @name inscription1
+POST {{baseUrl}}/api/Inscription
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "Nouveau",
+  "idEcole": 1,
+  "idClasse": 1,
+  "idAnneeScolaire": 1,
+  "dateInscription": "2025-10-27",
+  "statutInscription": "Confirmée",
+  "nomEleve": "Kabongo",
+  "postnomEleve": "Jean",
+  "prenomEleve": "Pierre",
+  "genreEleve": "M",
+  "dateNaissanceEleve": "2010-05-15",
+  "lieuNaissanceEleve": "Kinshasa",
+  "nationaliteEleve": "Congolaise",
+  "provinceEleve": "Kinshasa",
+  "villeEleve": "Kinshasa",
+  "communeEleve": "Kalamu",
+  "quartierEleve": "Gombe",
+  "avenueEleve": "Maniema",
+  "numeroEleve": "123",
+  "nomCompletTuteur": "Kabongo Senior",
+  "genreTuteur": "M",
+  "emailTuteur": "senior@kabongo.cd",
+  "telephoneTuteur": "+243812345678"
+}
+
+###
+### ⚠️ RÉSULTAT ATTENDU :
+### - Status: 201 Created
+### - Matricule généré : Format "ESK25-XXXXXX" (12 caractères)
+### - Exemple: "ESK25-A3F2B1"
+
+################################################################################
+
+### 3. ✅ Créer une deuxième inscription - Vérifier que le matricule est DIFFÉRENT
+# @name inscription2
+POST {{baseUrl}}/api/Inscription
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "Nouveau",
+  "idEcole": 1,
+  "idClasse": 1,
+  "idAnneeScolaire": 1,
+  "dateInscription": "2025-10-27",
+  "statutInscription": "Confirmée",
+  "nomEleve": "Kabongo",
+  "postnomEleve": "Jean",
+  "prenomEleve": "Pierre",
+  "genreEleve": "M",
+  "dateNaissanceEleve": "2010-05-15",
+  "lieuNaissanceEleve": "Kinshasa",
+  "nationaliteEleve": "Congolaise",
+  "provinceEleve": "Kinshasa",
+  "villeEleve": "Kinshasa",
+  "communeEleve": "Kalamu",
+  "quartierEleve": "Gombe",
+  "avenueEleve": "Maniema",
+  "numeroEleve": "123",
+  "nomCompletTuteur": "Mbuyi Marie",
+  "genreTuteur": "F",
+  "emailTuteur": "marie@mbuyi.cd",
+  "telephoneTuteur": "+243823456789"
+}
+
+###
+### ⚠️ RÉSULTAT ATTENDU :
+### - Status: 201 Created
+### - Matricule DIFFÉRENT du premier (GUID différent)
+### - Exemple élève 1: "ESK25-A3F2B1"
+### - Exemple élève 2: "ESK25-D7E9C4" ← DIFFÉRENT !
+
+################################################################################
+
+### 4. 🔍 Récupérer les élèves de l'école pour comparer les matricules
+GET {{baseUrl}}/api/Eleve/ecole/1
+Authorization: Bearer {{token}}
+
+###
+### ⚠️ VÉRIFIER :
+### - Tous les matricules sont uniques
+### - Format : "[Ecole(3)][Année(2)]-[GUID(6)]"
+### - Aucun doublon
+
+################################################################################
+### ÉTAPE 3 : TESTS MATRICULE AGENT
+################################################################################
+
+### 5. ✅ Créer un premier agent - Matricule généré automatiquement
+# @name agent1
+POST {{baseUrl}}/api/Agent
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nom": "Tshala",
+  "postnom": "Joseph",
+  "prenom": "David",
+  "genre": "M",
+  "dateNaissance": "1985-03-10",
+  "telephoneAgent": "+243845678901",
+  "emailAgent": "joseph@tshala.cd",
+  "etatCivil": "Marié",
+  "fonction": "Enseignant",
+  "roleAgent": "Professeur",
+  "idEcole": 1,
+  "provinceAgent": "Kinshasa",
+  "villeAgent": "Kinshasa",
+  "communeAgent": "Gombe",
+  "quartierAgent": "Centre",
+  "avenueAgent": "Liberté",
+  "numeroAgent": "45"
+}
+
+###
+### ⚠️ RÉSULTAT ATTENDU :
+### - Status: 201 Created
+### - Matricule généré automatiquement
+### - Format: "NAT25-XXXXXX" (11 caractères) ⬅️ NOUVEAU FORMAT AGENT
+### - Log: "✨ Matricule généré automatiquement pour l'agent: NAT25-XXXXXX"
+### - Différenciation visuelle avec élèves (NAT vs ESK)
+
+################################################################################
+
+### 6. ✅ Créer un deuxième agent - Vérifier unicité
+# @name agent2
+POST {{baseUrl}}/api/Agent
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nom": "Muamba",
+  "postnom": "Albert",
+  "prenom": "Junior",
+  "genre": "M",
+  "dateNaissance": "1990-07-22",
+  "telephoneAgent": "+243856789012",
+  "emailAgent": "albert@muamba.cd",
+  "etatCivil": "Célibataire",
+  "fonction": "Enseignant",
+  "roleAgent": "Professeur",
+  "idEcole": 1,
+  "provinceAgent": "Kinshasa",
+  "villeAgent": "Kinshasa",
+  "communeAgent": "Kalamu",
+  "quartierAgent": "Yolo",
+  "avenueAgent": "Kabambare",
+  "numeroAgent": "12"
+}
+
+###
+### ⚠️ RÉSULTAT ATTENDU :
+### - Status: 201 Created
+### - Matricule DIFFÉRENT de l'agent 1
+### - Vérification d'unicité en boucle appliquée
+
+################################################################################
+
+### 7. 🔍 Récupérer les agents de l'école pour comparer les matricules
+GET {{baseUrl}}/api/Agent/ecole/1
+Authorization: Bearer {{token}}
+
+###
+### ⚠️ VÉRIFIER :
+### - Tous les matricules sont uniques
+### - Format : "[Ecole(3)][Année(2)]-[GUID(6)]"
+### - Aucun doublon
+
+################################################################################
+### ÉTAPE 4 : VÉRIFICATIONS DE FORMAT
+################################################################################
+
+### 8. 🔍 Vérifier un élève par matricule
+# Remplacer par un matricule réel récupéré dans les tests précédents
+GET {{baseUrl}}/api/V_Eleve/matricule/ESK25-A3F2B1
+Authorization: Bearer {{token}}
+
+###
+### ⚠️ ATTENDU :
+### - Status: 200 OK si le matricule existe
+### - Status: 404 Not Found sinon
+
+################################################################################
+
+### 9. 🔍 Vérifier un agent par matricule
+# Remplacer par un matricule réel d'agent
+GET {{baseUrl}}/api/Agent/matricule/ESK25-D7E9C4
+Authorization: Bearer {{token}}
+
+###
+### ⚠️ ATTENDU :
+### - Status: 200 OK si le matricule existe
+### - Status: 404 Not Found sinon
+
+################################################################################
+
+### 10. 🔍 Vérifier l'existence d'un matricule élève
+GET {{baseUrl}}/api/V_Eleve/exists/matricule/ESK25-A3F2B1
+Authorization: Bearer {{token}}
+
+###
+### ⚠️ ATTENDU :
+### - Status: 200 OK
+### - Résultat: true ou false
+
+################################################################################
+
+### 11. 🔍 Vérifier l'existence d'un matricule agent
+GET {{baseUrl}}/api/Agent/exists/matricule/ESK25-D7E9C4
+Authorization: Bearer {{token}}
+
+###
+### ⚠️ ATTENDU :
+### - Status: 200 OK
+### - Résultat: true ou false
+
+################################################################################
+### ÉTAPE 5 : TEST DE COLLISION (Validation statistique)
+################################################################################
+
+### 12. 📊 Créer 100 élèves et vérifier l'unicité (Test de charge)
+### NOTE: À exécuter via script ou manuellement en série
+### Vérifier que sur 100 créations, aucun doublon n'apparaît
+
+################################################################################
+### RÉSUMÉ DES TESTS
+################################################################################
+
+### ✅ NOUVEAUX FORMATS DE MATRICULE :
+
+### ÉLÈVES :
+### - Format: [Ecole(3)][Année(2)]-[GUID(6)]
+### - Longueur: 12 caractères
+### - Exemple: "ESK25-A3F2B1"
+### - Espace: 16.7M combinaisons par école/an
+
+### AGENTS :
+### - Format: [NAT][Année(2)]-[GUID(6)]
+### - Longueur: 11 caractères
+### - Exemple: "NAT25-C9D3E7"
+### - Espace: 16.7M combinaisons par an (national)
+
+### 🎯 AVANTAGES :
+### 1. Unicité garantie (16.7 millions de combinaisons/école/an)
+### 2. Lisible (code école + année visible)
+### 3. Compact (12 caractères seulement)
+### 4. Professionnel
+### 5. Sécurisé (vérification en boucle si collision rare)
+
+### 📊 PROBABILITÉ DE COLLISION :
+### - 100 élèves    : 0.0003% (négligeable)
+### - 1,000 élèves  : 0.003% (quasi nul)
+### - 10,000 élèves : 0.3% (très faible)
+
+### ✅ COMPOSANTS :
+### - Ecole (3 car.) : Identifie l'école
+### - Année (2 car.) : Année d'inscription/création
+### - GUID (6 car.)  : Garantit l'unicité
+
+### 🔧 LOGIQUE IMPLÉMENTÉE :
+### 1. Élèves: Génération dans InscriptionService
+### 2. Agents: Génération automatique dans AgentService
+### 3. Vérification d'unicité en boucle (agents)
+### 4. Index uniques en base de données (double sécurité)
+
+### 📋 CHECKLIST :
+### - [ ] Test 2: Création premier élève → Matricule généré
+### - [ ] Test 3: Création deuxième élève → Matricule différent
+### - [ ] Test 4: Vérifier tous les matricules élèves uniques
+### - [ ] Test 5: Création premier agent → Matricule généré auto
+### - [ ] Test 6: Création deuxième agent → Matricule différent
+### - [ ] Test 7: Vérifier tous les matricules agents uniques
+### - [ ] Tests 8-11: Vérifications d'existence et format
+
+################################################################################
+

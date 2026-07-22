@@ -1,0 +1,278 @@
+### 🧪 TESTS : BLOCAGE DOUBLE POINTAGE (Un seul pointage par jour)
+### Objectif : Vérifier qu'un élève/agent ne peut pointer qu'une seule fois par jour
+
+@baseUrl = https://localhost:7105
+@token = {{auth_response.response.body.accessToken}}
+
+################################################################################
+### ÉTAPE 1 : Authentification
+################################################################################
+
+### 1. Authentifier un utilisateur pour obtenir le token JWT
+# @name auth_response
+POST {{baseUrl}}/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "admin@kelasinabiso.cd",
+  "motDePasse": "Admin"
+}
+
+################################################################################
+### ÉTAPE 2 : TESTS ÉLÈVE
+################################################################################
+
+### 2. ✅ Premier pointage de l'élève (DOIT RÉUSSIR)
+POST {{baseUrl}}/api/Presence
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "idEleve": 1,
+  "idAgent": null,
+  "isPresent": true,
+  "heureArrivee": "08:00",
+  "heureDepart": null,
+  "dateDuJour": "2025-10-27",
+  "observation": "Premier pointage - Normal",
+  "longitude": "15.3146",
+  "latitude": "-4.3276",
+  "idVacation": 1
+}
+
+###
+### ⚠️ ATTENDU : 
+### - Status: 201 Created
+### - Message: Présence créée avec succès
+### - IdPresence retourné
+
+################################################################################
+
+### 3. ❌ Deuxième pointage du MÊME élève le MÊME jour (DOIT ÉCHOUER)
+POST {{baseUrl}}/api/Presence
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "idEleve": 1,
+  "idAgent": null,
+  "isPresent": true,
+  "heureArrivee": "10:30",
+  "heureDepart": null,
+  "dateDuJour": "2025-10-27",
+  "observation": "Tentative de double pointage",
+  "longitude": "15.3146",
+  "latitude": "-4.3276",
+  "idVacation": 1
+}
+
+###
+### ⚠️ ATTENDU : 
+### - Status: 400 Bad Request
+### - Message: "L'élève (ID: 1) a déjà pointé sa présence aujourd'hui (27/10/2025) à 08:00. Un seul pointage par jour est autorisé."
+
+################################################################################
+
+### 4. ✅ Pointage du MÊME élève un AUTRE jour (DOIT RÉUSSIR)
+POST {{baseUrl}}/api/Presence
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "idEleve": 1,
+  "idAgent": null,
+  "isPresent": true,
+  "heureArrivee": "08:15",
+  "heureDepart": null,
+  "dateDuJour": "2025-10-28",
+  "observation": "Pointage du lendemain - Normal",
+  "longitude": "15.3146",
+  "latitude": "-4.3276",
+  "idVacation": 1
+}
+
+###
+### ⚠️ ATTENDU : 
+### - Status: 201 Created
+### - Message: Présence créée avec succès (nouveau jour = nouveau pointage autorisé)
+
+################################################################################
+
+### 5. ✅ Pointage d'un AUTRE élève le MÊME jour (DOIT RÉUSSIR)
+POST {{baseUrl}}/api/Presence
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "idEleve": 2,
+  "idAgent": null,
+  "isPresent": true,
+  "heureArrivee": "08:05",
+  "heureDepart": null,
+  "dateDuJour": "2025-10-27",
+  "observation": "Élève différent - Normal",
+  "longitude": "15.3146",
+  "latitude": "-4.3276",
+  "idVacation": 1
+}
+
+###
+### ⚠️ ATTENDU : 
+### - Status: 201 Created
+### - Message: Présence créée avec succès (élève différent = OK)
+
+################################################################################
+### ÉTAPE 3 : TESTS AGENT
+################################################################################
+
+### 6. ✅ Premier pointage d'un agent (DOIT RÉUSSIR)
+POST {{baseUrl}}/api/Presence
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "idEleve": null,
+  "idAgent": 1,
+  "isPresent": true,
+  "heureArrivee": "07:45",
+  "heureDepart": null,
+  "dateDuJour": "2025-10-27",
+  "observation": "Pointage agent - Normal",
+  "longitude": "15.3146",
+  "latitude": "-4.3276",
+  "idVacation": 1
+}
+
+###
+### ⚠️ ATTENDU : 
+### - Status: 201 Created
+### - Message: Présence créée avec succès
+
+################################################################################
+
+### 7. ❌ Deuxième pointage du MÊME agent le MÊME jour (DOIT ÉCHOUER)
+POST {{baseUrl}}/api/Presence
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "idEleve": null,
+  "idAgent": 1,
+  "isPresent": true,
+  "heureArrivee": "09:00",
+  "heureDepart": null,
+  "dateDuJour": "2025-10-27",
+  "observation": "Tentative de double pointage agent",
+  "longitude": "15.3146",
+  "latitude": "-4.3276",
+  "idVacation": 1
+}
+
+###
+### ⚠️ ATTENDU : 
+### - Status: 400 Bad Request
+### - Message: "L'agent (ID: 1) a déjà pointé sa présence aujourd'hui (27/10/2025) à 07:45. Un seul pointage par jour est autorisé."
+
+################################################################################
+### ÉTAPE 4 : CAS SPÉCIAUX
+################################################################################
+
+### 8. 🔍 Vérifier les présences d'un élève par date
+GET {{baseUrl}}/api/Presence/eleve/1/date/2025-10-27
+Authorization: Bearer {{token}}
+
+###
+### ⚠️ ATTENDU : 
+### - Status: 200 OK
+### - Liste avec 1 seul pointage pour l'élève 1 le 27/10/2025
+
+################################################################################
+
+### 9. 🔍 Vérifier les présences d'un agent par date
+GET {{baseUrl}}/api/Presence/agent/1/date/2025-10-27
+Authorization: Bearer {{token}}
+
+###
+### ⚠️ ATTENDU : 
+### - Status: 200 OK
+### - Liste avec 1 seul pointage pour l'agent 1 le 27/10/2025
+
+################################################################################
+
+### 10. 🔍 Récupérer toutes les présences du jour
+GET {{baseUrl}}/api/Presence/date/2025-10-27
+Authorization: Bearer {{token}}
+
+###
+### ⚠️ ATTENDU : 
+### - Status: 200 OK
+### - Liste de toutes les présences du 27/10/2025 (élèves + agents)
+
+################################################################################
+### ÉTAPE 5 : NETTOYAGE (OPTIONNEL)
+################################################################################
+
+### 11. 🗑️ Désactiver une présence (soft delete)
+# Remplacez {idPresence} par l'ID réel récupéré lors des tests
+PUT {{baseUrl}}/api/Presence/toggle-statut/1
+Authorization: Bearer {{token}}
+
+###
+### ⚠️ ATTENDU : 
+### - Status: 200 OK
+### - Message: "Statut modifié avec succès"
+### - Après désactivation, un nouveau pointage devient possible
+
+################################################################################
+
+### 12. ✅ Pointage après désactivation (DOIT RÉUSSIR)
+# Après avoir désactivé la présence précédente, ce pointage devrait réussir
+POST {{baseUrl}}/api/Presence
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "idEleve": 1,
+  "idAgent": null,
+  "isPresent": true,
+  "heureArrivee": "11:00",
+  "heureDepart": null,
+  "dateDuJour": "2025-10-27",
+  "observation": "Pointage après désactivation - Normal",
+  "longitude": "15.3146",
+  "latitude": "-4.3276",
+  "idVacation": 1
+}
+
+###
+### ⚠️ ATTENDU : 
+### - Status: 201 Created
+### - Message: Présence créée (car l'ancienne a été désactivée, seules les présences actives comptent)
+
+################################################################################
+### RÉSUMÉ DES TESTS
+################################################################################
+
+### ✅ Tests qui DOIVENT RÉUSSIR (201 Created) :
+### - Test 2 : Premier pointage élève
+### - Test 4 : Même élève, jour différent
+### - Test 5 : Élève différent, même jour
+### - Test 6 : Premier pointage agent
+### - Test 12 : Pointage après désactivation
+
+### ❌ Tests qui DOIVENT ÉCHOUER (400 Bad Request) :
+### - Test 3 : Double pointage élève même jour
+### - Test 7 : Double pointage agent même jour
+
+### 🔍 Tests de vérification (200 OK) :
+### - Test 8, 9, 10 : Récupération des présences
+
+### 🎯 LOGIQUE IMPLÉMENTÉE :
+### 1. Un élève/agent ne peut pointer QU'UNE SEULE FOIS par jour
+### 2. Les jours différents = pointages autorisés
+### 3. Les personnes différentes = pointages autorisés
+### 4. Seules les présences ACTIVES (Statut = true) sont comptées
+### 5. Si présence désactivée, un nouveau pointage devient possible
+
+################################################################################
+

@@ -1,0 +1,44 @@
+### Test de création d'une classe sans section ni option
+POST http://192.168.43.139:5000/api/Classe
+Content-Type: application/json
+
+{
+  "nomClasse": "Classe Test Sans Section",
+  "cycleEnseignement": "Primaire",
+  "idEcole": 1,
+  "idSection": null,
+  "idOption": null
+}
+
+### Test de création d'une classe avec section mais sans option
+POST http://192.168.43.139:5000/api/Classe
+Content-Type: application/json
+
+{
+  "nomClasse": "Classe Test Avec Section",
+  "cycleEnseignement": "Secondaire",
+  "idEcole": 1,
+  "idSection": 1,
+  "idOption": null
+}
+
+### Test de création d'une classe avec section et option
+POST http://192.168.43.139:5000/api/Classe
+Content-Type: application/json
+
+{
+  "nomClasse": "Classe Test Complète",
+  "cycleEnseignement": "Secondaire",
+  "idEcole": 1,
+  "idSection": 1,
+  "idOption": 1
+}
+
+### Récupérer toutes les classes
+GET http://192.168.43.139:5000/api/Classe
+
+### Récupérer les classes sans section
+GET http://192.168.43.139:5000/api/Classe/sans-section
+
+### Récupérer les classes sans option
+GET http://192.168.43.139:5000/api/Classe/sans-option

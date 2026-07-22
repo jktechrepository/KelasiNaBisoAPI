@@ -1,0 +1,47 @@
+### Test de l'initialisation des données par défaut
+
+# 1. Vérifier que le rôle Super-Admin existe
+GET http://localhost:5000/api/Role
+Content-Type: application/json
+
+###
+
+# 2. Vérifier que l'école Ekelasi School existe
+GET http://localhost:5000/api/Ecole
+Content-Type: application/json
+
+###
+
+# 3. Vérifier que l'utilisateur Super-Admin existe
+GET http://localhost:5000/api/Utilisateur
+Content-Type: application/json
+
+###
+
+# 4. Tester l'authentification avec le Super-Admin (par email)
+POST http://localhost:5000/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "superadmin@ekelasi.com",
+  "motDePasse": "Super-Admin"
+}
+
+###
+
+# 4b. Tester l'authentification avec le Super-Admin (par téléphone)
+POST http://localhost:5000/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "+243999999999",
+  "motDePasse": "Super-Admin"
+}
+
+###
+
+# 5. Vérifier les utilisateurs de l'école Ekelasi School
+GET http://localhost:5000/api/Utilisateur/ecole/1
+Content-Type: application/json
+
+###

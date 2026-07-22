@@ -1,0 +1,140 @@
+### ============================================================================
+### TESTS : Cascade Soft Delete Élève → Inscriptions
+### ============================================================================
+### Description : Tester la désactivation automatique des inscriptions
+###               lorsqu'un élève est désactivé
+### Date : 2025-01-16
+### ============================================================================
+
+@baseUrl = http://localhost:5000
+@email = jk2@kelasinabiso.cd
+@password = 12345678
+
+### ============================================================================
+### ÉTAPE 1 : Authentification
+### ============================================================================
+
+POST {{baseUrl}}/api/Auth/login
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "{{email}}",
+  "motDePasse": "{{password}}"
+}
+
+### Sauvegarder le token JWT retourné dans la variable @token ci-dessous
+### Exemple : @token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+@token = YOUR_TOKEN_HERE
+
+### ============================================================================
+### ÉTAPE 2 : Récupérer la liste des écoles (pour obtenir un IdEcole)
+### ============================================================================
+
+GET {{baseUrl}}/api/Ecole
+Authorization: Bearer {{token}}
+
+### Sauvegarder un IdEcole dans la variable @idEcole ci-dessous
+### Exemple : @idEcole = 1
+
+@idEcole = YOUR_ECOLE_ID_HERE
+
+### ============================================================================
+### ÉTAPE 3 : Récupérer la liste des élèves actifs d'une école
+### ============================================================================
+
+GET {{baseUrl}}/api/Eleve/ecole/{{idEcole}}?pageNumber=1&pageSize=10
+Authorization: Bearer {{token}}
+
+### Sauvegarder un IdEleve qui a des inscriptions actives dans @idEleve ci-dessous
+### Exemple : @idEleve = 123
+
+@idEleve = YOUR_ELEVE_ID_HERE
+
+### ============================================================================
+### ÉTAPE 4 : Vérifier les inscriptions actives de l'élève AVANT désactivation
+### ============================================================================
+
+GET {{baseUrl}}/api/Inscription/eleve/{{idEleve}}?pageNumber=1&pageSize=10
+Authorization: Bearer {{token}}
+
+### Note : Compter le nombre d'inscriptions avec Statut = true
+
+### ============================================================================
+### ÉTAPE 5 : Désactiver l'élève (CASCADE AUTOMATIQUE)
+### ============================================================================
+
+PUT {{baseUrl}}/api/Eleve/toggle-statut/{{idEleve}}
+Authorization: Bearer {{token}}
+
+### Résultat attendu :
+### - L'élève passe de Statut = true à Statut = false
+### - Toutes les inscriptions actives de l'élève sont automatiquement désactivées
+### - Logs dans la console : "✅ X inscription(s) désactivée(s) automatiquement"
+
+### ============================================================================
+### ÉTAPE 6 : Vérifier les inscriptions de l'élève APRÈS désactivation
+### ============================================================================
+
+GET {{baseUrl}}/api/Inscription/eleve/{{idEleve}}?pageNumber=1&pageSize=10
+Authorization: Bearer {{token}}
+
+### Résultat attendu :
+### - Toutes les inscriptions précédemment actives ont maintenant Statut = false
+### - Le nombre d'inscriptions actives doit être 0 (ou filtrées par défaut)
+
+### ============================================================================
+### ÉTAPE 7 : Vérifier que l'élève est bien désactivé
+### ============================================================================
+
+GET {{baseUrl}}/api/Eleve/{{idEleve}}
+Authorization: Bearer {{token}}
+
+### Résultat attendu :
+### - Si l'endpoint filtre par défaut sur Statut = true, l'élève ne sera pas retourné (404)
+### - Sinon, l'élève sera retourné avec Statut = false
+
+### ============================================================================
+### ÉTAPE 8 : Réactiver l'élève (PAS DE CASCADE INVERSE)
+### ============================================================================
+
+PUT {{baseUrl}}/api/Eleve/toggle-statut/{{idEleve}}
+Authorization: Bearer {{token}}
+
+### Résultat attendu :
+### - L'élève passe de Statut = false à Statut = true
+### - Les inscriptions RESTENT inactives (pas de cascade inverse)
+
+### ============================================================================
+### ÉTAPE 9 : Vérifier les inscriptions après réactivation de l'élève
+### ============================================================================
+
+GET {{baseUrl}}/api/Inscription/eleve/{{idEleve}}?pageNumber=1&pageSize=10&includeInactive=true
+Authorization: Bearer {{token}}
+
+### Résultat attendu :
+### - Les inscriptions restent inactives (Statut = false)
+### - Pas de réactivation automatique
+
+### ============================================================================
+### ÉTAPE 10 : Vérification finale - Diagnostic SQL (optionnel)
+### ============================================================================
+### Exécuter le script SQL suivant pour vérifier la cohérence :
+### SCRIPTS_SQL/analyser_incoherence_eleves_inscriptions.sql
+### 
+### Vérifier que :
+### - TotalInscriptionsActivesAvecElevesActifs = TotalElevesActifsAvecInscriptionsActives
+### - Aucune inscription active pour un élève inactif
+
+### ============================================================================
+### NOTES IMPORTANTES
+### ============================================================================
+### 
+### 1. Remplacez YOUR_TOKEN_HERE par le token JWT obtenu à l'ÉTAPE 1
+### 2. Remplacez YOUR_ECOLE_ID_HERE par un IdEcole valide
+### 3. Remplacez YOUR_ELEVE_ID_HERE par un IdEleve qui a des inscriptions actives
+### 4. Vérifiez les logs de l'application pour voir les messages de cascade
+### 5. Si l'endpoint /api/Eleve/{id} filtre par défaut sur Statut = true,
+###    l'élève désactivé ne sera pas retourné (404) - c'est normal
+### 
+### ============================================================================

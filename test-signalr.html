@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test SignalR - KelasiNaBiso</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+        .header p {
+            opacity: 0.9;
+        }
+        .content {
+            padding: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            background: #f9f9f9;
+        }
+        .section h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+        .input-group input, .input-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+        .input-group input:focus, .input-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        button {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-right: 10px;
+        }
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102,126,234,0.4);
+        }
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+        .btn-danger:hover {
+            background: #da190b;
+        }
+        .btn-success {
+            background: #4caf50;
+            color: white;
+        }
+        .btn-success:hover {
+            background: #45a049;
+        }
+        .btn-secondary {
+            background: #9e9e9e;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background: #757575;
+        }
+        .status {
+            display: inline-block;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .status.disconnected {
+            background: #ffebee;
+            color: #c62828;
+        }
+        .status.connected {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        .status.connecting {
+            background: #fff3e0;
+            color: #e65100;
+        }
+        .log-container {
+            background: #1e1e1e;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 8px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 5px;
+            border-left: 3px solid #00ff00;
+            padding-left: 10px;
+        }
+        .log-entry.error {
+            border-left-color: #ff0000;
+            color: #ff6b6b;
+        }
+        .log-entry.success {
+            border-left-color: #00ff00;
+            color: #51cf66;
+        }
+        .log-entry.info {
+            border-left-color: #4dabf7;
+            color: #4dabf7;
+        }
+        .log-entry .timestamp {
+            color: #888;
+            margin-right: 10px;
+        }
+        .notification {
+            background: white;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .notification h4 {
+            margin-bottom: 5px;
+            color: #667eea;
+        }
+        .notification p {
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .notification .time {
+            font-size: 0.85em;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔔 Test SignalR</h1>
+            <p>KelasiNaBiso API - Test de connexion en temps réel</p>
+        </div>
+        
+        <div class="content">
+            <!-- Section Configuration -->
+            <div class="section">
+                <h2>⚙️ Configuration</h2>
+                <div class="input-group">
+                    <label>URL du Hub SignalR</label>
+                    <input type="text" id="hubUrl" value="https://localhost:7103/hubs/notifications" placeholder="https://localhost:7103/hubs/notifications">
+                </div>
+                <div class="input-group">
+                    <label>Token JWT</label>
+                    <input type="text" id="jwtToken" placeholder="Collez votre token JWT ici...">
+                </div>
+                <div class="input-group">
+                    <label>Email</label>
+                    <input type="email" id="email" value="elsynchropos@gmail.com" placeholder="Email">
+                </div>
+                <div class="input-group">
+                    <label>Mot de passe</label>
+                    <input type="password" id="password" value="Admin" placeholder="Mot de passe">
+                </div>
+                <button class="btn-success" onclick="login()">🔐 Se connecter et récupérer le token</button>
+            </div>
+
+            <!-- Section Connexion -->
+            <div class="section">
+                <h2>🔌 Connexion SignalR</h2>
+                <div>
+                    <span class="status disconnected" id="connectionStatus">● Déconnecté</span>
+                </div>
+                <div style="margin-top: 15px;">
+                    <button class="btn-primary" onclick="connect()" id="btnConnect">▶️ Connecter</button>
+                    <button class="btn-danger" onclick="disconnect()" id="btnDisconnect" disabled>⏹️ Déconnecter</button>
+                    <button class="btn-secondary" onclick="getStatus()">📊 Statut</button>
+                </div>
+            </div>
+
+            <!-- Section Groupes -->
+            <div class="section">
+                <h2>👥 Gestion des Groupes</h2>
+                <div class="input-group">
+                    <label>Nom du groupe</label>
+                    <input type="text" id="groupName" placeholder="Ex: ecole_1, user_5, classe_10" value="ecole_2">
+                </div>
+                <button class="btn-primary" onclick="joinGroup()">➕ Rejoindre</button>
+                <button class="btn-danger" onclick="leaveGroup()">➖ Quitter</button>
+            </div>
+
+            <!-- Section Notifications -->
+            <div class="section">
+                <h2>📩 Notifications Reçues</h2>
+                <div id="notifications" style="max-height: 200px; overflow-y: auto;">
+                    <p style="color: #999; font-style: italic;">Aucune notification pour le moment...</p>
+                </div>
+            </div>
+
+            <!-- Section Logs -->
+            <div class="section">
+                <h2>📝 Console de Logs</h2>
+                <div class="log-container" id="logContainer">
+                    <div class="log-entry info">
+                        <span class="timestamp">[00:00:00]</span>
+                        <span>Console de logs prête. En attente de connexion...</span>
+                    </div>
+                </div>
+                <button class="btn-secondary" onclick="clearLogs()" style="margin-top: 10px;">🗑️ Effacer les logs</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SignalR Library -->
+    <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@latest/dist/browser/signalr.min.js"></script>
+    
+    <script>
+        let connection = null;
+        let isConnected = false;
+
+        // Configuration pour ignorer les erreurs de certificat SSL en développement
+        const apiUrl = "https://localhost:7102";
+
+        function log(message, type = 'info') {
+            const logContainer = document.getElementById('logContainer');
+            const timestamp = new Date().toLocaleTimeString('fr-FR');
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry ${type}`;
+            logEntry.innerHTML = `<span class="timestamp">[${timestamp}]</span><span>${message}</span>`;
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            console.log(`[${timestamp}] ${message}`);
+        }
+
+        function clearLogs() {
+            document.getElementById('logContainer').innerHTML = '';
+            log('Logs effacés', 'info');
+        }
+
+        function updateStatus(status, text) {
+            const statusEl = document.getElementById('connectionStatus');
+            statusEl.className = `status ${status}`;
+            statusEl.textContent = `● ${text}`;
+        }
+
+        async function login() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            if (!email || !password) {
+                log('❌ Veuillez entrer email et mot de passe', 'error');
+                return;
+            }
+
+            log('🔐 Authentification en cours...', 'info');
+
+            try {
+                const response = await fetch(`${apiUrl}/api/Utilisateur/authentifier`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        emailOuTelephone: email,
+                        motDePasse: password
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const token = data.accessToken || data.AccessToken;
+                    document.getElementById('jwtToken').value = token;
+                    log(`✅ Authentification réussie ! Token récupéré`, 'success');
+                    log(`👤 Utilisateur: ${data.utilisateur.nomUtilisateur}`, 'info');
+                    log(`🏫 École ID: ${data.utilisateur.idEcole}`, 'info');
+                } else {
+                    log(`❌ Erreur d'authentification: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                log(`❌ Erreur: ${error.message}`, 'error');
+            }
+        }
+
+        async function connect() {
+            const hubUrl = document.getElementById('hubUrl').value;
+            const jwtToken = document.getElementById('jwtToken').value;
+
+            if (!jwtToken) {
+                log('❌ Token JWT manquant. Veuillez vous connecter d\'abord.', 'error');
+                return;
+            }
+
+            log('🔄 Tentative de connexion à SignalR...', 'info');
+            updateStatus('connecting', 'Connexion en cours...');
+
+            try {
+                connection = new signalR.HubConnectionBuilder()
+                    .withUrl(hubUrl, {
+                        accessTokenFactory: () => jwtToken,
+                        skipNegotiation: false,
+                        transport: signalR.HttpTransportType.WebSockets | signalR.HttpTransportType.ServerSentEvents | signalR.HttpTransportType.LongPolling
+                    })
+                    .configureLogging(signalR.LogLevel.Information)
+                    .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
+                    .build();
+
+                // Événements de connexion
+                connection.onclose((error) => {
+                    isConnected = false;
+                    updateStatus('disconnected', 'Déconnecté');
+                    document.getElementById('btnConnect').disabled = false;
+                    document.getElementById('btnDisconnect').disabled = true;
+                    if (error) {
+                        log(`❌ Connexion fermée: ${error}`, 'error');
+                    } else {
+                        log('🔌 Connexion fermée', 'info');
+                    }
+                });
+
+                connection.onreconnecting((error) => {
+                    log(`🔄 Reconnexion en cours...`, 'info');
+                    updateStatus('connecting', 'Reconnexion...');
+                });
+
+                connection.onreconnected((connectionId) => {
+                    log(`✅ Reconnecté ! ID: ${connectionId}`, 'success');
+                    updateStatus('connected', 'Connecté');
+                });
+
+                // Écouter les notifications
+                connection.on("ReceiveNotification", (notification) => {
+                    log(`📩 Notification reçue: ${notification.titre || notification.message}`, 'success');
+                    addNotification(notification);
+                });
+
+                connection.on("NotificationMarkedAsRead", (notificationId) => {
+                    log(`✅ Notification ${notificationId} marquée comme lue`, 'info');
+                });
+
+                // Démarrer la connexion
+                await connection.start();
+                isConnected = true;
+                updateStatus('connected', 'Connecté');
+                log(`✅ Connecté au hub SignalR !`, 'success');
+                log(`🆔 Connection ID: ${connection.connectionId}`, 'info');
+                document.getElementById('btnConnect').disabled = true;
+                document.getElementById('btnDisconnect').disabled = false;
+
+            } catch (error) {
+                isConnected = false;
+                updateStatus('disconnected', 'Erreur de connexion');
+                log(`❌ Erreur de connexion: ${error}`, 'error');
+                document.getElementById('btnConnect').disabled = false;
+                document.getElementById('btnDisconnect').disabled = true;
+            }
+        }
+
+        async function disconnect() {
+            if (connection) {
+                try {
+                    await connection.stop();
+                    log('🔌 Déconnexion réussie', 'info');
+                } catch (error) {
+                    log(`❌ Erreur lors de la déconnexion: ${error}`, 'error');
+                }
+            }
+        }
+
+        async function joinGroup() {
+            const groupName = document.getElementById('groupName').value;
+            if (!groupName) {
+                log('❌ Veuillez entrer un nom de groupe', 'error');
+                return;
+            }
+
+            if (!isConnected) {
+                log('❌ Vous devez être connecté pour rejoindre un groupe', 'error');
+                return;
+            }
+
+            try {
+                await connection.invoke("JoinGroup", groupName);
+                log(`✅ Rejoint le groupe: ${groupName}`, 'success');
+            } catch (error) {
+                log(`❌ Erreur en rejoignant le groupe: ${error}`, 'error');
+            }
+        }
+
+        async function leaveGroup() {
+            const groupName = document.getElementById('groupName').value;
+            if (!groupName) {
+                log('❌ Veuillez entrer un nom de groupe', 'error');
+                return;
+            }
+
+            if (!isConnected) {
+                log('❌ Vous devez être connecté pour quitter un groupe', 'error');
+                return;
+            }
+
+            try {
+                await connection.invoke("LeaveGroup", groupName);
+                log(`✅ Quitté le groupe: ${groupName}`, 'success');
+            } catch (error) {
+                log(`❌ Erreur en quittant le groupe: ${error}`, 'error');
+            }
+        }
+
+        async function getStatus() {
+            if (!isConnected) {
+                log('❌ Vous devez être connecté', 'error');
+                return;
+            }
+
+            try {
+                await connection.invoke("GetConnectionStatus");
+                log(`✅ Demande de statut envoyée`, 'info');
+            } catch (error) {
+                log(`❌ Erreur: ${error}`, 'error');
+            }
+        }
+
+        function addNotification(notification) {
+            const notificationsContainer = document.getElementById('notifications');
+            
+            // Supprimer le message "Aucune notification"
+            if (notificationsContainer.querySelector('p')) {
+                notificationsContainer.innerHTML = '';
+            }
+
+            const notifDiv = document.createElement('div');
+            notifDiv.className = 'notification';
+            notifDiv.innerHTML = `
+                <h4>${notification.titre || notification.type || 'Notification'}</h4>
+                <p>${notification.message || notification.corps || 'Message de notification'}</p>
+                <span class="time">${new Date().toLocaleString('fr-FR')}</span>
+            `;
+            notificationsContainer.insertBefore(notifDiv, notificationsContainer.firstChild);
+        }
+
+        // Charger le token au démarrage si disponible dans localStorage
+        window.onload = () => {
+            const savedToken = localStorage.getItem('jwt_token');
+            if (savedToken) {
+                document.getElementById('jwtToken').value = savedToken;
+                log('✅ Token chargé depuis localStorage', 'info');
+            }
+        };
+
+        // Sauvegarder le token
+        document.getElementById('jwtToken').addEventListener('change', (e) => {
+            if (e.target.value) {
+                localStorage.setItem('jwt_token', e.target.value);
+            }
+        });
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,257 @@
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 🎯 TEST COMPLET: NOTIFICATION PUSH AU TUTEUR LORS DU POINTAGE ÉLÈVE
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+###
+### 📋 SCÉNARIO DE TEST:
+### 1. Créer un tuteur
+### 2. Créer un compte utilisateur pour le tuteur
+### 3. Enregistrer un device (token FCM) pour le tuteur
+### 4. Créer un élève lié au tuteur
+### 5. Pointer la présence de l'élève
+### 6. ✅ Vérifier que le tuteur reçoit la notification push
+###
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+@baseUrl = https://localhost:7012
+@token = {{authentification.response.body.token}}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### ÉTAPE 0: AUTHENTIFICATION (Super-Admin ou Directeur)
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# @name authentification
+POST {{baseUrl}}/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "motDePasse": "Admin@2025"
+}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### ÉTAPE 1: CRÉER UN TUTEUR
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# @name creerTuteur
+POST {{baseUrl}}/api/Tuteur
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nomComplet": "KABAMBA Jean-Pierre",
+  "genre": "M",
+  "email": "kabamba.jp@gmail.com",
+  "telephone": "+243821234567",
+  "idEcole": 1,
+  "statut": true
+}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### ÉTAPE 2: CRÉER UN COMPTE UTILISATEUR POUR LE TUTEUR
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 📝 Note: Remplacer {{idTuteur}} par l'ID retourné à l'étape 1
+
+# @name creerUtilisateurTuteur
+POST {{baseUrl}}/api/Utilisateur
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nomUtilisateur": "KABAMBA",
+  "postNomUtilisateur": "Jean-Pierre",
+  "email": "kabamba.jp@gmail.com",
+  "telephone": "+243821234567",
+  "motDePasseHash": "Tuteur@2025",
+  "genre": "M",
+  "idRole": 6,
+  "idEcole": 1,
+  "idTuteur": 1,
+  "statut": true
+}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### ÉTAPE 3: S'AUTHENTIFIER EN TANT QUE TUTEUR
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# @name authTuteur
+POST {{baseUrl}}/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "username": "kabamba.jp@gmail.com",
+  "motDePasse": "Tuteur@2025"
+}
+
+@tuteurToken = {{authTuteur.response.body.token}}
+@idUtilisateurTuteur = {{authTuteur.response.body.utilisateur.idUtilisateur}}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### ÉTAPE 4: ENREGISTRER UN DEVICE (TOKEN FCM) POUR LE TUTEUR
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 📱 Note: Token FCM fictif pour les tests
+
+# @name enregistrerDevice
+POST {{baseUrl}}/api/UserDevice/register
+Authorization: Bearer {{tuteurToken}}
+Content-Type: application/json
+
+{
+  "fcmToken": "fA1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6Q7R8S9T0U1V2W3X4Y5Z6",
+  "deviceType": "Android",
+  "deviceModel": "Samsung Galaxy S21",
+  "osVersion": "Android 13"
+}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### ÉTAPE 5: CRÉER UN ÉLÈVE LIÉ AU TUTEUR
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 🎓 Note: Utiliser le token de l'admin pour créer l'élève
+
+# @name creerEleve
+POST {{baseUrl}}/api/Eleve
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nom": "KABAMBA",
+  "postnom": "Patrick",
+  "prenom": "Junior",
+  "genre": "M",
+  "dateNaissance": "2010-05-15",
+  "lieuNaissance": "Kinshasa",
+  "nationalite": "Congolaise",
+  "idClasse": 1,
+  "idTuteur": 1,
+  "statut": true
+}
+
+@idEleve = {{creerEleve.response.body.idEleve}}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### ÉTAPE 6: POINTER LA PRÉSENCE DE L'ÉLÈVE ✅ PRÉSENT
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 🔔 RÉSULTAT ATTENDU: Le tuteur reçoit une notification push automatiquement
+
+# @name pointagePresent
+POST {{baseUrl}}/api/Presence
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "idEleve": 1,
+  "isPresent": true,
+  "heureArrivee": "07:30:00",
+  "dateDuJour": "2025-10-27",
+  "observation": "Élève arrivé à l'heure",
+  "latitude": "-4.3276",
+  "longitute": "15.3136"
+}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### ÉTAPE 7: POINTER LA PRÉSENCE DE L'ÉLÈVE ❌ ABSENT
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 🔔 RÉSULTAT ATTENDU: Le tuteur reçoit une notification d'absence
+
+# @name pointageAbsent
+POST {{baseUrl}}/api/Presence
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "idEleve": 1,
+  "isPresent": false,
+  "dateDuJour": "2025-10-28",
+  "observation": "Élève absent sans justificatif"
+}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### ÉTAPE 8: POINTER LA PRÉSENCE AVEC RETARD ⏰
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# @name pointageRetard
+POST {{baseUrl}}/api/Presence
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "idEleve": 1,
+  "isPresent": true,
+  "heureArrivee": "09:15:00",
+  "dateDuJour": "2025-10-29",
+  "observation": "Élève en retard de 1h15",
+  "latitude": "-4.3276",
+  "longitute": "15.3136"
+}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 📊 VÉRIFICATIONS & DEBUG
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Vérifier les devices du tuteur
+# @name verifierDevicesTuteur
+GET {{baseUrl}}/api/UserDevice/utilisateur/{{idUtilisateurTuteur}}
+Authorization: Bearer {{tuteurToken}}
+
+### Vérifier les présences de l'élève
+# @name verifierPresencesEleve
+GET {{baseUrl}}/api/Presence/eleve/{{idEleve}}
+Authorization: Bearer {{token}}
+
+### Vérifier les notifications du tuteur (si endpoint existe)
+# @name verifierNotificationsTuteur
+GET {{baseUrl}}/api/Notification/utilisateur/{{idUtilisateurTuteur}}
+Authorization: Bearer {{tuteurToken}}
+
+### Envoyer une notification de test directement au tuteur
+# @name testNotificationDirecte
+POST {{baseUrl}}/api/NotificationPush/utilisateur/{{idUtilisateurTuteur}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "titre": "🔔 Test Notification",
+  "corps": "Notification de test pour vérifier que Firebase fonctionne",
+  "donnees": {
+    "type": "TEST",
+    "timestamp": "2025-10-27T10:30:00"
+  }
+}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 🧪 TESTS AVEC DES DONNÉES EXISTANTES (IDs connus)
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Scénario: Élève existant avec tuteur et device déjà enregistrés
+POST {{baseUrl}}/api/Presence
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "idEleve": 1,
+  "isPresent": true,
+  "heureArrivee": "07:45:00",
+  "dateDuJour": "2025-10-27",
+  "observation": "Pointage test avec élève existant"
+}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 🎯 RÉSULTATS ATTENDUS
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+###
+### ✅ SUCCÈS SI:
+### 1. Le pointage de présence retourne HTTP 201 Created
+### 2. Les logs montrent: "✅ Notification envoyée au tuteur..."
+### 3. Le device du tuteur reçoit la notification push
+### 4. La notification contient:
+###    - Titre: "Pointage de [NomEleve]"
+###    - Corps: "✅ PRÉSENT le [date] à [heure]"
+###    - Data: type=PRESENCE_ELEVE, idEleve, nomEleve, etc.
+###
+### ⚠️ CAS GÉRÉS SANS ERREUR:
+### 1. Élève sans tuteur lié → Pointage OK, pas de notification
+### 2. Tuteur sans compte utilisateur → Pointage OK, log info
+### 3. Tuteur sans device actif → Pointage OK, log warning
+### 4. Erreur Firebase → Pointage OK, log error (ne bloque pas)
+###
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+

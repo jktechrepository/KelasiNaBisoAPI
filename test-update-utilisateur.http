@@ -1,0 +1,98 @@
+### Test de mise à jour d'un utilisateur (sans mot de passe)
+PUT http://192.168.100.17:5001/api/Utilisateur/1
+Content-Type: application/json
+
+{
+  "idUtilisateur": 1,
+  "referenceUtilisateur": "550e8400-e29b-41d4-a716-446655440000",
+  "nomUtilisateur": "Doe",
+  "postNomUtilisateur": "Smith",
+  "prenomUtilisateur": "John",
+  "email": "john.doe@example.com",
+  "téléphone": "+243123456789",
+  "photoUrl": "https://example.com/photo.jpg",
+  "lieuNaissance": "Kinshasa",
+  "dateNaissance": "1990-01-01T00:00:00",
+  "genre": "M",
+  "statut": true,
+  "idRole": 1,
+  "idEcole": 1,
+  "province": "Kinshasa",
+  "ville": "Kinshasa",
+  "commune": "Gombe",
+  "quartier": "Centre-ville",
+  "avenue": "Avenue du Commerce",
+  "numero": "123"
+}
+
+###
+
+### Test de mise à jour d'un utilisateur avec mot de passe (doit être ignoré)
+PUT http://192.168.100.17:5001/api/Utilisateur/1
+Content-Type: application/json
+
+{
+  "idUtilisateur": 1,
+  "referenceUtilisateur": "550e8400-e29b-41d4-a716-446655440000",
+  "nomUtilisateur": "Doe",
+  "postNomUtilisateur": "Smith",
+  "prenomUtilisateur": "John",
+  "email": "john.doe@example.com",
+  "téléphone": "+243123456789",
+  "photoUrl": "https://example.com/photo.jpg",
+  "lieuNaissance": "Kinshasa",
+  "dateNaissance": "1990-01-01T00:00:00",
+  "genre": "M",
+  "motDePasseHash": "nouveauHashQuiNeDoitPasEtreApplique",
+  "statut": true,
+  "idRole": 1,
+  "idEcole": 1,
+  "province": "Kinshasa",
+  "ville": "Kinshasa",
+  "commune": "Gombe",
+  "quartier": "Centre-ville",
+  "avenue": "Avenue du Commerce",
+  "numero": "123"
+}
+
+###
+
+### Test de mise à jour d'un utilisateur inexistant
+PUT http://192.168.100.17:5001/api/Utilisateur/999
+Content-Type: application/json
+
+{
+  "idUtilisateur": 999,
+  "nomUtilisateur": "Test",
+  "email": "test@example.com",
+  "statut": true,
+  "idRole": 1
+}
+
+###
+
+### Test de mise à jour avec ID incorrect
+PUT http://192.168.100.17:5001/api/Utilisateur/1
+Content-Type: application/json
+
+{
+  "idUtilisateur": 2,
+  "nomUtilisateur": "Test",
+  "email": "test@example.com",
+  "statut": true,
+  "idRole": 1
+}
+
+###
+
+### Test de mise à jour avec données invalides
+PUT http://192.168.100.17:5001/api/Utilisateur/1
+Content-Type: application/json
+
+{
+  "idUtilisateur": 1,
+  "nomUtilisateur": "",
+  "email": "email-invalide",
+  "statut": true,
+  "idRole": 1
+}

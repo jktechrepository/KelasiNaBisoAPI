@@ -1,0 +1,298 @@
+### =========================================================================
+### 🧪 TESTS UNICITÉ SERIAL NUMBER ÉLÈVE
+### =========================================================================
+### Objectif : Vérifier que le champ SerialNumber est unique pour chaque élève
+### Date : 27 octobre 2025
+### =========================================================================
+
+@baseUrl = https://localhost:7105/api
+
+### -------------------------------------------------------------------------
+### 1️⃣ CONNEXION ADMIN (pour obtenir le token)
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "superadmin@kelasinabiso.cd",
+  "motDePasse": "Super-Admin",
+  "fcmToken": "test-fcm-token",
+  "deviceType": "Web",
+  "deviceModel": "Chrome",
+  "osVersion": "Windows 11"
+}
+
+### -------------------------------------------------------------------------
+### 2️⃣ CRÉER UN PREMIER ÉLÈVE avec un SerialNumber
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : L'élève est créé avec succès
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Inscription
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "nom": "MUKENDI",
+  "postnom": "KALALA",
+  "prenom": "Jean",
+  "genre": "Masculin",
+  "dateNaissance": "2010-05-15",
+  "lieuNaissance": "Kinshasa",
+  "nationalite": "Congolaise",
+  "photoUrl": null,
+  "commentaire": "Élève test",
+  "serialNumber": "SN-ELEVE-001",
+  "idClasse": 1,
+  "idTuteur": 1,
+  "idEcole": 1,
+  "fraisInscription": 50.00,
+  "idAnneeScolaire": 1,
+  "province": "Kinshasa",
+  "ville": "Kinshasa",
+  "commune": "Gombe",
+  "quartier": "Centre-ville",
+  "avenue": "Avenue du Port",
+  "numero": "10"
+}
+
+### -------------------------------------------------------------------------
+### 3️⃣ TENTATIVE DE CRÉER UN DEUXIÈME ÉLÈVE avec le MÊME SerialNumber
+### -------------------------------------------------------------------------
+### ❌ RÉSULTAT ATTENDU : Erreur 400 - "Un élève avec le SerialNumber '...' existe déjà"
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Inscription
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "nom": "KABONGO",
+  "postnom": "MBUYI",
+  "prenom": "Marie",
+  "genre": "Féminin",
+  "dateNaissance": "2011-08-20",
+  "lieuNaissance": "Lubumbashi",
+  "nationalite": "Congolaise",
+  "photoUrl": null,
+  "commentaire": "Élève test 2",
+  "serialNumber": "SN-ELEVE-001",
+  "idClasse": 1,
+  "idTuteur": 1,
+  "idEcole": 1,
+  "fraisInscription": 50.00,
+  "idAnneeScolaire": 1,
+  "province": "Kinshasa",
+  "ville": "Kinshasa",
+  "commune": "Limete",
+  "quartier": "Kingabwa",
+  "avenue": "Avenue Luambo",
+  "numero": "25"
+}
+
+### -------------------------------------------------------------------------
+### 4️⃣ CRÉER UN TROISIÈME ÉLÈVE avec un SerialNumber DIFFÉRENT
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : L'élève est créé avec succès
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Inscription
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "nom": "TSHISEKEDI",
+  "postnom": "NGANDU",
+  "prenom": "Paul",
+  "genre": "Masculin",
+  "dateNaissance": "2012-03-10",
+  "lieuNaissance": "Kananga",
+  "nationalite": "Congolaise",
+  "photoUrl": null,
+  "commentaire": "Élève test 3",
+  "serialNumber": "SN-ELEVE-002",
+  "idClasse": 1,
+  "idTuteur": 1,
+  "idEcole": 1,
+  "fraisInscription": 50.00,
+  "idAnneeScolaire": 1,
+  "province": "Kasaï",
+  "ville": "Kananga",
+  "commune": "Kananga",
+  "quartier": "Centre",
+  "avenue": "Avenue Lumumba",
+  "numero": "30"
+}
+
+### -------------------------------------------------------------------------
+### 5️⃣ CRÉER UN ÉLÈVE SANS SerialNumber (NULL)
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : L'élève est créé avec succès (SerialNumber facultatif)
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Inscription
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "nom": "MULAMBA",
+  "postnom": "KIPITA",
+  "prenom": "André",
+  "genre": "Masculin",
+  "dateNaissance": "2013-06-25",
+  "lieuNaissance": "Kikwit",
+  "nationalite": "Congolaise",
+  "photoUrl": null,
+  "commentaire": "Élève sans SerialNumber",
+  "serialNumber": null,
+  "idClasse": 1,
+  "idTuteur": 1,
+  "idEcole": 1,
+  "fraisInscription": 50.00,
+  "idAnneeScolaire": 1,
+  "province": "Bandundu",
+  "ville": "Kikwit",
+  "commune": "Kikwit",
+  "quartier": "Centre",
+  "avenue": "Avenue Mobutu",
+  "numero": "40"
+}
+
+### -------------------------------------------------------------------------
+### 6️⃣ RÉCUPÉRER LA LISTE DES ÉLÈVES
+### -------------------------------------------------------------------------
+### Utilisez cette requête pour obtenir les IDs et matricules des élèves
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Eleve
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 7️⃣ RÉCUPÉRER UN ÉLÈVE par SerialNumber
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : L'élève avec le SerialNumber "SN-ELEVE-001" est retourné
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Eleve/serial-number/SN-ELEVE-001
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 8️⃣ METTRE À JOUR le SerialNumber d'un élève par son ID
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Le SerialNumber est mis à jour avec succès
+### ⚠️ REMPLACER {idEleve} par l'ID réel obtenu à l'étape 6
+### -------------------------------------------------------------------------
+PUT {{baseUrl}}/Eleve/{idEleve}/serial-number
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "serialNumber": "SN-ELEVE-UPDATED-001"
+}
+
+### -------------------------------------------------------------------------
+### 9️⃣ TENTATIVE de mettre à jour avec un SerialNumber déjà utilisé
+### -------------------------------------------------------------------------
+### ❌ RÉSULTAT ATTENDU : Erreur 400 - "Un autre élève avec le SerialNumber '...' existe déjà"
+### ⚠️ REMPLACER {idElevePaul} par l'ID réel de Paul TSHISEKEDI
+### ⚠️ Utilisez le SerialNumber mis à jour à l'étape 8
+### -------------------------------------------------------------------------
+PUT {{baseUrl}}/Eleve/{idElevePaul}/serial-number
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "serialNumber": "SN-ELEVE-UPDATED-001"
+}
+
+### -------------------------------------------------------------------------
+### 🔟 METTRE À JOUR le SerialNumber par Matricule
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Le SerialNumber est mis à jour avec succès
+### ⚠️ REMPLACER {matricule} par le matricule réel de Paul obtenu à l'étape 6
+### -------------------------------------------------------------------------
+PUT {{baseUrl}}/Eleve/matricule/{matricule}/serial-number
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "serialNumber": "SN-ELEVE-BY-MATRICULE"
+}
+
+### -------------------------------------------------------------------------
+### 1️⃣1️⃣ VÉRIFIER que le SerialNumber a été mis à jour
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : L'élève retourné a le nouveau SerialNumber
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Eleve/serial-number/SN-ELEVE-BY-MATRICULE
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 1️⃣2️⃣ TENTATIVE de récupérer un élève avec un SerialNumber inexistant
+### -------------------------------------------------------------------------
+### ❌ RÉSULTAT ATTENDU : Erreur 404 - "Aucun élève trouvé avec le numéro de série..."
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Eleve/serial-number/SN-INEXISTANT-999
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### =========================================================================
+### 📋 RÉSUMÉ DES FONCTIONNALITÉS SERIAL NUMBER ÉLÈVE
+### =========================================================================
+### 
+### 1️⃣ MODÈLE ÉLÈVE (Eleve.cs)
+###    - Champ: SerialNumber (string?, nullable)
+###    - Stocke l'identifiant unique du device physique de l'élève/parent
+###    - Permet de lier un élève à un appareil spécifique
+###    - ✅ UNICITÉ GARANTIE par index unique en base de données
+### 
+### 2️⃣ ENDPOINTS DISPONIBLES
+###    GET    /api/Eleve/serial-number/{serialNumber}
+###           → Récupérer un élève par son SerialNumber
+###    
+###    PUT    /api/Eleve/{idEleve}/serial-number
+###           → Mettre à jour le SerialNumber par ID
+###    
+###    PUT    /api/Eleve/matricule/{matricule}/serial-number
+###           → Mettre à jour le SerialNumber par Matricule
+### 
+### 3️⃣ CAS D'USAGE
+###    - Associer un élève/parent à son device lors du premier login mobile
+###    - Sécuriser l'accès en vérifiant le SerialNumber du device
+###    - Permettre au parent de voir uniquement les infos de son enfant
+###    - Gérer les changements de device (mise à jour du SerialNumber)
+###    - Empêcher qu'un device soit lié à plusieurs élèves (unicité)
+### 
+### 4️⃣ SIMILITUDE AVEC AGENT
+###    - Même logique et structure que pour les agents
+###    - Protection double : Application + Base de données
+###    - Validation lors de création et mise à jour
+### 
+### 5️⃣ SÉCURITÉ
+###    - Tous les endpoints nécessitent une authentification JWT
+###    - SerialNumber peut être NULL (facultatif)
+###    - Filtrage sur élèves actifs uniquement (Statut = true)
+###    - ✅ UNICITÉ STRICTE: Un SerialNumber ne peut être lié qu'à un seul élève
+### 
+### =========================================================================
+### 📝 NOTES IMPORTANTES
+### =========================================================================
+### 
+### ⚠️ Le SerialNumber est FACULTATIF
+###    Un élève peut être créé sans SerialNumber
+###    Il peut être ajouté/modifié plus tard
+### 
+### ✅ CONTRAINTE D'UNICITÉ ACTIVE
+###    Un SerialNumber ne peut être lié qu'à un seul élève
+###    Protection double: Application + Index BDD (IX_Eleves_SerialNumber_Unique)
+###    Tentative de doublon → Erreur 400
+### 
+### ⚠️ Format du SerialNumber
+###    Aucune contrainte de format imposée
+###    Peut être un UUID, un IMEI, ou tout autre identifiant
+###    Exemples: "SN-ELEVE-001", "IMEI-123456789", "UUID-abc-def"
+### 
+### ✅ VALIDATION
+###    - Création: Vérification que le SerialNumber n'existe pas déjà
+###    - Mise à jour: Vérification que le nouveau SerialNumber n'est pas utilisé
+###    - Message d'erreur clair en cas de doublon
+### 
+### 🔗 ESPACE D'UNICITÉ SÉPARÉ
+###    Un agent et un élève PEUVENT avoir le même SerialNumber
+###    (espaces d'unicité séparés : Agents vs Eleves)
+### 
+### =========================================================================
+

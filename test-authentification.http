@@ -1,0 +1,35 @@
+### Test d'authentification avec email
+POST https://192.168.43.139:7155/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "admin@example.com",
+  "motDePasse": "password123"
+}
+
+### Test d'authentification avec téléphone
+POST https://192.168.43.139:7155/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "+243123456789",
+  "motDePasse": "password123"
+}
+
+### Test d'authentification avec données invalides
+POST https://192.168.43.139:7155/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "invalid@example.com",
+  "motDePasse": "wrongpassword"
+}
+
+### Test d'authentification avec données manquantes
+POST https://192.168.43.139:7155/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "",
+  "motDePasse": ""
+}

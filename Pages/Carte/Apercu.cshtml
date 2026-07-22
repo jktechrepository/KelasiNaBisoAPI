@@ -1,0 +1,36 @@
+@page "/Carte/Apercu"
+@model KelasiNaBiso.Pages.Carte.ApercuModel
+@{
+    Layout = null;
+    ViewData["Title"] = "Apercu carte";
+}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Apercu carte — KelasiNaBiso</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 16px; background: #f4f6f8; }
+        .header { margin-bottom: 12px; }
+        .header a { color: #1565c0; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <strong>KelasiNaBiso — Carte @Model.TypeLabel</strong>
+        @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+        {
+            <p style="color:#c62828">@Model.ErrorMessage</p>
+        }
+        else
+        {
+            <p><a href="@Model.PdfUrl">Telecharger PDF</a></p>
+        }
+    </div>
+    @if (Model.WebReport != null)
+    {
+        @await Model.WebReport.Render()
+    }
+</body>
+</html>

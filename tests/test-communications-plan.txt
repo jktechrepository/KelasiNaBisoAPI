@@ -1,0 +1,82 @@
+Plan de Tests – Communications Parent-École
+============================================
+
+Pré-requis Généraux
+-------------------
+- Script SQL de Phase 1 appliqué (tables `Communication*`, colonnes `Notifications`).
+- API KelasiNaBiso démarrée (env env: `Development`).
+- Comptes utilisateurs disponibles :
+  * Super-Admin (droits multi-écoles)
+  * Admin (ou Directeur/Sous-Directeur) rattaché à l’école de test
+- Données métier :
+  * Classes et directions existantes (IDs connus)
+  * Parents/Tuteurs actifs, utilisateurs associés, préférences canal
+- Tests exécutés en environnement de staging avec base peuplée.
+
+1. Création & Segments
+----------------------
+### 1.1 – Création via Super-Admin
+| Étapes | Attendus |
+|--------|----------|
+| POST `/api/Communication` avec segments classe + direction | 201, campagne statut `Brouillon` |
+| POST `/api/Communication/{id}/destinataires/recharger` | Destinataires générés (>0) |
+| GET `/api/Communication/{id}` | Segments présents, totalDestinataires renseigné |
+
+### 1.2 – Préférences canaux
+| Préparation | Étapes | Attendus |
+|-------------|-------|----------|
+| S’assurer qu’un tuteur a opt-out sur Email/SMS (table `ParentCommunicationPreferences`) | `destinataires/recharger` | Destinataires générés sans canal interdit |
+
+2. Envoi & RBAC
+---------------
+| Étapes | Rôles autorisés | API | Attendus |
+|--------|------------------|-----|----------|
+| Envoyer | Super-Admin, Admin, Directeur, Sous-Directeur | POST `/envoyer` | 202 Accepted, statut `EnCoursEnvoi`, historique `EnvoiDemarre` |
+| Consultation post-envoi | Super-Admin, Admin, Directeur | GET `/api/Communication/{id}` & `/destinataires` | 200, statut `Envoye` ou `PartiellementEnvoye`, stats cohérentes |
+
+3. Diffusion Multi-Canaux
+-------------------------
+| Canal | Pré-requis | Vérifications |
+|-------|------------|---------------|
+| In-App | Notification in-app activée | Table `Notifications`: enregistrement liant `IdCampaign`, `IdDestinataire` |
+| Push | Devices FCM actifs | Logs `FirebaseNotificationService`, réception sur device |
+| Email | Email parent non-null | Logs mail (ou boîte test) |
+| SMS | Téléphone valide, SMS service actif | Logs Twilio + réception |
+
+4. Contrôles Post-Envoi
+-----------------------
+| API | Attendus |
+|-----|----------|
+| GET `/api/Communication/{id}/destinataires?page=1&pageSize=50` | Destinataires `Status` = Envoye/Echec, `FinalChannel` renseigné |
+| GET `/api/Communication/{id}/historique` | Actions `DestinatairesGeneres`, `EnvoiDemarre`, `EnvoiTermine` |
+| Table `CommunicationCampaigns` | Statut : `Envoye`, `PartiellementEnvoye` ou `Annule` |
+| Table `CampaignRecipients` | `DateEnvoi` remplie, `ErrorMessage` pour échecs |
+
+5. Scénarios d’Échec
+--------------------
+- Campagne sur école ≠ rôle : attentes `403 Forbid`.
+- Segment sans destinataires : `destinataires/recharger` → `0` et log warning (envoi doit retourner 400).
+- Envoi par rôle non autorisé (ex. parent) : `403`.
+- Campagne déjà envoyée ou en cours → POST `/envoyer` retourne 400.
+- Conflit préférences (tous canaux opt-out) : destinataires ignorés, envoi partiel ou 400.
+
+6. Nettoyage & Audit
+--------------------
+- POST `/annuler` (Super-Admin) → Statut `Annule`, historique.
+- Contrôle manuel :
+  * Table `CommunicationHistory` – traçabilité complète.
+  * Table `Notifications` – suppressions cascade si campagne annulée ?
+
+7. Automatisation (Script PowerShell)
+-------------------------------------
+- `tests/test-communications.ps1`
+  * Paramètres : ApiUrl, credentials Super-Admin/Admin, IdEcole, IdClasseTest, IdDirectionTest.
+  * Pipeline automatisé : création → rafraîchissement → envoi direct → vérifications → annulation.
+  * Résumé final : envoyés/échecs, historique, notifications in-app.
+
+Déploiement & Monitoring
+------------------------
+- Feature flag recommandé pour activer progressivement les endpoints.
+- Surveiller les logs d’envoi & fallback canaux après mise en production.
+- Planifier purge historique et archivage (non automatique pour l’instant).
+

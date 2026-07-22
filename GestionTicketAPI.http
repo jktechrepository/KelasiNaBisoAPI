@@ -1,0 +1,6 @@
+@KelasiNaBiso_HostAddress = http://192.168.43.139:5000
+
+GET {{KelasiNaBiso_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

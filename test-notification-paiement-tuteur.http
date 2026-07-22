@@ -1,0 +1,359 @@
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 🎯 TEST COMPLET: NOTIFICATION PUSH AU TUTEUR LORS DU PAIEMENT ÉLÈVE
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+###
+### 📋 SCÉNARIO DE TEST:
+### 1. Créer/utiliser un tuteur existant
+### 2. Créer/utiliser un compte utilisateur pour le tuteur
+### 3. Enregistrer un device (token FCM) pour le tuteur
+### 4. Créer/utiliser un élève lié au tuteur
+### 5. Créer/utiliser un frais
+### 6. Effectuer un paiement pour l'élève
+### 7. ✅ Vérifier que le tuteur reçoit la notification push
+###
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+@baseUrl = https://localhost:7012
+@token = {{authentification.response.body.token}}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### ÉTAPE 0: AUTHENTIFICATION (Super-Admin ou Directeur)
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# @name authentification
+POST {{baseUrl}}/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "motDePasse": "Admin@2025"
+}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### ÉTAPE 1: CRÉER/VÉRIFIER LE TUTEUR
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# @name creerTuteur
+POST {{baseUrl}}/api/Tuteur
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nomComplet": "MUKENDI Marie-Claire",
+  "genre": "F",
+  "email": "mukendi.mc@gmail.com",
+  "telephone": "+243821234568",
+  "idEcole": 1,
+  "statut": true
+}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### ÉTAPE 2: CRÉER COMPTE UTILISATEUR POUR LE TUTEUR
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 📝 Note: Remplacer {{idTuteur}} par l'ID retourné à l'étape 1
+
+# @name creerUtilisateurTuteur
+POST {{baseUrl}}/api/Utilisateur
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nomUtilisateur": "MUKENDI",
+  "postNomUtilisateur": "Marie-Claire",
+  "email": "mukendi.mc@gmail.com",
+  "telephone": "+243821234568",
+  "motDePasseHash": "Tuteur@2025",
+  "genre": "F",
+  "idRole": 6,
+  "idEcole": 1,
+  "idTuteur": 1,
+  "statut": true
+}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### ÉTAPE 3: S'AUTHENTIFIER EN TANT QUE TUTEUR
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# @name authTuteur
+POST {{baseUrl}}/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "username": "mukendi.mc@gmail.com",
+  "motDePasse": "Tuteur@2025"
+}
+
+@tuteurToken = {{authTuteur.response.body.token}}
+@idUtilisateurTuteur = {{authTuteur.response.body.utilisateur.idUtilisateur}}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### ÉTAPE 4: ENREGISTRER UN DEVICE (TOKEN FCM) POUR LE TUTEUR
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 📱 Note: Token FCM fictif pour les tests
+
+# @name enregistrerDevice
+POST {{baseUrl}}/api/UserDevice/register
+Authorization: Bearer {{tuteurToken}}
+Content-Type: application/json
+
+{
+  "fcmToken": "fP1A2Y3M4E5N6T7T8O9K0E1N2F3C4M5T6U7T8E9U0R1P2A3I4E5M6E7N8T",
+  "deviceType": "iOS",
+  "deviceModel": "iPhone 13 Pro",
+  "osVersion": "iOS 16.5"
+}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### ÉTAPE 5: CRÉER UN ÉLÈVE LIÉ AU TUTEUR
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# @name creerEleve
+POST {{baseUrl}}/api/Eleve
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nom": "MUKENDI",
+  "postnom": "Grace",
+  "prenom": "Divine",
+  "genre": "F",
+  "dateNaissance": "2012-08-20",
+  "lieuNaissance": "Kinshasa",
+  "nationalite": "Congolaise",
+  "idClasse": 1,
+  "idTuteur": 1,
+  "statut": true
+}
+
+@idEleve = {{creerEleve.response.body.idEleve}}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### ÉTAPE 6: CRÉER/VÉRIFIER UN FRAIS
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# @name creerFrais
+POST {{baseUrl}}/api/Frais
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "typeFrais": "Frais de scolarité",
+  "montant": 150.00,
+  "devise": "USD",
+  "periodicite": "Mensuel",
+  "description": "Frais de scolarité du mois d'octobre 2025",
+  "idDirection": 1,
+  "statut": true
+}
+
+@idFrais = {{creerFrais.response.body.idFrais}}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### ÉTAPE 7: EFFECTUER UN PAIEMENT ✅ CONFIRMÉ
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 🔔 RÉSULTAT ATTENDU: Le tuteur reçoit une notification push automatiquement
+
+# @name paiementConfirme
+POST {{baseUrl}}/api/Paiement
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "montant": 150.00,
+  "devise": "USD",
+  "modePaiement": "Mobile Money",
+  "statutPaiement": "Confirme",
+  "referenceTransaction": "MM-2025-10-27-001234",
+  "commentaire": "Paiement des frais de scolarité - Octobre 2025",
+  "idFrais": 1,
+  "idEleve": 1,
+  "idUtilisateur": 1
+}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### ÉTAPE 8: EFFECTUER UN PAIEMENT ⏳ EN ATTENTE
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# @name paiementEnAttente
+POST {{baseUrl}}/api/Paiement
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "montant": 75.00,
+  "devise": "USD",
+  "modePaiement": "Carte bancaire",
+  "statutPaiement": "En attente",
+  "referenceTransaction": "CB-2025-10-27-005678",
+  "commentaire": "Paiement partiel en cours de validation",
+  "idFrais": 1,
+  "idEleve": 1,
+  "idUtilisateur": 1
+}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### ÉTAPE 9: EFFECTUER UN PAIEMENT ❌ ÉCHOUÉ
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# @name paiementEchoue
+POST {{baseUrl}}/api/Paiement
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "montant": 50.00,
+  "devise": "USD",
+  "modePaiement": "Carte bancaire",
+  "statutPaiement": "Echoue",
+  "referenceTransaction": "CB-2025-10-27-009999",
+  "commentaire": "Tentative de paiement échouée - Carte expirée",
+  "idFrais": 1,
+  "idEleve": 1,
+  "idUtilisateur": 1
+}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### ÉTAPE 10: PAIEMENT EN CASH 💵
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# @name paiementCash
+POST {{baseUrl}}/api/Paiement
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "montant": 200.00,
+  "devise": "USD",
+  "modePaiement": "Cash",
+  "statutPaiement": "Confirme",
+  "referenceTransaction": "CASH-2025-10-27-00123",
+  "commentaire": "Paiement en espèces à la caisse",
+  "idFrais": 1,
+  "idEleve": 1,
+  "idUtilisateur": 1
+}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 📊 VÉRIFICATIONS & DEBUG
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Vérifier les devices du tuteur
+# @name verifierDevicesTuteur
+GET {{baseUrl}}/api/UserDevice/utilisateur/{{idUtilisateurTuteur}}
+Authorization: Bearer {{tuteurToken}}
+
+### Vérifier les paiements de l'élève
+# @name verifierPaiementsEleve
+GET {{baseUrl}}/api/Paiement/eleve/{{idEleve}}
+Authorization: Bearer {{token}}
+
+### Vérifier tous les paiements de l'école
+# @name verifierPaiementsEcole
+GET {{baseUrl}}/api/Paiement/ecole/1
+Authorization: Bearer {{token}}
+
+### Envoyer une notification de test directement au tuteur
+# @name testNotificationDirecte
+POST {{baseUrl}}/api/NotificationPush/utilisateur/{{idUtilisateurTuteur}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "titre": "💰 Test Notification Paiement",
+  "corps": "Notification de test pour vérifier les paiements",
+  "donnees": {
+    "type": "TEST_PAIEMENT",
+    "timestamp": "2025-10-27T12:00:00"
+  }
+}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 🧪 TESTS AVEC DES DONNÉES EXISTANTES (IDs connus)
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Scénario: Élève existant avec tuteur et device déjà enregistrés
+POST {{baseUrl}}/api/Paiement
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "montant": 100.00,
+  "devise": "USD",
+  "modePaiement": "Mobile Money",
+  "statutPaiement": "Confirme",
+  "referenceTransaction": "MM-TEST-001",
+  "commentaire": "Test paiement avec élève existant",
+  "idFrais": 1,
+  "idEleve": 1,
+  "idUtilisateur": 1
+}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 🎯 RÉSULTATS ATTENDUS
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+###
+### ✅ SUCCÈS SI:
+### 1. Le paiement retourne HTTP 201 Created
+### 2. Les logs montrent: "✅ Notification paiement envoyée au tuteur..."
+### 3. Le device du tuteur reçoit la notification push
+### 4. La notification contient:
+###    PAIEMENT CONFIRMÉ:
+###    - Titre: "✅ Paiement [NomEleve]"
+###    - Corps: "Montant: 150.00 USD\nType: Frais de scolarité\n..."
+###
+###    PAIEMENT EN ATTENTE:
+###    - Titre: "⏳ Paiement [NomEleve]"
+###    - Corps: "... ⏳ Paiement en cours de validation"
+###
+###    PAIEMENT ÉCHOUÉ:
+###    - Titre: "❌ Paiement [NomEleve]"
+###    - Corps: "... ❌ Paiement échoué - Veuillez réessayer"
+###
+### 5. Data contient: type=PAIEMENT_ELEVE, idPaiement, montant, etc.
+###
+### ⚠️ CAS GÉRÉS SANS ERREUR:
+### 1. Élève sans tuteur lié → Paiement OK, pas de notification
+### 2. Tuteur sans compte utilisateur → Paiement OK, log info
+### 3. Tuteur sans device actif → Paiement OK, log warning
+### 4. Erreur Firebase → Paiement OK, log error (ne bloque pas)
+###
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 💡 EXEMPLES DE NOTIFICATIONS REÇUES
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+###
+### EXEMPLE 1: Paiement confirmé Mobile Money
+### ┌────────────────────────────────────────────────────────┐
+### │ ✅ Paiement MUKENDI Grace Divine                      │
+### │ Montant: 150.00 USD                                   │
+### │ Type: Frais de scolarité                              │
+### │ Mode: Mobile Money                                    │
+### │ Date: 27/10/2025 12:30                                │
+### │ ✅ Paiement confirmé avec succès                      │
+### │ 📝 Paiement des frais de scolarité - Octobre 2025    │
+### └────────────────────────────────────────────────────────┘
+###
+### EXEMPLE 2: Paiement en attente Carte bancaire
+### ┌────────────────────────────────────────────────────────┐
+### │ ⏳ Paiement MUKENDI Grace Divine                      │
+### │ Montant: 75.00 USD                                    │
+### │ Type: Frais de scolarité                              │
+### │ Mode: Carte bancaire                                  │
+### │ Date: 27/10/2025 14:15                                │
+### │ ⏳ Paiement en cours de validation                    │
+### └────────────────────────────────────────────────────────┘
+###
+### EXEMPLE 3: Paiement échoué
+### ┌────────────────────────────────────────────────────────┐
+### │ ❌ Paiement MUKENDI Grace Divine                      │
+### │ Montant: 50.00 USD                                    │
+### │ Type: Frais de scolarité                              │
+### │ Mode: Carte bancaire                                  │
+### │ Date: 27/10/2025 15:45                                │
+### │ ❌ Paiement échoué - Veuillez réessayer               │
+### │ 📝 Tentative de paiement échouée - Carte expirée     │
+### └────────────────────────────────────────────────────────┘
+###
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+

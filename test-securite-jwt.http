@@ -1,0 +1,227 @@
+### 🔐 TESTS DE SÉCURITÉ JWT
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 1️⃣ TEST SANS TOKEN (doit échouer avec 401 Unauthorized)
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### ❌ Tentative d'accès sans authentification
+GET https://localhost:7102/api/Eleve
+
+### Résultat attendu : 401 Unauthorized
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 2️⃣ AUTHENTIFICATION (endpoint public - fonctionne sans token)
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### ✅ Login avec Super-Admin (endpoint public)
+POST https://localhost:7102/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "superadmin@kelasinabiso.cd",
+  "motDePasse": "Super-Admin"
+}
+
+### Résultat attendu : 200 OK avec token JWT
+### Copiez le token retourné dans "accessToken"
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 3️⃣ TESTS AVEC TOKEN VALIDE (doit réussir avec 200 OK)
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### ⚠️ IMPORTANT : Remplacez {VOTRE_TOKEN} par le token obtenu ci-dessus
+
+### ✅ Accès à la liste des élèves (protégé)
+GET https://localhost:7102/api/Eleve
+Authorization: Bearer {VOTRE_TOKEN}
+
+### ✅ Accès à la liste des écoles (protégé)
+GET https://localhost:7102/api/Ecole
+Authorization: Bearer {VOTRE_TOKEN}
+
+### ✅ Accès à la liste des inscriptions (protégé)
+GET https://localhost:7102/api/Inscription
+Authorization: Bearer {VOTRE_TOKEN}
+
+### ✅ Accès à la liste des notes (protégé)
+GET https://localhost:7102/api/Note
+Authorization: Bearer {VOTRE_TOKEN}
+
+### ✅ Accès à la liste des paiements (protégé)
+GET https://localhost:7102/api/Paiement
+Authorization: Bearer {VOTRE_TOKEN}
+
+### ✅ Accès aux messages (protégé)
+GET https://localhost:7102/api/Message
+Authorization: Bearer {VOTRE_TOKEN}
+
+### ✅ Accès aux présences/pointages (protégé)
+GET https://localhost:7102/api/Presence
+Authorization: Bearer {VOTRE_TOKEN}
+
+### ✅ Accès aux notifications (protégé)
+GET https://localhost:7102/api/Notification
+Authorization: Bearer {VOTRE_TOKEN}
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 4️⃣ TEST AVEC TOKEN INVALIDE (doit échouer avec 401 Unauthorized)
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### ❌ Token invalide
+GET https://localhost:7102/api/Eleve
+Authorization: Bearer INVALID_TOKEN_123456
+
+### Résultat attendu : 401 Unauthorized
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 5️⃣ TEST AVEC TOKEN EXPIRÉ (doit échouer avec 401 Unauthorized)
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Note : Les tokens expirent après la durée configurée (720 minutes par défaut)
+### Utilisez un ancien token pour tester
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 6️⃣ TEST CRÉATION D'INSCRIPTION AVEC TOKEN (doit réussir)
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### ✅ Créer une inscription (protégé)
+POST https://localhost:7102/api/Inscription/new/Ekelasi School
+Authorization: Bearer {VOTRE_TOKEN}
+Content-Type: application/json
+
+{
+  "type": "Inscription",
+  "idEcole": 1,
+  "idClasse": 1,
+  "idAnneeScolaire": 2,
+  "dateInscription": "2025-10-25T14:00:00",
+  "statutInscription": "Actif",
+  "nomEleve": "Mukendi",
+  "postnomEleve": "Kabila",
+  "prenomEleve": "Grace",
+  "genreEleve": "Feminin",
+  "dateNaissanceEleve": "2016-05-10",
+  "lieuNaissanceEleve": "Kinshasa",
+  "nationaliteEleve": "Congolaise",
+  "provinceEleve": "Kinshasa",
+  "villeEleve": "Kinshasa",
+  "communeEleve": "Gombe",
+  "quartierEleve": "Centre",
+  "avenueEleve": "Avenue Kasa-Vubu",
+  "numeroEleve": "456",
+  "nomCompletTuteur": "Jean Pierre Mukendi",
+  "genreTuteur": "Masculin",
+  "emailTuteur": "jp.mukendi@example.com",
+  "telephoneTuteur": "+243998765432"
+}
+
+### Résultat attendu : 201 Created + email envoyé au parent
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 7️⃣ TEST CHANGEMENT DE MOT DE PASSE (protégé - nécessite token)
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### ✅ Changer le mot de passe (protégé)
+POST https://localhost:7102/api/Utilisateur/changer_mot_de_passe
+Authorization: Bearer {VOTRE_TOKEN}
+Content-Type: application/json
+
+{
+  "idUtilisateur": 1,
+  "ancienMotDePasse": "Super-Admin",
+  "nouveauMotDePasse": "NouveauMotDePasse123!",
+  "confirmationMotDePasse": "NouveauMotDePasse123!"
+}
+
+### Résultat attendu : 200 OK
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 📊 RÉSUMÉ DES TESTS
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### ✅ Endpoints PUBLICS (fonctionnent sans token) :
+### - POST /api/Utilisateur/authentifier
+
+### 🔒 Endpoints PROTÉGÉS (nécessitent un token) :
+### - Tous les autres endpoints (GET, POST, PUT, DELETE)
+### - Élèves, Tuteurs, Agents, Écoles, Classes, Cours
+### - Notes, Paiements, Frais, Inscriptions
+### - Messages, Notifications, Documents
+### - Présences, Évaluations, Ressources pédagogiques
+### - Toutes les vues (Vue_Utilisateurs, Vue_Eleves, etc.)
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 🔑 FORMAT DU TOKEN
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Header HTTP :
+### Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM...
+
+### ⚠️ Le mot "Bearer" est OBLIGATOIRE avant le token
+### ⚠️ Un espace est REQUIS entre "Bearer" et le token
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### 🧪 COMMENT TESTER AVEC SWAGGER
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### 1. Ouvrez : https://localhost:7102/swagger
+### 2. Cliquez sur le bouton "Authorize" 🔓 en haut à droite
+### 3. Dans le champ "Value", entrez : Bearer {votre_token}
+###    Exemple : Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+### 4. Cliquez sur "Authorize"
+### 5. Le bouton devient verrouillé 🔒
+### 6. Tous les appels Swagger incluront automatiquement le token
+
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### ✅ CONTRÔLEURS PROTÉGÉS (Total : 26 contrôleurs)
+### ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Données sensibles :
+### ✅ EleveController
+### ✅ TuteurController
+### ✅ AgentController
+### ✅ UtilisateurController (avec endpoint public pour login)
+
+### Gestion académique :
+### ✅ EcoleController
+### ✅ ClasseController
+### ✅ CoursController
+### ✅ InscriptionController
+### ✅ AnneeScolaireController
+### ✅ DirectionController
+### ✅ SectionController
+### ✅ OptionController
+### ✅ AffectationCoursController
+### ✅ VacationController
+
+### Évaluations et pédagogie :
+### ✅ NoteController
+### ✅ EvaluationController
+### ✅ RessourcePedagogiqueController
+### ✅ DocumentController
+
+### Transactions :
+### ✅ PaiementController
+### ✅ FraisController
+
+### Communication :
+### ✅ MessageController
+### ✅ GroupeMessageController
+### ✅ NotificationController
+### ✅ NotificationPushController
+### ✅ UserDeviceController
+
+### Pointage/Présence :
+### ✅ PresenceController
+
+### Vues SQL :
+### ✅ V_UtilisateurController
+### ✅ V_EleveController
+### ✅ EleveParEcoleController
+### ✅ VuePaiementsFraisParEcoleController
+### ✅ VuePointagePresenceParEcoleController
+### ✅ VueRepertoireAgentsParParentController
+
+### Gestion des rôles :
+### ✅ RoleController
+

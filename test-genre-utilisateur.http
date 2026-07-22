@@ -1,0 +1,50 @@
+### Test de création d'un utilisateur avec le champ Genre
+POST http://localhost:5000/api/Utilisateur
+Content-Type: application/json
+
+{
+  "nomUtilisateur": "Test",
+  "postNomUtilisateur": "Utilisateur",
+  "prenomUtilisateur": "Genre",
+  "email": "test.genre@example.com",
+  "téléphone": "+243123456789",
+  "genre": "Masculin",
+  "motDePasseHash": "password123",
+  "idRole": 1,
+  "idEcole": 1,
+  "province": "Kinshasa",
+  "ville": "Kinshasa",
+  "commune": "Gombe",
+  "quartier": "Centre-ville",
+  "avenue": "Avenue du Commerce",
+  "numero": "123"
+}
+
+### Test de récupération d'un utilisateur par ID
+GET http://localhost:5000/api/Utilisateur/1
+
+### Test de récupération d'un utilisateur via la vue V_Utilisateur
+GET http://localhost:5000/api/V_Utilisateur/1
+
+### Test de mise à jour d'un utilisateur avec le champ Genre
+PUT http://localhost:5000/api/Utilisateur/1
+Content-Type: application/json
+
+{
+  "idUtilisateur": 1,
+  "nomUtilisateur": "Test",
+  "postNomUtilisateur": "Utilisateur",
+  "prenomUtilisateur": "Genre",
+  "email": "test.genre@example.com",
+  "téléphone": "+243123456789",
+  "genre": "Féminin",
+  "motDePasseHash": "password123",
+  "idRole": 1,
+  "idEcole": 1,
+  "province": "Kinshasa",
+  "ville": "Kinshasa",
+  "commune": "Gombe",
+  "quartier": "Centre-ville",
+  "avenue": "Avenue du Commerce",
+  "numero": "123"
+}

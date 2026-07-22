@@ -1,0 +1,132 @@
+### ═══════════════════════════════════════════════════════════════════
+### 🧪 TESTS : Validation des Corrections du Calcul du Nombre d'Élèves
+### ═══════════════════════════════════════════════════════════════════
+
+@baseUrl = https://localhost:7102
+@token = YOUR_JWT_TOKEN_HERE
+
+### ═══════════════════════════════════════════════════════════════════
+### ÉTAPE 0 : Authentification (obtenir le token)
+### ═══════════════════════════════════════════════════════════════════
+
+POST {{baseUrl}}/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "email": "admin@example.com",
+  "motDePasse": "Admin"
+}
+
+### ═══════════════════════════════════════════════════════════════════
+### TEST 1 : Dashboard Global - Vérifier NombreEleves vs NombreElevesActifs
+### ═══════════════════════════════════════════════════════════════════
+
+GET {{baseUrl}}/api/Dashboard/global?idEcole=1
+Authorization: Bearer {{token}}
+
+### ✅ Vérifications attendues :
+### - statistiques.nombreEleves : Tous les élèves (actifs + inactifs)
+### - statistiques.nombreElevesActifs : Uniquement les actifs
+### - nombreEleves >= nombreElevesActifs (jamais égal sauf si tous actifs)
+### - repartitionEleves.totalEleves : Doit correspondre à nombreEleves
+### - repartitionEleves.totalElevesActifs : Doit correspondre à nombreElevesActifs
+
+### ═══════════════════════════════════════════════════════════════════
+### TEST 2 : Dashboard Présence - Vérifier Cohérence
+### ═══════════════════════════════════════════════════════════════════
+
+GET {{baseUrl}}/api/Dashboard/presence?idEcole=1
+Authorization: Bearer {{token}}
+
+### ✅ Vérifications attendues :
+### - Les données de présence sont cohérentes
+### - Les effectifs correspondent aux nombres d'élèves
+
+### ═══════════════════════════════════════════════════════════════════
+### TEST 3 : Dashboard Paiement - Vérifier NombreEleves
+### ═══════════════════════════════════════════════════════════════════
+
+GET {{baseUrl}}/api/Dashboard/paiement?idEcole=1
+Authorization: Bearer {{token}}
+
+### ✅ Vérifications attendues :
+### - resume.nombreEleves : Uniquement les élèves actifs (logique métier)
+### - resume.elevesAyantPaye : Nombre d'élèves ayant payé
+### - resume.elevesEnRetard : nombreEleves - elevesAyantPaye
+
+### ═══════════════════════════════════════════════════════════════════
+### TEST 4 : Dashboard Super-Admin - Vérifier Statistiques Globales
+### ═══════════════════════════════════════════════════════════════════
+
+GET {{baseUrl}}/api/Dashboard/super-admin
+Authorization: Bearer {{token}}
+
+### ✅ Vérifications attendues :
+### - statistiquesGlobales.totalEleves : Tous les élèves (actifs + inactifs)
+### - statistiquesGlobales.totalElevesActifs : Uniquement les actifs
+### - totalEleves >= totalElevesActifs
+### - parEcole[].nombreEleves : Tous les élèves par école
+### - parEcole[].nombreElevesActifs : Uniquement les actifs par école
+
+### ═══════════════════════════════════════════════════════════════════
+### TEST 5 : Comparaison avec Metrics (Référence)
+### ═══════════════════════════════════════════════════════════════════
+
+GET {{baseUrl}}/api/Metrics/general
+Authorization: Bearer {{token}}
+
+### ✅ Vérifications attendues :
+### - eleves.total : Tous les élèves (sans filtre par école)
+### - eleves.actifs : Uniquement les actifs
+### - Comparer avec Dashboard Super-Admin pour cohérence
+
+### ═══════════════════════════════════════════════════════════════════
+### TEST 6 : Vérification des Répartitions
+### ═══════════════════════════════════════════════════════════════════
+
+GET {{baseUrl}}/api/Dashboard/global?idEcole=1
+Authorization: Bearer {{token}}
+
+### ✅ Vérifications attendues :
+### - repartitionEleves.parDirection[].nombreEleves : Total (actifs + inactifs)
+### - repartitionEleves.parDirection[].nombreElevesActifs : Uniquement actifs
+### - repartitionEleves.parSection[].nombreEleves : Total (actifs + inactifs)
+### - repartitionEleves.parSection[].nombreElevesActifs : Uniquement actifs
+### - repartitionEleves.parOption[].nombreEleves : Total (actifs + inactifs)
+### - repartitionEleves.parOption[].nombreElevesActifs : Uniquement actifs
+### - La somme des répartitions doit correspondre au total
+
+### ═══════════════════════════════════════════════════════════════════
+### TEST 7 : Vérification des Pourcentages
+### ═══════════════════════════════════════════════════════════════════
+
+GET {{baseUrl}}/api/Dashboard/global?idEcole=1
+Authorization: Bearer {{token}}
+
+### ✅ Vérifications attendues :
+### - repartitionEleves.parDirection[].pourcentage : Calculé sur totalEleves
+### - repartitionEleves.parSection[].pourcentage : Calculé sur totalEleves
+### - repartitionEleves.parOption[].pourcentage : Calculé sur totalEleves
+### - La somme des pourcentages doit être proche de 100% (arrondi)
+
+### ═══════════════════════════════════════════════════════════════════
+### NOTES IMPORTANTES
+### ═══════════════════════════════════════════════════════════════════
+
+### 🔍 Points à Vérifier :
+### 1. nombreEleves >= nombreElevesActifs (toujours vrai)
+### 2. Si nombreEleves == nombreElevesActifs, alors tous les élèves sont actifs
+### 3. Les répartitions doivent utiliser le totalEleves pour les pourcentages
+### 4. Dashboard Paiement compte uniquement les actifs (logique métier)
+
+### 📊 Exemple de Résultat Attendu :
+### {
+###   "statistiques": {
+###     "nombreEleves": 120,        // ✅ Tous les élèves
+###     "nombreElevesActifs": 100   // ✅ Uniquement actifs
+###   },
+###   "repartitionEleves": {
+###     "totalEleves": 120,         // ✅ Doit correspondre à nombreEleves
+###     "totalElevesActifs": 100    // ✅ Doit correspondre à nombreElevesActifs
+###   }
+### }

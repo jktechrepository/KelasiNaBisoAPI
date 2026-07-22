@@ -1,0 +1,56 @@
+### Test de création d'une école avec utilisateur Admin automatique
+POST https://192.168.43.139:7155/api/Ecole
+Content-Type: application/json
+
+{
+  "nom": "École Test Admin",
+  "slogan": "Excellence et Innovation",
+  "type": "Privée",
+  "capaciteEleve": 500, 
+  "description": "École de test pour vérifier la création automatique d'utilisateur Admin",
+  "telephone": "+243123456789",
+  "emailContact": "contact@ecoletest.cd",
+  "nomCompletResponsable": "Marie Dupont",
+  "genreResponsable": "Feminin",
+  "siteWeb": "https://ecoletest.cd",
+  "province": "Kinshasa",
+  "ville": "Kinshasa",
+  "commune": "Gombe",
+  "quartier": "Centre-ville",
+  "avenue": "Avenue du Commerce",
+  "numero": "123"
+}
+
+### Test d'authentification avec l'utilisateur Admin créé automatiquement
+# ✨ NOUVEAU : Email de l'école utilisé pour l'administrateur
+POST https://192.168.43.139:7155/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "email0uTelephone": "jonathankalambayi28gmail.com",
+  "motDePasse": "Admin"
+}
+
+### Test d'authentification avec le téléphone de l'utilisateur Admin
+POST https://192.168.43.139:7155/api/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "email0uTelephone": "+243123456789",
+  "motDePasse": "Admin"
+}
+
+### Test avec genre Masculin
+POST https://192.168.43.139:7155/api/Ecole
+Content-Type: application/json
+
+{
+  "nom": "École Test Masculin",
+  "slogan": "Excellence",
+  "telephone": "+243987654321",
+  "emailContact": "admin@ecoletest.cd",
+  "nomCompletResponsable": "Jean Martin",
+  "genreResponsable": "Masculin",
+  "province": "Kinshasa",
+  "ville": "Kinshasa"
+}

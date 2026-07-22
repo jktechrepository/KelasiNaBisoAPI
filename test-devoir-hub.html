@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Hub SignalR - Devoirs à Domicile</title>
+    <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@7.0.0/dist/browser/signalr.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+        }
+        input, button {
+            padding: 10px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        input[type="text"] {
+            width: 500px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        #status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .status-connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .status-connecting {
+            background: #fff3cd;
+            color: #856404;
+        }
+        #messages {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .message {
+            background: #f8f9fa;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 4px solid #007bff;
+        }
+        .message h3 {
+            margin-top: 0;
+            color: #007bff;
+        }
+        pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        .info {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Test Hub SignalR - Devoirs à Domicile</h1>
+        
+        <div class="info">
+            <strong>📋 Instructions :</strong>
+            <ol>
+                <li>Obtenez un token JWT via l'API : <code>POST /api/Utilisateur/Authentifier</code></li>
+                <li>Collez le token dans le champ ci-dessous</li>
+                <li>Cliquez sur "Se connecter"</li>
+                <li>Créez un devoir via l'API pour voir les notifications en temps réel</li>
+            </ol>
+        </div>
+
+        <div>
+            <label for="apiUrl">URL de l'API :</label><br>
+            <input type="text" id="apiUrl" value="https://localhost:7102" placeholder="https://localhost:7102">
+        </div>
+
+        <div style="margin-top: 15px;">
+            <label for="token">Token JWT :</label><br>
+            <input type="text" id="token" placeholder="Collez votre token JWT ici" style="width: 100%;">
+        </div>
+
+        <div style="margin-top: 15px;">
+            <button onclick="connect()" id="btnConnect">🔌 Se connecter</button>
+            <button onclick="disconnect()" id="btnDisconnect" disabled>❌ Se déconnecter</button>
+            <button onclick="getStatus()" id="btnStatus" disabled>📊 Statut</button>
+        </div>
+
+        <div id="status" class="status-disconnected">❌ Déconnecté</div>
+    </div>
+
+    <div class="container">
+        <h2>📨 Messages reçus</h2>
+        <button onclick="clearMessages()">🗑️ Effacer</button>
+        <div id="messages"></div>
+    </div>
+
+    <script>
+        let connection = null;
+
+        function getHubUrl() {
+            const apiUrl = document.getElementById('apiUrl').value.trim();
+            return `${apiUrl}/hubs/devoirs-adomicile`;
+        }
+
+        async function connect() {
+            const token = document.getElementById('token').value.trim();
+            
+            if (!token) {
+                updateStatus('❌ Veuillez entrer un token JWT', 'disconnected');
+                return;
+            }
+
+            const hubUrl = getHubUrl();
+            updateStatus('🔄 Connexion en cours...', 'connecting');
+            
+            try {
+                connection = new signalR.HubConnectionBuilder()
+                    .withUrl(hubUrl, {
+                        accessTokenFactory: () => token,
+                        transport: signalR.HttpTransportType.WebSockets,
+                        skipNegotiation: false
+                    })
+                    .withAutomaticReconnect({
+                        nextRetryDelayInMilliseconds: retryContext => {
+                            if (retryContext.previousRetryCount === 0) return 0;
+                            if (retryContext.previousRetryCount === 1) return 2000;
+                            if (retryContext.previousRetryCount === 2) return 10000;
+                            return 30000;
+                        }
+                    })
+                    .configureLogging(signalR.LogLevel.Information)
+                    .build();
+
+                // ═══════════════════════════════════════════════════════════════════
+                // 📡 ÉCOUTER LES ÉVÉNEMENTS
+                // ═══════════════════════════════════════════════════════════════════
+
+                // Nouveau devoir (pour tous)
+                connection.on("NouveauDevoir", (devoir) => {
+                    addMessage('📚 Nouveau Devoir', devoir);
+                    console.log('Nouveau devoir reçu :', devoir);
+                });
+
+                // Nouveau devoir pour parent (personnalisé)
+                connection.on("NouveauDevoirParent", (data) => {
+                    addMessage('👨‍👩‍👧‍👦 Nouveau Devoir (Parent)', data);
+                    console.log('Nouveau devoir parent reçu :', data);
+                });
+
+                // Confirmation de connexion à un groupe classe
+                connection.on("JoinedClasseGroup", (idClasse) => {
+                    addMessage('✅ Groupe rejoint', { message: `Connecté au groupe classe_${idClasse}`, idClasse });
+                });
+
+                // Confirmation de déconnexion d'un groupe classe
+                connection.on("LeftClasseGroup", (idClasse) => {
+                    addMessage('❌ Groupe quitté', { message: `Déconnecté du groupe classe_${idClasse}`, idClasse });
+                });
+
+                // Statut de connexion
+                connection.on("ConnectionStatus", (status) => {
+                    addMessage('📊 Statut de connexion', status);
+                });
+
+                // ═══════════════════════════════════════════════════════════════════
+                // 🔌 GESTION DES ÉVÉNEMENTS DE CONNEXION
+                // ═══════════════════════════════════════════════════════════════════
+
+                connection.onclose((error) => {
+                    updateStatus('❌ Connexion fermée', 'disconnected');
+                    updateButtons(false);
+                    if (error) {
+                        addMessage('❌ Erreur de connexion', { error: error.message });
+                    }
+                });
+
+                connection.onreconnecting((error) => {
+                    updateStatus('🔄 Reconnexion en cours...', 'connecting');
+                    addMessage('🔄 Reconnexion', { message: 'Tentative de reconnexion...' });
+                });
+
+                connection.onreconnected((connectionId) => {
+                    updateStatus('✅ Reconnexion réussie', 'connected');
+                    addMessage('✅ Reconnexion réussie', { connectionId });
+                });
+
+                // Démarrer la connexion
+                await connection.start();
+                updateStatus('✅ Connecté au hub Devoirs', 'connected');
+                updateButtons(true);
+                addMessage('✅ Connexion établie', { 
+                    message: 'Connecté avec succès au hub Devoirs à Domicile',
+                    hubUrl: hubUrl
+                });
+
+                // Demander le statut de connexion
+                try {
+                    await connection.invoke("GetConnectionStatus");
+                } catch (error) {
+                    console.error('Erreur lors de la demande de statut :', error);
+                }
+
+            } catch (error) {
+                updateStatus('❌ Erreur : ' + error.message, 'disconnected');
+                addMessage('❌ Erreur de connexion', { 
+                    error: error.message,
+                    stack: error.stack
+                });
+                updateButtons(false);
+            }
+        }
+
+        async function disconnect() {
+            if (connection) {
+                try {
+                    await connection.stop();
+                    connection = null;
+                    updateStatus('❌ Déconnecté', 'disconnected');
+                    updateButtons(false);
+                    addMessage('❌ Déconnexion', { message: 'Déconnecté du hub' });
+                } catch (error) {
+                    console.error('Erreur lors de la déconnexion :', error);
+                }
+            }
+        }
+
+        async function getStatus() {
+            if (connection && connection.state === signalR.HubConnectionState.Connected) {
+                try {
+                    await connection.invoke("GetConnectionStatus");
+                } catch (error) {
+                    addMessage('❌ Erreur statut', { error: error.message });
+                }
+            } else {
+                addMessage('⚠️ Non connecté', { message: 'Vous devez être connecté pour obtenir le statut' });
+            }
+        }
+
+        function updateStatus(message, state) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status-${state}`;
+        }
+
+        function updateButtons(connected) {
+            document.getElementById('btnConnect').disabled = connected;
+            document.getElementById('btnDisconnect').disabled = !connected;
+            document.getElementById('btnStatus').disabled = !connected;
+        }
+
+        function addMessage(title, data) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+            messageDiv.innerHTML = `
+                <h3>${title}</h3>
+                <pre>${JSON.stringify(data, null, 2)}</pre>
+                <small>${new Date().toLocaleString('fr-FR')}</small>
+            `;
+            messagesDiv.insertBefore(messageDiv, messagesDiv.firstChild);
+        }
+
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = '';
+        }
+
+        // Déconnexion automatique à la fermeture de la page
+        window.addEventListener('beforeunload', () => {
+            if (connection) {
+                connection.stop();
+            }
+        });
+    </script>
+</body>
+</html>
+

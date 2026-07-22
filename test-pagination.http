@@ -1,0 +1,218 @@
+### 🚀 TESTS DE PAGINATION - KELASINABISOAPI
+### Documentation complète du système de pagination
+
+@baseUrl = http://localhost:5000
+@token = YOUR_JWT_TOKEN_HERE
+
+################################################################################
+# 📚 SECTION 1 : PAGINATION ÉLÈVES (OFFSET-BASED)
+################################################################################
+
+### ✅ TEST 1.1 : Récupérer la première page (défaut : 50 élèves)
+GET {{baseUrl}}/api/Eleve/paged
+Authorization: Bearer {{token}}
+
+### ✅ TEST 1.2 : Récupérer la page 2 avec 20 élèves par page
+GET {{baseUrl}}/api/Eleve/paged?PageNumber=2&PageSize=20
+Authorization: Bearer {{token}}
+
+### ✅ TEST 1.3 : Recherche d'élèves (par nom ou matricule)
+GET {{baseUrl}}/api/Eleve/paged?SearchTerm=Jean&PageSize=10
+Authorization: Bearer {{token}}
+
+### ✅ TEST 1.4 : Tri par NomComplet décroissant
+GET {{baseUrl}}/api/Eleve/paged?SortBy=NomComplet&SortDescending=true&PageSize=15
+Authorization: Bearer {{token}}
+
+### ✅ TEST 1.5 : Tri par DateCreation avec recherche
+GET {{baseUrl}}/api/Eleve/paged?SortBy=DateCreation&SortDescending=true&SearchTerm=ELEVE&PageSize=25
+Authorization: Bearer {{token}}
+
+### ✅ TEST 1.6 : Inclure les élèves inactifs
+GET {{baseUrl}}/api/Eleve/paged?IncludeInactive=true&PageSize=30
+Authorization: Bearer {{token}}
+
+### ✅ TEST 1.7 : Page vide (au-delà des données disponibles)
+GET {{baseUrl}}/api/Eleve/paged?PageNumber=999&PageSize=10
+Authorization: Bearer {{token}}
+
+### ✅ TEST 1.8 : Taille de page maximale (100 élèves)
+GET {{baseUrl}}/api/Eleve/paged?PageSize=100
+Authorization: Bearer {{token}}
+
+### ⚠️ TEST 1.9 : Taille de page invalide (sera limitée à 100)
+GET {{baseUrl}}/api/Eleve/paged?PageSize=500
+Authorization: Bearer {{token}}
+
+################################################################################
+# 📱 SECTION 2 : PAGINATION ÉLÈVES (CURSOR-BASED - MOBILE)
+################################################################################
+
+### ✅ TEST 2.1 : Première page (pas de curseur)
+GET {{baseUrl}}/api/Eleve/cursor-paged?Limit=20
+Authorization: Bearer {{token}}
+
+### ✅ TEST 2.2 : Page suivante (utiliser NextCursor de la réponse précédente)
+# Remplacer "123" par le NextCursor obtenu du test précédent
+GET {{baseUrl}}/api/Eleve/cursor-paged?Cursor=123&Limit=20
+Authorization: Bearer {{token}}
+
+### ✅ TEST 2.3 : Recherche avec cursor pagination
+GET {{baseUrl}}/api/Eleve/cursor-paged?SearchTerm=Marie&Limit=15
+Authorization: Bearer {{token}}
+
+### ✅ TEST 2.4 : Limite maximale (100)
+GET {{baseUrl}}/api/Eleve/cursor-paged?Limit=100
+Authorization: Bearer {{token}}
+
+### ✅ TEST 2.5 : Limite invalide (sera ajustée à 100)
+GET {{baseUrl}}/api/Eleve/cursor-paged?Limit=500
+Authorization: Bearer {{token}}
+
+################################################################################
+# 🎓 SECTION 3 : PAGINATION PAR CLASSE
+################################################################################
+
+### ✅ TEST 3.1 : Élèves d'une classe spécifique (paginé)
+GET {{baseUrl}}/api/Eleve/classe/1/paged?PageSize=15
+Authorization: Bearer {{token}}
+
+### ✅ TEST 3.2 : Recherche dans une classe
+GET {{baseUrl}}/api/Eleve/classe/1/paged?SearchTerm=Paul&PageSize=10
+Authorization: Bearer {{token}}
+
+### ✅ TEST 3.3 : Tri des élèves d'une classe
+GET {{baseUrl}}/api/Eleve/classe/1/paged?SortBy=NomComplet&SortDescending=false
+Authorization: Bearer {{token}}
+
+################################################################################
+# ⚠️ SECTION 4 : TESTS DES ANCIENNES MÉTHODES (DEPRECATED)
+################################################################################
+
+### ⚠️ TEST 4.1 : Méthode non paginée (DEPRECATED - À ÉVITER)
+# Cette méthode est marquée [Obsolete] et peut retourner des milliers d'élèves
+# Utilisée uniquement pour comparaison de performance
+GET {{baseUrl}}/api/Eleve
+Authorization: Bearer {{token}}
+
+### ⚠️ TEST 4.2 : Élèves par classe (non paginé - DEPRECATED)
+GET {{baseUrl}}/api/Eleve/classe/1
+Authorization: Bearer {{token}}
+
+################################################################################
+# 📊 SECTION 5 : TESTS DE PERFORMANCE
+################################################################################
+
+### 📊 TEST 5.1 : Mesurer le temps de réponse (petite page)
+# @name test_small_page
+GET {{baseUrl}}/api/Eleve/paged?PageSize=10
+Authorization: Bearer {{token}}
+
+### 📊 TEST 5.2 : Mesurer le temps de réponse (grande page)
+# @name test_large_page
+GET {{baseUrl}}/api/Eleve/paged?PageSize=100
+Authorization: Bearer {{token}}
+
+### 📊 TEST 5.3 : Mesurer avec recherche complexe
+# @name test_search
+GET {{baseUrl}}/api/Eleve/paged?SearchTerm=a&PageSize=50
+Authorization: Bearer {{token}}
+
+################################################################################
+# 🧪 SECTION 6 : TESTS DE VALIDATION
+################################################################################
+
+### ❌ TEST 6.1 : PageNumber négatif (sera ajusté à 1)
+GET {{baseUrl}}/api/Eleve/paged?PageNumber=-5&PageSize=10
+Authorization: Bearer {{token}}
+
+### ❌ TEST 6.2 : PageNumber zéro (sera ajusté à 1)
+GET {{baseUrl}}/api/Eleve/paged?PageNumber=0&PageSize=10
+Authorization: Bearer {{token}}
+
+### ❌ TEST 6.3 : PageSize négatif (sera ajusté à 1)
+GET {{baseUrl}}/api/Eleve/paged?PageSize=-10
+Authorization: Bearer {{token}}
+
+### ❌ TEST 6.4 : PageSize zéro (sera ajusté à 1)
+GET {{baseUrl}}/api/Eleve/paged?PageSize=0
+Authorization: Bearer {{token}}
+
+### ❌ TEST 6.5 : SearchTerm très long (max 200 caractères)
+GET {{baseUrl}}/api/Eleve/paged?SearchTerm=UnRechercheTresLongueQuiDepasse200CaracteresUnRechercheTresLongueQuiDepasse200CaracteresUnRechercheTresLongueQuiDepasse200CaracteresUnRechercheTresLongueQuiDepasse200CaracteresUnRechercheTresLongueQuiDepasse200Caracteres&PageSize=10
+Authorization: Bearer {{token}}
+
+### ❌ TEST 6.6 : Champ de tri invalide (sera ignoré)
+GET {{baseUrl}}/api/Eleve/paged?SortBy=ChampInexistant&PageSize=10
+Authorization: Bearer {{token}}
+
+################################################################################
+# 📋 ANALYSE DES RÉSULTATS
+################################################################################
+
+### 📌 FORMAT DE RÉPONSE ATTENDU (Offset-based) :
+# {
+#   "data": [ /* Liste des élèves */ ],
+#   "pageNumber": 1,
+#   "pageSize": 50,
+#   "totalPages": 10,
+#   "totalRecords": 487,
+#   "hasPrevious": false,
+#   "hasNext": true,
+#   "firstRowOnPage": 1,
+#   "lastRowOnPage": 50
+# }
+
+### 📌 FORMAT DE RÉPONSE ATTENDU (Cursor-based) :
+# {
+#   "data": [ /* Liste des élèves */ ],
+#   "nextCursor": "123",
+#   "hasMore": true,
+#   "count": 20,
+#   "generatedAt": "2025-01-27T10:30:00Z"
+# }
+
+################################################################################
+# 💡 GUIDE D'UTILISATION
+################################################################################
+
+### 🎯 QUAND UTILISER QUELLE PAGINATION ?
+
+# ✅ OFFSET-BASED (GET /api/Eleve/paged) :
+# - Interfaces web avec pagination classique (page 1, 2, 3...)
+# - Tableaux de données avec navigation
+# - Besoin de connaître le nombre total de pages
+# - Besoin de sauter directement à une page N
+
+# ✅ CURSOR-BASED (GET /api/Eleve/cursor-paged) :
+# - Applications mobiles (scroll infini)
+# - Feeds/timelines
+# - Très grandes tables (millions d'enregistrements)
+# - Performances constantes critiques
+# - Pas besoin de total count
+
+################################################################################
+# 🔥 COMPARAISON DE PERFORMANCE ATTENDUE
+################################################################################
+
+### Sans pagination (DEPRECATED) :
+# - 10,000 élèves : ~5-10 secondes
+# - 50,000 élèves : ~30-60 secondes
+# - Mémoire : 500 MB - 2 GB
+
+### Avec pagination (50 éléments) :
+# - Page 1 : ~50-100 ms
+# - Page 50 : ~80-150 ms (offset-based)
+# - N'importe quelle page : ~50-100 ms (cursor-based)
+# - Mémoire : < 10 MB par requête
+
+################################################################################
+# 📚 DOCUMENTATION COMPLÈTE
+################################################################################
+
+# Pour plus d'informations, consultez :
+# - DOCUMENTATION_PAGINATION.md
+# - Models/DTOs/Pagination/PagedRequest.cs
+# - Models/DTOs/Pagination/CursorPaginationRequest.cs
+# - Extensions/QueryableExtensions.cs
+

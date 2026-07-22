@@ -1,0 +1,25 @@
+### Test API MySQL - KelasiNaBisoAPI
+
+### Test 1: Récupérer toutes les écoles
+GET http://localhost:5002/api/ecoles
+
+### Test 2: Récupérer tous les rôles
+GET http://localhost:5002/api/roles
+
+### Test 3: Test de connexion à la base de données
+GET http://localhost:5002/api/utilisateurs
+
+### Test 4: Test d'authentification (login)
+POST http://localhost:5002/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@ekelasi.com",
+  "motDePasse": "Admin123!"
+}
+
+### Test 5: Test avec HTTPS
+GET https://localhost:7102/api/ecoles
+
+### Test 6: Swagger UI
+GET http://localhost:5002/swagger/index.html

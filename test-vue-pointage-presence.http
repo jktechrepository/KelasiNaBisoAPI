@@ -1,0 +1,7 @@
+### Test de l'endpoint VuePointagePresenceParEcole
+GET https://192.168.43.233:7155/api/VuePointagePresenceParEcole
+Accept: application/json
+
+### Test avec HTTP
+GET http://192.168.43.233:5000/api/VuePointagePresenceParEcole
+Accept: application/json

@@ -1,0 +1,7 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Report ScriptLanguage="CSharp" ReportInfo.Created="07/07/2026 16:23:49" ReportInfo.Modified="07/09/2026 13:05:39" ReportInfo.CreatorVersion="2026.2.0.0">
+  <Dictionary/>
+  <ReportPage Name="Page1" Landscape="true" PaperWidth="856" PaperHeight="540" LeftMargin="0" TopMargin="0" RightMargin="0" BottomMargin="0" Watermark.Font="Arial, 60pt">
+    <ReportTitleBand Name="ReportTitle1" Width="3235.68" Height="37.8"/>
+  </ReportPage>
+</Report>

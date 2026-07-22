@@ -1,0 +1,205 @@
+### =========================================================================
+### 🧪 TESTS UNICITÉ EMAIL TUTEUR
+### =========================================================================
+### Objectif : Vérifier que le champ Email est unique pour chaque tuteur
+### Date : 27 octobre 2025
+### =========================================================================
+
+@baseUrl = https://localhost:7105/api
+
+### -------------------------------------------------------------------------
+### 1️⃣ CONNEXION ADMIN (pour obtenir le token)
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Utilisateur/authentifier
+Content-Type: application/json
+
+{
+  "emailOuTelephone": "superadmin@kelasinabiso.cd",
+  "motDePasse": "Super-Admin",
+  "fcmToken": "test-fcm-token",
+  "deviceType": "Web",
+  "deviceModel": "Chrome",
+  "osVersion": "Windows 11"
+}
+
+### -------------------------------------------------------------------------
+### 2️⃣ CRÉER UN PREMIER TUTEUR avec un email
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Le tuteur est créé avec succès
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Tuteur
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "nomComplet": "MBALA KABILA Jean",
+  "genre": "Masculin",
+  "email": "jean.mbala@tuteur.com",
+  "telephone": "+243998877665",
+  "nomCompletRepresentant": "MBALA Marie",
+  "telephoneRepresentant": "+243998877666",
+  "statut": true,
+  "idEcole": 1,
+  "photoTuteurUrl": null,
+  "pieceIdentiteTuteur": null
+}
+
+### -------------------------------------------------------------------------
+### 3️⃣ TENTATIVE DE CRÉER UN DEUXIÈME TUTEUR avec le MÊME email
+### -------------------------------------------------------------------------
+### ❌ RÉSULTAT ATTENDU : Erreur 400 - "Un tuteur avec l'email 'jean.mbala@tuteur.com' existe déjà"
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Tuteur
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "nomComplet": "TSHISEKEDI NGANDU Paul",
+  "genre": "Masculin",
+  "email": "jean.mbala@tuteur.com",
+  "telephone": "+243998877667",
+  "nomCompletRepresentant": "TSHISEKEDI Claire",
+  "telephoneRepresentant": "+243998877668",
+  "statut": true,
+  "idEcole": 1,
+  "photoTuteurUrl": null,
+  "pieceIdentiteTuteur": null
+}
+
+### -------------------------------------------------------------------------
+### 4️⃣ CRÉER UN TROISIÈME TUTEUR avec un email DIFFÉRENT
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Le tuteur est créé avec succès
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Tuteur
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "nomComplet": "KABONGO MBUYI Marie",
+  "genre": "Féminin",
+  "email": "marie.kabongo@tuteur.com",
+  "telephone": "+243998877669",
+  "nomCompletRepresentant": "KABONGO Joseph",
+  "telephoneRepresentant": "+243998877670",
+  "statut": true,
+  "idEcole": 1,
+  "photoTuteurUrl": null,
+  "pieceIdentiteTuteur": null
+}
+
+### -------------------------------------------------------------------------
+### 5️⃣ RÉCUPÉRER LA LISTE DES TUTEURS
+### -------------------------------------------------------------------------
+### Utilisez cette requête pour obtenir les IDs des tuteurs créés
+### -------------------------------------------------------------------------
+GET {{baseUrl}}/Tuteur
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### -------------------------------------------------------------------------
+### 6️⃣ METTRE À JOUR LE PREMIER TUTEUR avec un nouvel email
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : La mise à jour réussit
+### ⚠️ REMPLACER {idTuteur} par l'ID réel obtenu à l'étape 5
+### -------------------------------------------------------------------------
+PUT {{baseUrl}}/Tuteur/{idTuteur}
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "idTuteur": {idTuteur},
+  "nomComplet": "MBALA KABILA Jean-Pierre",
+  "genre": "Masculin",
+  "email": "jeanpierre.mbala@tuteur.com",
+  "telephone": "+243998877665",
+  "nomCompletRepresentant": "MBALA Marie-Claire",
+  "telephoneRepresentant": "+243998877666",
+  "statut": true,
+  "idEcole": 1,
+  "photoTuteurUrl": null,
+  "pieceIdentiteTuteur": null
+}
+
+### -------------------------------------------------------------------------
+### 7️⃣ TENTATIVE DE METTRE À JOUR LE TROISIÈME TUTEUR avec l'email du premier
+### -------------------------------------------------------------------------
+### ❌ RÉSULTAT ATTENDU : Erreur 400 - "Un autre tuteur avec l'email 'jeanpierre.mbala@tuteur.com' existe déjà"
+### ⚠️ REMPLACER {idTuteurMarie} par l'ID réel de Marie KABONGO
+### -------------------------------------------------------------------------
+PUT {{baseUrl}}/Tuteur/{idTuteurMarie}
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "idTuteur": {idTuteurMarie},
+  "nomComplet": "KABONGO MBUYI Marie",
+  "genre": "Féminin",
+  "email": "jeanpierre.mbala@tuteur.com",
+  "telephone": "+243998877669",
+  "nomCompletRepresentant": "KABONGO Joseph",
+  "telephoneRepresentant": "+243998877670",
+  "statut": true,
+  "idEcole": 1,
+  "photoTuteurUrl": null,
+  "pieceIdentiteTuteur": null
+}
+
+### -------------------------------------------------------------------------
+### 8️⃣ METTRE À JOUR LE TROISIÈME TUTEUR en gardant son propre email
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : La mise à jour réussit (pas de conflit)
+### ⚠️ REMPLACER {idTuteurMarie} par l'ID réel de Marie KABONGO
+### -------------------------------------------------------------------------
+PUT {{baseUrl}}/Tuteur/{idTuteurMarie}
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "idTuteur": {idTuteurMarie},
+  "nomComplet": "KABONGO MBUYI Marie-Jeanne",
+  "genre": "Féminin",
+  "email": "marie.kabongo@tuteur.com",
+  "telephone": "+243998877669",
+  "nomCompletRepresentant": "KABONGO Joseph Martin",
+  "telephoneRepresentant": "+243998877670",
+  "statut": true,
+  "idEcole": 1,
+  "photoTuteurUrl": null,
+  "pieceIdentiteTuteur": null
+}
+
+### -------------------------------------------------------------------------
+### 9️⃣ CRÉER UN TUTEUR SANS EMAIL (facultatif)
+### -------------------------------------------------------------------------
+### ✅ RÉSULTAT ATTENDU : Le tuteur est créé avec succès (email peut être null)
+### -------------------------------------------------------------------------
+POST {{baseUrl}}/Tuteur
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN_HERE
+
+{
+  "nomComplet": "MULAMBA KIPITA André",
+  "genre": "Masculin",
+  "email": null,
+  "telephone": "+243998877671",
+  "nomCompletRepresentant": "MULAMBA Sophie",
+  "telephoneRepresentant": "+243998877672",
+  "statut": true,
+  "idEcole": 1,
+  "photoTuteurUrl": null,
+  "pieceIdentiteTuteur": null
+}
+
+### =========================================================================
+### 📋 RÉSUMÉ DES TESTS
+### =========================================================================
+### ✅ Test 1 : Création tuteur avec email unique → SUCCÈS
+### ❌ Test 2 : Création tuteur avec email existant → ERREUR 400
+### ✅ Test 3 : Création tuteur avec nouvel email unique → SUCCÈS
+### ✅ Test 4 : Mise à jour tuteur avec nouvel email → SUCCÈS
+### ❌ Test 5 : Mise à jour tuteur avec email d'un autre tuteur → ERREUR 400
+### ✅ Test 6 : Mise à jour tuteur en gardant son email → SUCCÈS
+### ✅ Test 7 : Création tuteur sans email (NULL) → SUCCÈS
+### =========================================================================
+
+

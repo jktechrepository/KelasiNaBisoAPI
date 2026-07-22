@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Dashboard Hub SignalR - KelasiNaBiso</title>
+    <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@7.0.0/dist/browser/signalr.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+        .content {
+            padding: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            background: #f9f9f9;
+        }
+        .section h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        .input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        .btn-success:hover {
+            background: #218838;
+        }
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.connecting {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .log {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 5px;
+            border-left: 3px solid transparent;
+        }
+        .log-entry.info {
+            border-left-color: #17a2b8;
+        }
+        .log-entry.success {
+            border-left-color: #28a745;
+        }
+        .log-entry.error {
+            border-left-color: #dc3545;
+        }
+        .log-entry.warning {
+            border-left-color: #ffc107;
+        }
+        .log-time {
+            color: #888;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Test Dashboard Hub SignalR</h1>
+            <p>KelasiNaBiso API - Test de connexion au dashboard en temps réel</p>
+        </div>
+        
+        <div class="content">
+            <!-- Section Configuration -->
+            <div class="section">
+                <h2>⚙️ Configuration</h2>
+                <div class="input-group">
+                    <label>URL de l'API</label>
+                    <input type="text" id="apiUrl" value="https://localhost:7102" placeholder="https://localhost:7102">
+                </div>
+                <div class="input-group">
+                    <label>Email</label>
+                    <input type="email" id="email" placeholder="votre@email.com">
+                </div>
+                <div class="input-group">
+                    <label>Mot de passe</label>
+                    <input type="password" id="password" placeholder="Votre mot de passe">
+                </div>
+                <button class="btn btn-success" onclick="login()">🔐 Se connecter et récupérer le token</button>
+            </div>
+
+            <!-- Section Connexion -->
+            <div class="section">
+                <h2>🔌 Connexion au Dashboard Hub</h2>
+                <div id="connectionStatus" class="status disconnected">
+                    ⚠️ Non connecté
+                </div>
+                <div class="input-group">
+                    <label>Token JWT (récupéré automatiquement après connexion)</label>
+                    <input type="text" id="jwtToken" placeholder="Le token sera rempli automatiquement..." readonly>
+                </div>
+                <button class="btn btn-primary" id="connectBtn" onclick="connect()" disabled>🔌 Se connecter au Dashboard Hub</button>
+                <button class="btn btn-danger" id="disconnectBtn" onclick="disconnect()" disabled>❌ Se déconnecter</button>
+                <button class="btn btn-primary" id="statusBtn" onclick="getStatus()" disabled>📡 Obtenir le statut</button>
+            </div>
+
+            <!-- Section Groupes -->
+            <div class="section">
+                <h2>🏫 Gestion des groupes d'écoles</h2>
+                <div class="input-group">
+                    <label>ID de l'école</label>
+                    <input type="number" id="ecoleId" placeholder="13" value="13">
+                </div>
+                <button class="btn btn-primary" id="joinGroupBtn" onclick="joinEcoleGroup()" disabled>➕ Rejoindre le groupe</button>
+                <button class="btn btn-danger" id="leaveGroupBtn" onclick="leaveEcoleGroup()" disabled>➖ Quitter le groupe</button>
+            </div>
+
+            <!-- Section Logs -->
+            <div class="section">
+                <h2>📋 Logs des événements</h2>
+                <button class="btn btn-danger" onclick="clearLogs()">🗑️ Effacer les logs</button>
+                <div id="log" class="log"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let connection = null;
+        let token = null;
+        const apiUrl = document.getElementById('apiUrl').value;
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.innerHTML = `<span class="log-time">[${time}]</span>${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearLogs() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        function updateStatus(isConnected, isConnecting = false) {
+            const statusDiv = document.getElementById('connectionStatus');
+            if (isConnecting) {
+                statusDiv.className = 'status connecting';
+                statusDiv.textContent = '🔄 Connexion en cours...';
+            } else if (isConnected) {
+                statusDiv.className = 'status connected';
+                statusDiv.textContent = '✅ Connecté au Dashboard Hub';
+            } else {
+                statusDiv.className = 'status disconnected';
+                statusDiv.textContent = '⚠️ Non connecté';
+            }
+
+            document.getElementById('connectBtn').disabled = isConnected || !token;
+            document.getElementById('disconnectBtn').disabled = !isConnected;
+            document.getElementById('statusBtn').disabled = !isConnected;
+            document.getElementById('joinGroupBtn').disabled = !isConnected;
+            document.getElementById('leaveGroupBtn').disabled = !isConnected;
+        }
+
+        async function login() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const apiUrlValue = document.getElementById('apiUrl').value;
+
+            if (!email || !password) {
+                log('❌ Veuillez entrer email et mot de passe', 'error');
+                return;
+            }
+
+            log('🔐 Authentification en cours...', 'info');
+
+            try {
+                const response = await fetch(`${apiUrlValue}/api/Utilisateur/authentifier`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        emailOuTelephone: email,
+                        motDePasse: password
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    token = data.accessToken || data.AccessToken;
+                    document.getElementById('jwtToken').value = token;
+                    log(`✅ Authentification réussie ! Token récupéré`, 'success');
+                    log(`👤 Utilisateur: ${data.utilisateur?.nomUtilisateur || 'N/A'}`, 'info');
+                    log(`🏫 École ID: ${data.utilisateur?.idEcole || 'N/A'}`, 'info');
+                    updateStatus(false);
+                } else {
+                    const error = await response.text();
+                    log(`❌ Erreur d'authentification: ${response.status} - ${error}`, 'error');
+                }
+            } catch (error) {
+                log(`❌ Erreur: ${error.message}`, 'error');
+            }
+        }
+
+        async function connect() {
+            const apiUrlValue = document.getElementById('apiUrl').value;
+            const hubUrl = `${apiUrlValue}/hubs/dashboard`;
+
+            if (!token) {
+                log('❌ Token JWT manquant. Veuillez vous connecter d\'abord.', 'error');
+                return;
+            }
+
+            log('🔄 Tentative de connexion au Dashboard Hub...', 'info');
+            updateStatus(false, true);
+
+            try {
+                connection = new signalR.HubConnectionBuilder()
+                    .withUrl(hubUrl, {
+                        accessTokenFactory: () => token,
+                        skipNegotiation: false,
+                        transport: signalR.HttpTransportType.WebSockets
+                    })
+                    .withAutomaticReconnect({
+                        nextRetryDelayInMilliseconds: retryContext => {
+                            if (retryContext.previousRetryCount === 0) return 0;
+                            if (retryContext.previousRetryCount === 1) return 2000;
+                            if (retryContext.previousRetryCount === 2) return 10000;
+                            return 30000;
+                        }
+                    })
+                    .configureLogging(signalR.LogLevel.Information)
+                    .build();
+
+                // ═══════════════════════════════════════════════════════════════════
+                // 📡 ÉCOUTER LES ÉVÉNEMENTS
+                // ═══════════════════════════════════════════════════════════════════
+
+                // Notification de mise à jour (événement générique)
+                connection.on("DashboardUpdateNotification", (notification) => {
+                    log(`📢 Notification de mise à jour dashboard: ${JSON.stringify(notification, null, 2)}`, 'info');
+                });
+
+                // Dashboard global mis à jour
+                connection.on("DashboardGlobalUpdated", (dashboard) => {
+                    log(`📊 Dashboard global mis à jour: ${JSON.stringify(dashboard, null, 2)}`, 'success');
+                });
+
+                // Dashboard présence mis à jour
+                connection.on("DashboardPresenceUpdated", (dashboard) => {
+                    log(`📊 Dashboard présence mis à jour: ${JSON.stringify(dashboard, null, 2)}`, 'success');
+                });
+
+                // Dashboard paiement mis à jour
+                connection.on("DashboardPaiementUpdated", (dashboard) => {
+                    log(`📊 Dashboard paiement mis à jour: ${JSON.stringify(dashboard, null, 2)}`, 'success');
+                });
+
+                // Confirmation d'ajout à un groupe
+                connection.on("JoinedEcoleGroup", (idEcole) => {
+                    log(`✅ Ajouté au groupe de l'école ${idEcole}`, 'success');
+                });
+
+                // Confirmation de sortie d'un groupe
+                connection.on("LeftEcoleGroup", (idEcole) => {
+                    log(`👋 Quitté le groupe de l'école ${idEcole}`, 'info');
+                });
+
+                // Statut de connexion
+                connection.on("ConnectionStatus", (status) => {
+                    log(`📡 Statut de connexion: ${JSON.stringify(status, null, 2)}`, 'info');
+                });
+
+                // Gestion des états de connexion
+                connection.onclose((error) => {
+                    log(`❌ Connexion fermée${error ? ': ' + error : ''}`, 'error');
+                    updateStatus(false);
+                });
+
+                connection.onreconnecting((error) => {
+                    log(`🔄 Reconnexion en cours...${error ? ': ' + error : ''}`, 'warning');
+                    updateStatus(false, true);
+                });
+
+                connection.onreconnected((connectionId) => {
+                    log(`✅ Reconnexion réussie. ConnectionId: ${connectionId}`, 'success');
+                    updateStatus(true);
+                });
+
+                await connection.start();
+                log('✅ Connecté au Dashboard Hub SignalR !', 'success');
+                updateStatus(true);
+
+                // Obtenir le statut de connexion
+                await connection.invoke("GetConnectionStatus");
+
+            } catch (error) {
+                log(`❌ Erreur lors de la connexion: ${error.message}`, 'error');
+                if (error.message.includes('401')) {
+                    log('💡 Astuce: Vérifiez que votre token JWT est valide', 'warning');
+                } else if (error.message.includes('Failed to start')) {
+                    log('💡 Astuce: Vérifiez que l\'application est démarrée et que l\'URL est correcte', 'warning');
+                }
+                updateStatus(false);
+            }
+        }
+
+        async function disconnect() {
+            if (connection) {
+                try {
+                    await connection.stop();
+                    log('👋 Déconnecté du Dashboard Hub', 'info');
+                    updateStatus(false);
+                } catch (error) {
+                    log(`❌ Erreur lors de la déconnexion: ${error.message}`, 'error');
+                }
+            }
+        }
+
+        async function getStatus() {
+            if (!connection || connection.state !== signalR.HubConnectionState.Connected) {
+                log('❌ Pas connecté au hub', 'error');
+                return;
+            }
+
+            try {
+                await connection.invoke("GetConnectionStatus");
+            } catch (error) {
+                log(`❌ Erreur lors de la récupération du statut: ${error.message}`, 'error');
+            }
+        }
+
+        async function joinEcoleGroup() {
+            if (!connection || connection.state !== signalR.HubConnectionState.Connected) {
+                log('❌ Pas connecté au hub', 'error');
+                return;
+            }
+
+            const idEcole = parseInt(document.getElementById('ecoleId').value);
+            if (!idEcole) {
+                log('❌ Veuillez entrer un ID d\'école valide', 'error');
+                return;
+            }
+
+            try {
+                await connection.invoke("JoinEcoleGroup", idEcole);
+                log(`🔄 Demande d'ajout au groupe de l'école ${idEcole}...`, 'info');
+            } catch (error) {
+                log(`❌ Erreur lors de l'ajout au groupe: ${error.message}`, 'error');
+            }
+        }
+
+        async function leaveEcoleGroup() {
+            if (!connection || connection.state !== signalR.HubConnectionState.Connected) {
+                log('❌ Pas connecté au hub', 'error');
+                return;
+            }
+
+            const idEcole = parseInt(document.getElementById('ecoleId').value);
+            if (!idEcole) {
+                log('❌ Veuillez entrer un ID d\'école valide', 'error');
+                return;
+            }
+
+            try {
+                await connection.invoke("LeaveEcoleGroup", idEcole);
+                log(`🔄 Demande de sortie du groupe de l'école ${idEcole}...`, 'info');
+            } catch (error) {
+                log(`❌ Erreur lors de la sortie du groupe: ${error.message}`, 'error');
+            }
+        }
+    </script>
+</body>
+</html>
+
