@@ -1048,11 +1048,7 @@ namespace KelasiNaBiso.Services
             return (debut, fin);
         }
 
-        // Méthode temporaire pour recréer la vue
-        public void RecreateView()
-        {
-            _context.CreateViewVuePointagePresenceParEcole();
-        }
+        // Vues : appliquer Migrations/AddReportingViews (dotnet ef database update).
     }
 }
 

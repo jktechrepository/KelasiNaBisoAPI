@@ -1,5 +1,6 @@
 
 using KelasiNaBiso.Data;
+using KelasiNaBiso.Helpers;
 using KelasiNaBiso.Models;
 using KelasiNaBiso.Models.DTOs;
 using KelasiNaBiso.Models.DTOs.Pagination;
@@ -7,8 +8,6 @@ using KelasiNaBiso.Services.Repositories;
 using KelasiNaBisoAPI.Services.Repositories;
 using KelasiNaBiso.Extensions;
 using Microsoft.EntityFrameworkCore;
-using System.Data;
-using MySqlConnector; // ✅ MIGRATION MARIADB: Utilisation de MySqlConnector (inclus avec Pomelo)
 using System.Text;
 using System.Globalization;
 using System.Text.RegularExpressions;
@@ -26,6 +25,8 @@ namespace KelasiNaBiso.Services
         private readonly ISignalRNotificationService _signalRNotificationService;
         private readonly IUtilisateurRepository _utilisateurRepository;
         private readonly ILogger<InscriptionService> _logger;
+        private readonly IInscriptionActiveResolver _inscriptionResolver;
+        private readonly EleveAnneeScopeHelper _scope;
 
         public InscriptionService(
             KelasiNaBisoDbContext context, 
@@ -36,7 +37,9 @@ namespace KelasiNaBiso.Services
             ISmsNotificationService smsService,
             ISignalRNotificationService signalRNotificationService,
             IUtilisateurRepository utilisateurRepository,
-            ILogger<InscriptionService> logger)
+            ILogger<InscriptionService> logger,
+            IInscriptionActiveResolver inscriptionResolver,
+            EleveAnneeScopeHelper scope)
         {
             _context = context;
             _connectionString = configuration.GetConnectionString("KelasiConnection");
@@ -47,6 +50,8 @@ namespace KelasiNaBiso.Services
             _signalRNotificationService = signalRNotificationService;
             _utilisateurRepository = utilisateurRepository;
             _logger = logger;
+            _inscriptionResolver = inscriptionResolver;
+            _scope = scope;
         }
 
         public async Task<IEnumerable<Inscription>> GetAllAsync()
@@ -68,28 +73,36 @@ namespace KelasiNaBiso.Services
                 .FirstOrDefaultAsync(i => i.IdInscription == id);
         }
 
-        public async Task<IEnumerable<Inscription>> GetByEcoleAsync(int idEcole)
+        public async Task<ElevesAnneeScopedResult<IEnumerable<Inscription>>> GetByEcoleAsync(
+            int idEcole, int? idAnneeScolaire = null)
         {
-            return await _context.Inscriptions
+            var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole, idAnneeScolaire);
+            var data = await _context.Inscriptions
                 .Include(i => i.Eleve)
                 .Include(i => i.Classe)
                 .Include(i => i.AnneeScolaire)
-                .Where(i => i.IdEcole == idEcole)
-                .Where(i => i.Statut == true) // ✅ Filtrer uniquement les inscriptions actives
+                .Where(i => i.IdEcole == ecole && i.IdAnneeScolaire == annee)
+                .Where(i => i.Statut == true)
                 .OrderByDescending(i => i.DateInscription)
+                .ThenByDescending(i => i.IdInscription)
                 .ToListAsync();
+            return EleveAnneeScopeHelper.Wrap<IEnumerable<Inscription>>(data, ecole, annee);
         }
 
-        public async Task<IEnumerable<Inscription>> GetByClasseAsync(int idClasse)
+        public async Task<ElevesAnneeScopedResult<IEnumerable<Inscription>>> GetByClasseAsync(
+            int idClasse, int? idAnneeScolaire = null)
         {
-            return await _context.Inscriptions
+            var (idEcole, annee) = await _scope.ResolveClasseAnneeAsync(idClasse, idAnneeScolaire);
+            var data = await _context.Inscriptions
                 .Include(i => i.Eleve)
                 .Include(i => i.Ecole)
                 .Include(i => i.AnneeScolaire)
-                .Where(i => i.IdClasse == idClasse)
-                .Where(i => i.Statut == true) // ✅ Filtrer uniquement les inscriptions actives
+                .Where(i => i.IdClasse == idClasse && i.IdAnneeScolaire == annee)
+                .Where(i => i.Statut == true)
                 .OrderByDescending(i => i.DateInscription)
+                .ThenByDescending(i => i.IdInscription)
                 .ToListAsync();
+            return EleveAnneeScopeHelper.Wrap<IEnumerable<Inscription>>(data, idEcole, annee);
         }
 
         public async Task<IEnumerable<Inscription>> GetByAnneeScolaireAsync(int idAnneeScolaire)
@@ -166,18 +179,19 @@ namespace KelasiNaBiso.Services
             var postnomNormalise = NormalizeName(postnom);
             var prenomNormalise = NormalizeName(prenom);
 
-            // Rechercher un élève existant avec les mêmes critères
+            // Rechercher un élève existant avec les mêmes critères (école via inscription)
             var eleves = await _context.Eleves
-                .Include(e => e.Classe)
-                    .ThenInclude(c => c.Direction)
-                        .ThenInclude(d => d.Ecole)
-                .Where(e => 
+                .Include(e => e.Inscriptions).ThenInclude(i => i.Classe)
+                .Where(e =>
                     e.IdTuteur == idTuteur
                     && e.DateNaissance.Date == dateNaissance.Date
-                    && e.Classe != null 
-                    && e.Classe.Direction != null 
-                    && e.Classe.Direction.Ecole != null
-                    && e.Classe.Direction.Ecole.IdEcole == idEcole
+                    && e.Inscriptions.Any(i =>
+                        i.Statut == true
+                        && i.IdEcole == idEcole
+                        && i.StatutInscription != null
+                        && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                            || i.StatutInscription == "Confirme"
+                            || i.StatutInscription.StartsWith("Confirm")))
                 )
                 .ToListAsync();
 
@@ -414,108 +428,13 @@ namespace KelasiNaBiso.Services
             return matricule;
         }
 
-        // Nouvelle méthode pour créer une inscription avec la procédure stockée
+        // Obsolète : la SP sp_CreateInscription utilisait Eleves.IdClasse / Tuteurs.IdEcole (colonnes retirées).
+        [Obsolete("Utiliser CreateInscriptionAsync. Délègue vers le chemin EF.")]
         public async Task<InscriptionResult> CreateInscriptionWithStoredProcedureAsync(CreateInscriptionDto inscriptionDto)
         {
-            var result = new InscriptionResult();
-
-            using (var connection = new MySqlConnection(_connectionString))
-            {
-                await connection.OpenAsync();
-
-                using (var command = new MySqlCommand("sp_CreateInscription", connection))
-                {
-                    command.CommandType = CommandType.StoredProcedure;
-
-                    // Paramètres d'entrée
-                    command.Parameters.AddWithValue("@Type", inscriptionDto.Type);
-                    command.Parameters.AddWithValue("@IdEcole", inscriptionDto.IdEcole);
-                    command.Parameters.AddWithValue("@IdClasse", inscriptionDto.IdClasse);
-                    command.Parameters.AddWithValue("@IdAnneeScolaire", inscriptionDto.IdAnneeScolaire);
-                    command.Parameters.AddWithValue("@DateInscription", inscriptionDto.DateInscription);
-                    command.Parameters.AddWithValue("@StatutInscription", inscriptionDto.StatutInscription);
-
-                    // Données de l'élève
-                    command.Parameters.AddWithValue("@NomEleve", inscriptionDto.NomEleve);
-                    command.Parameters.AddWithValue("@PostnomEleve", inscriptionDto.PostnomEleve);
-                    command.Parameters.AddWithValue("@PrenomEleve", inscriptionDto.PrenomEleve);
-                    command.Parameters.AddWithValue("@GenreEleve", inscriptionDto.GenreEleve);
-                    command.Parameters.AddWithValue("@DateNaissanceEleve", inscriptionDto.DateNaissanceEleve);
-                    command.Parameters.AddWithValue("@LieuNaissanceEleve", inscriptionDto.LieuNaissanceEleve);
-                    command.Parameters.AddWithValue("@NationaliteEleve", inscriptionDto.NationaliteEleve);
-                    command.Parameters.AddWithValue("@PhotoEleveUrl", inscriptionDto.PhotoEleveUrl);
-                    command.Parameters.AddWithValue("@MatriculeEleve ", inscriptionDto.MatriculeEleve);
-                    command.Parameters.AddWithValue("@ProvinceEleve", inscriptionDto.PrenomEleve);
-                    command.Parameters.AddWithValue("@VilleEleve", inscriptionDto.VilleEleve);
-                    command.Parameters.AddWithValue("@CommuneEleve", inscriptionDto.CommuneEleve);
-                    command.Parameters.AddWithValue("@QuartierEleve", inscriptionDto.QuartierEleve);
-                    command.Parameters.AddWithValue("@AvenueEleve", inscriptionDto.AvenueEleve);
-                    command.Parameters.AddWithValue("@NumeroEleve", inscriptionDto.NumeroEleve);
-
-
-                    command.Parameters.AddWithValue("@CommentaireEleve", (object)inscriptionDto.CommentaireEleve ?? DBNull.Value);
-
-                    // Données du tuteur
-                    command.Parameters.AddWithValue("@NomCompletTuteur", inscriptionDto.NomCompletTuteur);
-                    command.Parameters.AddWithValue("@GenreTuteur", inscriptionDto.GenreTuteur);
-                    command.Parameters.AddWithValue("@EmailTuteur", (object)inscriptionDto.EmailTuteur ?? DBNull.Value);
-                    command.Parameters.AddWithValue("@TelephoneTuteur", (object)inscriptionDto.TelephoneTuteur ?? DBNull.Value);
-                    command.Parameters.AddWithValue("@NomCompletRepresentant", (object)inscriptionDto.NomCompletRepresentant ?? DBNull.Value);
-                    command.Parameters.AddWithValue("@TelephoneRepresentant", (object)inscriptionDto.TelephoneRepresentant ?? DBNull.Value);
-                    command.Parameters.AddWithValue("@PhotoTuteurUrl", (object)inscriptionDto.PhotoTuteurUrl ?? DBNull.Value);
-                    command.Parameters.AddWithValue("@PieceIdentiteTuteur", (object)inscriptionDto.PieceIdentiteTuteur ?? DBNull.Value);
-
-                    // Pour les cas de réinscription
-                    command.Parameters.AddWithValue("@IdEleveExistant", 
-                        inscriptionDto.IdEleveExistant.HasValue && inscriptionDto.IdEleveExistant.Value > 0 
-                            ? (object)inscriptionDto.IdEleveExistant.Value 
-                            : DBNull.Value);
-                    command.Parameters.AddWithValue("@IdTuteurExistant", 
-                        inscriptionDto.IdTuteurExistant.HasValue && inscriptionDto.IdTuteurExistant.Value > 0 
-                            ? (object)inscriptionDto.IdTuteurExistant.Value 
-                            : DBNull.Value);
-
-                    // Paramètres de sortie
-                    var idInscriptionParam = command.Parameters.Add("@IdInscription", MySqlDbType.Int32);
-                    idInscriptionParam.Direction = ParameterDirection.Output;
-
-                    var idEleveParam = command.Parameters.Add("@IdEleve", MySqlDbType.Int32);
-                    idEleveParam.Direction = ParameterDirection.Output;
-
-                    var idTuteurParam = command.Parameters.Add("@IdTuteur", MySqlDbType.Int32);
-                    idTuteurParam.Direction = ParameterDirection.Output;
-
-                    var messageParam = command.Parameters.Add("@Message", MySqlDbType.VarChar, 500);
-                    messageParam.Direction = ParameterDirection.Output;
-
-                    var successParam = command.Parameters.Add("@Success", MySqlDbType.Bit);
-                    successParam.Direction = ParameterDirection.Output;
-
-                    try
-                    {
-                        await command.ExecuteNonQueryAsync();
-
-                        result.Success = (bool)successParam.Value;
-                        result.Message = messageParam.Value?.ToString() ?? "Opération terminée";
-                        result.IdInscription = idInscriptionParam.Value != DBNull.Value ? (int)idInscriptionParam.Value : null;
-                        result.IdEleve = idEleveParam.Value != DBNull.Value ? (int)idEleveParam.Value : null;
-                        result.IdTuteur = idTuteurParam.Value != DBNull.Value ? (int)idTuteurParam.Value : null;
-
-                        if (result.Success && result.IdInscription.HasValue)
-                        {
-                            // Récupérer l'inscription complète avec les relations
-                            result.Inscription = await GetByIdAsync(result.IdInscription.Value);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        result.Success = false;
-                        result.Message = $"Erreur lors de l'exécution de la procédure stockée : {ex.Message}";
-                    }
-                }
-            }
-
-            return result;
+            _logger.LogWarning(
+                "CreateInscriptionWithStoredProcedureAsync est obsolète (SP legacy Eleves.IdClasse / Tuteurs.IdEcole) — délégation vers CreateInscriptionAsync");
+            return await CreateInscriptionAsync(inscriptionDto);
         }
 
         public async Task<Inscription> UpdateAsync(Inscription inscription)
@@ -523,6 +442,9 @@ namespace KelasiNaBiso.Services
             var existingInscription = await _context.Inscriptions.FindAsync(inscription.IdInscription);
             if (existingInscription == null)
                 return null;
+
+            inscription.StatutInscription =
+                InscriptionActiveRules.NormalizeStatutInscription(inscription.StatutInscription);
 
             _context.Entry(existingInscription).CurrentValues.SetValues(inscription);
             await _context.SaveChangesAsync();
@@ -555,6 +477,9 @@ namespace KelasiNaBiso.Services
         public async Task<InscriptionResult> CreateInscriptionAsync(CreateInscriptionDto inscriptionDto)
         {
             var result = new InscriptionResult();
+
+            inscriptionDto.StatutInscription =
+                InscriptionActiveRules.NormalizeStatutInscription(inscriptionDto.StatutInscription);
 
             // ✅ VALIDATION : Vérifier que l'année scolaire existe
             var anneeScolaireExists = await _context.AnneeScolaires
@@ -609,7 +534,7 @@ namespace KelasiNaBiso.Services
                     if (inscriptionDto.IdEleveExistant.HasValue && inscriptionDto.IdEleveExistant.Value > 0)
                     {
                         eleveTrouve = await _context.Eleves
-                            .Include(e => e.Classe)
+                            .Include(e => e.Inscriptions).ThenInclude(i => i.Classe)
                                 .ThenInclude(c => c.Direction)
                                     .ThenInclude(d => d.Ecole)
                             .FirstOrDefaultAsync(e => e.IdEleve == inscriptionDto.IdEleveExistant.Value);
@@ -653,7 +578,6 @@ namespace KelasiNaBiso.Services
 
                         // Mettre à jour le statut de l'élève
                         eleveTrouve.Statut = true;
-                        eleveTrouve.IdClasse = inscriptionDto.IdClasse;
                         
                         // Mettre à jour le tuteur si nécessaire
                         if (eleveTrouve.IdTuteur.HasValue && newIdTuteur.HasValue && eleveTrouve.IdTuteur != newIdTuteur)
@@ -715,15 +639,18 @@ namespace KelasiNaBiso.Services
                             // ✅ MULTI-RÔLES : Vérifier si un tuteur existe déjà (nom + téléphone + email + école)
                             // ═══════════════════════════════════════════════════════════════════
                             
+                            // Dédoublonnage global (téléphone / email), sans IdEcole
+                            var telephoneTuteurNorm = TelephoneNormalizer.Normalize(inscriptionDto.TelephoneTuteur);
                             var tuteurExistant = await _context.Tuteurs
-                                .FirstOrDefaultAsync(t => 
-                                    t.NomComplet == inscriptionDto.NomCompletTuteur 
-                                                       && t.Telephone == inscriptionDto.TelephoneTuteur 
-                                    && t.IdEcole == inscriptionDto.IdEcole
-                                    && (string.IsNullOrWhiteSpace(inscriptionDto.EmailTuteur) || 
-                                        t.Email == inscriptionDto.EmailTuteur || 
-                                        string.IsNullOrWhiteSpace(t.Email))
-                                );
+                                .FirstOrDefaultAsync(t =>
+                                    t.Telephone != null
+                                    && telephoneTuteurNorm != null
+                                    && (t.Telephone == telephoneTuteurNorm
+                                        || t.Telephone.Replace(" ", "").Replace("-", "") == telephoneTuteurNorm)
+                                    && (
+                                        (!string.IsNullOrWhiteSpace(inscriptionDto.EmailTuteur) && t.Email == inscriptionDto.EmailTuteur)
+                                        || t.NomComplet == inscriptionDto.NomCompletTuteur
+                                    ));
 
                             if (tuteurExistant != null)
                             {
@@ -749,10 +676,9 @@ namespace KelasiNaBiso.Services
                                     NomComplet = inscriptionDto.NomCompletTuteur,
                                     Genre = inscriptionDto.GenreTuteur,
                                     Email = inscriptionDto.EmailTuteur,
-                                    Telephone = inscriptionDto.TelephoneTuteur,
+                                    Telephone = TelephoneNormalizer.Normalize(inscriptionDto.TelephoneTuteur),
                                     NomCompletRepresentant = inscriptionDto.NomCompletRepresentant,
-                                    TelephoneRepresentant = inscriptionDto.TelephoneRepresentant,
-                                    IdEcole = inscriptionDto.IdEcole,
+                                    TelephoneRepresentant = TelephoneNormalizer.Normalize(inscriptionDto.TelephoneRepresentant),
                                     Statut = true,
                                     DateCreation = DateTime.Now,
                                     PhotoTuteurUrl = inscriptionDto.PhotoTuteurUrl,
@@ -810,7 +736,6 @@ namespace KelasiNaBiso.Services
                             if (eleveExistantFinal.Statut == false)
                             {
                                 eleveExistantFinal.Statut = true;
-                                eleveExistantFinal.IdClasse = inscriptionDto.IdClasse;
                                 await _context.SaveChangesAsync();
                             }
                             
@@ -832,7 +757,6 @@ namespace KelasiNaBiso.Services
                                 LieuNaissance = inscriptionDto.LieuNaissanceEleve,
                                 Nationalite = inscriptionDto.NationaliteEleve,
                                 Commentaire = inscriptionDto.CommentaireEleve,
-                                IdClasse = inscriptionDto.IdClasse,
                                 IdTuteur = newIdTuteur,
                                 Statut = true,
                                 DateCreation = DateTime.Now,
@@ -884,7 +808,7 @@ namespace KelasiNaBiso.Services
                     {
                         var tuteur = await _context.Tuteurs.FindAsync(newIdTuteur.Value);
                         var eleve = await _context.Eleves
-                            .Include(e => e.Classe)
+                            .Include(e => e.Inscriptions).ThenInclude(i => i.Classe)
                             .FirstOrDefaultAsync(e => e.IdEleve == newIdEleve.Value);
                         
                         if (tuteur != null && eleve != null)
@@ -1072,60 +996,39 @@ namespace KelasiNaBiso.Services
             return await query.ToPagedAsync(request);
         }
 
-        public async Task<PagedResult<Inscription>> GetByEcolePagedAsync(int idEcole, PagedRequest request)
+        public async Task<ElevesAnneeScopedResult<PagedResult<Inscription>>> GetByEcolePagedAsync(
+            int idEcole, PagedRequest request, int? idAnneeScolaire = null)
         {
-            var query = _context.Inscriptions
+            var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole, idAnneeScolaire);
+            var query = BuildInscriptionListQuery()
+                .Where(i => i.IdEcole == ecole && i.IdAnneeScolaire == annee);
+            query = ApplyInscriptionListFilters(query, request);
+            var paged = await query.ToPagedAsync(request);
+            return EleveAnneeScopeHelper.Wrap(paged, ecole, annee);
+        }
+
+        public async Task<ElevesAnneeScopedResult<PagedResult<Inscription>>> GetByClassePagedAsync(
+            int idClasse, PagedRequest request, int? idAnneeScolaire = null)
+        {
+            var (idEcole, annee) = await _scope.ResolveClasseAnneeAsync(idClasse, idAnneeScolaire);
+            var query = BuildInscriptionListQuery()
+                .Where(i => i.IdClasse == idClasse && i.IdAnneeScolaire == annee);
+            query = ApplyInscriptionListFilters(query, request);
+            var paged = await query.ToPagedAsync(request);
+            return EleveAnneeScopeHelper.Wrap(paged, idEcole, annee);
+        }
+
+        private IQueryable<Inscription> BuildInscriptionListQuery() =>
+            _context.Inscriptions
                 .Include(i => i.Eleve)
                 .Include(i => i.Classe)
                 .Include(i => i.AnneeScolaire)
-                .Where(i => i.IdEcole == idEcole)
-                .Where(i => i.Statut == true) // ✅ TOUJOURS filtrer sur Statut == true (même si IncludeInactive=true)
+                .Where(i => i.Statut == true)
                 .AsQueryable();
 
-            // Appliquer la recherche
-            if (!string.IsNullOrWhiteSpace(request.SearchTerm))
-            {
-                var searchLower = request.SearchTerm.ToLower();
-                query = query.Where(i =>
-                    (i.Type != null && i.Type.ToLower().Contains(searchLower)) ||
-                    (i.StatutInscription != null && i.StatutInscription.ToLower().Contains(searchLower)) ||
-                    (i.Eleve != null && i.Eleve.NomComplet != null && i.Eleve.NomComplet.ToLower().Contains(searchLower)) ||
-                    (i.Eleve != null && i.Eleve.Matricule != null && i.Eleve.Matricule.ToLower().Contains(searchLower))
-                );
-            }
-
-            // Appliquer le tri
-            if (!string.IsNullOrWhiteSpace(request.SortBy))
-            {
-                query = query.ApplySort(request.SortBy, request.SortDescending);
-            }
-            else
-            {
-                // Tri par défaut : DateInscription DESC
-                query = request.SortDescending
-                    ? query.OrderBy(i => i.DateInscription)
-                    : query.OrderByDescending(i => i.DateInscription);
-            }
-
-            return await query.ToPagedAsync(request);
-        }
-
-        public async Task<PagedResult<Inscription>> GetByClassePagedAsync(int idClasse, PagedRequest request)
+        private static IQueryable<Inscription> ApplyInscriptionListFilters(
+            IQueryable<Inscription> query, PagedRequest request)
         {
-            var query = _context.Inscriptions
-                .Include(i => i.Eleve)
-                .Include(i => i.Ecole)
-                .Include(i => i.AnneeScolaire)
-                .Where(i => i.IdClasse == idClasse)
-                .AsQueryable();
-
-            // Filtrer par statut
-            if (!request.IncludeInactive)
-            {
-                query = query.Where(i => i.Statut == true);
-            }
-
-            // Appliquer la recherche
             if (!string.IsNullOrWhiteSpace(request.SearchTerm))
             {
                 var searchLower = request.SearchTerm.ToLower();
@@ -1133,24 +1036,17 @@ namespace KelasiNaBiso.Services
                     (i.Type != null && i.Type.ToLower().Contains(searchLower)) ||
                     (i.StatutInscription != null && i.StatutInscription.ToLower().Contains(searchLower)) ||
                     (i.Eleve != null && i.Eleve.NomComplet != null && i.Eleve.NomComplet.ToLower().Contains(searchLower)) ||
-                    (i.Eleve != null && i.Eleve.Matricule != null && i.Eleve.Matricule.ToLower().Contains(searchLower))
-                );
+                    (i.Eleve != null && i.Eleve.Matricule != null && i.Eleve.Matricule.ToLower().Contains(searchLower)));
             }
 
-            // Appliquer le tri
             if (!string.IsNullOrWhiteSpace(request.SortBy))
-            {
                 query = query.ApplySort(request.SortBy, request.SortDescending);
-            }
             else
-            {
-                // Tri par défaut : DateInscription DESC
                 query = request.SortDescending
-                    ? query.OrderBy(i => i.DateInscription)
-                    : query.OrderByDescending(i => i.DateInscription);
-            }
+                    ? query.OrderBy(i => i.DateInscription).ThenBy(i => i.IdInscription)
+                    : query.OrderByDescending(i => i.DateInscription).ThenByDescending(i => i.IdInscription);
 
-            return await query.ToPagedAsync(request);
+            return query;
         }
 
         public async Task<PagedResult<Inscription>> GetByStatutPagedAsync(bool statut, PagedRequest request)
@@ -1249,7 +1145,7 @@ namespace KelasiNaBiso.Services
 
                 // Utiliser l'email du tuteur s'il est fourni, sinon vide
                 string email = tuteur.Email ?? "";
-                string telephone = tuteur.Telephone ?? "";
+                string telephone = TelephoneNormalizer.Normalize(tuteur.Telephone) ?? "";
                 
                 // Construire le nom complet du tuteur en premier (avec valeur par défaut si NULL)
                 string nomComplet = tuteur.NomComplet ?? "";
@@ -1538,7 +1434,12 @@ namespace KelasiNaBiso.Services
                     
                     // ✨ Récupérer les informations de l'enfant pour l'email
                     string nomEnfant = eleve?.NomComplet ?? "";
-                    string classeEnfant = eleve?.Classe?.NomClasse ?? "";
+                    string classeEnfant = "";
+                    if (eleve != null)
+                    {
+                        var insActive = await _inscriptionResolver.GetInscriptionActiveAsync(eleve.IdEleve);
+                        classeEnfant = insActive?.Classe?.NomClasse ?? "";
+                    }
                     string matriculeEnfant = eleve?.Matricule ?? "";
                     
                     // ✨ Envoyer les notifications EN PARALLÈLE (Email + Push + SMS)
@@ -1700,13 +1601,21 @@ namespace KelasiNaBiso.Services
                     _logger.LogWarning("⚠️ Aucun email fourni pour le tuteur '{NomComplet}'. Seules les notifications Push et SMS seront envoyées.", 
                         nomComplet);
                     
+                    string nomEnfantSansEmail = eleve?.NomComplet ?? "";
+                    string classeEnfantSansEmail = "";
+                    if (eleve != null)
+                    {
+                        var insActiveSansEmail = await _inscriptionResolver.GetInscriptionActiveAsync(eleve.IdEleve);
+                        classeEnfantSansEmail = insActiveSansEmail?.Classe?.NomClasse ?? "";
+                    }
+
                     // 📲 Envoyer quand même Push et SMS même sans email
                     _ = Task.Run(async () =>
                     {
                         try
                         {
-                            string nomEnfant = eleve?.NomComplet ?? "";
-                            string classeEnfant = eleve?.Classe?.NomClasse ?? "";
+                            string nomEnfant = nomEnfantSansEmail;
+                            string classeEnfant = classeEnfantSansEmail;
                             
                             string titre = $"🎓 Inscription de {nomEnfant}";
                             string corps = $"Bienvenue sur KelasiNaBiso ! {nomEnfant} a été inscrit dans la classe {classeEnfant}.";
@@ -1823,7 +1732,12 @@ namespace KelasiNaBiso.Services
                 string nomEcole = ecole.Nom ?? "KelasiNaBiso";
                 bool acceptNotification = ecole.AcceptNotification == true;
                 string nomEnfant = eleve?.NomComplet ?? "";
-                string classeEnfant = eleve?.Classe?.NomClasse ?? "";
+                string classeEnfant = "";
+                if (eleve != null)
+                {
+                    var insActive = await _inscriptionResolver.GetInscriptionActiveAsync(eleve.IdEleve);
+                    classeEnfant = insActive?.Classe?.NomClasse ?? "";
+                }
                 string defaultUsername = utilisateur.DefaultUsername ?? "";
                 
                 // ⚠️ Vérifier si l'école accepte les notifications SMS

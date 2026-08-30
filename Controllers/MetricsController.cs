@@ -372,12 +372,16 @@ namespace KelasiNaBiso.Controllers
                     return NotFound(new { message = $"École {idEcole.Value} non trouvée" });
                 }
 
-                // Statistiques de l'école
+                // Statistiques de l'école (élèves via inscription confirmée)
                 var nombreEleves = await _context.Eleves
-                    .Where(e => e.Classe != null && 
-                               e.Classe.Direction != null && 
-                               e.Classe.Direction.IdEcole == idEcole.Value && 
-                               e.Statut == true)
+                    .Where(e => e.Statut == true
+                        && e.Inscriptions.Any(i =>
+                            i.Statut == true
+                            && i.IdEcole == idEcole.Value
+                            && i.StatutInscription != null
+                            && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                                || i.StatutInscription == "Confirme"
+                                || i.StatutInscription.StartsWith("Confirm"))))
                     .CountAsync();
 
                 var nombreAgents = await _context.Agents
@@ -400,9 +404,13 @@ namespace KelasiNaBiso.Controllers
                                p.DatePaiement <= finMois &&
                                p.IdEleve != null &&
                                _context.Eleves.Any(e => e.IdEleve == p.IdEleve &&
-                                                       e.Classe != null &&
-                                                       e.Classe.Direction != null &&
-                                                       e.Classe.Direction.IdEcole == idEcole.Value))
+                                                       e.Inscriptions.Any(i =>
+                                                           i.Statut == true
+                                                           && i.IdEcole == idEcole.Value
+                                                           && i.StatutInscription != null
+                                                           && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                                                               || i.StatutInscription == "Confirme"
+                                                               || i.StatutInscription.StartsWith("Confirm")))))
                     .CountAsync();
 
                 var montantMois = await _context.Paiements
@@ -410,9 +418,13 @@ namespace KelasiNaBiso.Controllers
                                p.DatePaiement <= finMois &&
                                p.IdEleve != null &&
                                _context.Eleves.Any(e => e.IdEleve == p.IdEleve &&
-                                                       e.Classe != null &&
-                                                       e.Classe.Direction != null &&
-                                                       e.Classe.Direction.IdEcole == idEcole.Value))
+                                                       e.Inscriptions.Any(i =>
+                                                           i.Statut == true
+                                                           && i.IdEcole == idEcole.Value
+                                                           && i.StatutInscription != null
+                                                           && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                                                               || i.StatutInscription == "Confirme"
+                                                               || i.StatutInscription.StartsWith("Confirm")))))
                     .SumAsync(p => (decimal?)p.Montant) ?? 0;
 
                 // Inscriptions de l'année

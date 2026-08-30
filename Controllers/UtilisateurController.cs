@@ -5,6 +5,7 @@ using KelasiNaBisoAPI.Services.Repositories;
 using KelasiNaBiso.Services;
 using KelasiNaBiso.Data;
 using KelasiNaBiso.Helpers;
+using KelasiNaBiso.Attributes;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
@@ -318,12 +319,22 @@ namespace KelasiNaBiso.Controllers
             // 2. RECHERCHER L'UTILISATEUR
             // ═══════════════════════════════════════════════════════════
             
-            var utilisateur = await _utilisateurRepository.GetByEmailAsync(email);
+            var utilisateur = await _utilisateurRepository.GetByEmailAnyStatusAsync(email);
             
             if (utilisateur == null)
             {
-                _logger.LogInformation($"📧 Utilisateur avec email {email} non trouvé (recherche par Admin {userId})");
-                return NotFound();
+                _logger.LogInformation($"📧 Utilisateur avec email {email} introuvable (recherche par Admin {userId})");
+                return NotFound(new
+                {
+                    message = $"Aucun utilisateur trouvé avec l'email '{email.Trim()}'. " +
+                              "Vérifiez que phpMyAdmin pointe vers la même base que l'API (connection string prod)."
+                });
+            }
+
+            if (utilisateur.Statut != true)
+            {
+                _logger.LogWarning(
+                    $"⚠️ Utilisateur {utilisateur.IdUtilisateur} trouvé par email mais inactif (Statut={utilisateur.Statut}) — Admin {userId}");
             }
             
             // ═══════════════════════════════════════════════════════════
@@ -344,9 +355,57 @@ namespace KelasiNaBiso.Controllers
             // 🔒 SÉCURITÉ : Ne JAMAIS retourner le hash du mot de passe
             utilisateur.MotDePasseHash = null;
             
-            _logger.LogInformation($"✅ Utilisateur {utilisateur.IdUtilisateur} récupéré par email par Admin {userId}");
+            _logger.LogInformation($"✅ Utilisateur {utilisateur.IdUtilisateur} récupéré par email par Admin {userId} (Statut={utilisateur.Statut})");
             
             return Ok(utilisateur);
+        }
+
+        /// <summary>
+        /// Diagnostic Super-Admin : existence, Statut, école, longueur hash (sans exposer le hash).
+        /// Sert à trancher « introuvable API » vs « inactif » vs « mauvaise base phpMyAdmin ».
+        /// </summary>
+        [HttpGet("{id}/admin-diagnostic")]
+        [Authorize(Roles = "Super-Admin")]
+        [ProducesResponseType(typeof(UtilisateurAdminDiagnosticDto), 200)]
+        public async Task<ActionResult<UtilisateurAdminDiagnosticDto>> GetUtilisateurAdminDiagnostic(int id)
+        {
+            var utilisateur = await _context.Utilisateurs
+                .AsNoTracking()
+                .Include(u => u.Ecole)
+                .Include(u => u.Role)
+                .FirstOrDefaultAsync(u => u.IdUtilisateur == id);
+
+            if (utilisateur == null)
+            {
+                return Ok(new UtilisateurAdminDiagnosticDto
+                {
+                    Existe = false,
+                    IdUtilisateur = id,
+                    Message = $"Aucune ligne IdUtilisateur={id} dans la base de l'API. " +
+                              "Si phpMyAdmin affiche cette ligne, ce n'est pas la même base/serveur."
+                });
+            }
+
+            var hashLen = utilisateur.MotDePasseHash?.Length ?? 0;
+            return Ok(new UtilisateurAdminDiagnosticDto
+            {
+                Existe = true,
+                IdUtilisateur = utilisateur.IdUtilisateur,
+                Email = utilisateur.Email,
+                Statut = utilisateur.Statut,
+                IdEcole = utilisateur.IdEcole,
+                NomEcole = utilisateur.Ecole?.Nom,
+                EcoleActive = utilisateur.Ecole?.Statut,
+                IdRole = utilisateur.IdRole,
+                NomRole = utilisateur.Role?.Nom,
+                MotDePasseHashLength = hashLen,
+                AMotDePasseConfigure = hashLen > 0,
+                Telephone = utilisateur.Telephone,
+                DefaultUsername = utilisateur.DefaultUsername,
+                Message = utilisateur.Statut == true
+                    ? "Utilisateur trouvé et actif dans la base API."
+                    : "Utilisateur trouvé mais inactif (Statut != true) — le login et l'ancien GET /email le masquaient."
+            });
         }
 
 
@@ -644,6 +703,7 @@ namespace KelasiNaBiso.Controllers
         /// </remarks>
         [HttpPost]
         [Authorize(Roles = "Admin,Directeur,Super-Admin")]
+        [Permission("Utilisateur.Create")]
         [ProducesResponseType(typeof(Utilisateur), 201)]
         [ProducesResponseType(400)]
         [ProducesResponseType(403)]
@@ -745,7 +805,7 @@ namespace KelasiNaBiso.Controllers
                 PostNomUtilisateur = dto.PostNomUtilisateur,
                 PrenomUtilisateur = dto.PrenomUtilisateur,
                 Email = dto.Email,
-                Telephone = dto.Telephone,
+                Telephone = TelephoneNormalizer.Normalize(dto.Telephone),
                 PhotoUrl = dto.PhotoUrl,
                 LieuNaissance = dto.LieuNaissance,
                 DateNaissance = dto.DateNaissance,
@@ -810,6 +870,7 @@ namespace KelasiNaBiso.Controllers
         /// - Rôle, École, Statut (utiliser PUT /api/Utilisateur/{id}/admin)
         /// </remarks>
         [HttpPut("{id}")]
+        [Permission("Utilisateur.Update")]
         [ProducesResponseType(typeof(Utilisateur), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(401)]
@@ -933,7 +994,7 @@ namespace KelasiNaBiso.Controllers
             targetUser.PostNomUtilisateur = dto.PostNomUtilisateur;
             targetUser.PrenomUtilisateur = dto.PrenomUtilisateur;
             targetUser.Email = dto.Email;
-            targetUser.Telephone = dto.Telephone;
+            targetUser.Telephone = TelephoneNormalizer.Normalize(dto.Telephone);
             targetUser.PhotoUrl = dto.PhotoUrl;
             targetUser.LieuNaissance = dto.LieuNaissance;
             targetUser.DateNaissance = dto.DateNaissance;
@@ -1012,6 +1073,7 @@ namespace KelasiNaBiso.Controllers
         /// </remarks>
         [HttpPut("{id}/admin")]
         [Authorize(Roles = "Admin,Super-Admin")]
+        [Permission("Utilisateur.Update")]
         [ProducesResponseType(typeof(Utilisateur), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(403)]
@@ -1094,7 +1156,7 @@ namespace KelasiNaBiso.Controllers
             targetUser.PostNomUtilisateur = dto.PostNomUtilisateur;
             targetUser.PrenomUtilisateur = dto.PrenomUtilisateur;
             targetUser.Email = dto.Email;
-            targetUser.Telephone = dto.Telephone;
+            targetUser.Telephone = TelephoneNormalizer.Normalize(dto.Telephone);
             targetUser.PhotoUrl = dto.PhotoUrl;
             targetUser.LieuNaissance = dto.LieuNaissance;
             targetUser.DateNaissance = dto.DateNaissance;
@@ -1168,6 +1230,7 @@ namespace KelasiNaBiso.Controllers
         /// </remarks>
         [HttpDelete("{id}")]
         [Authorize(Roles = "Super-Admin")]
+        [Permission("Utilisateur.Delete")]
         [ProducesResponseType(204)]
         [ProducesResponseType(400)]
         [ProducesResponseType(404)]
@@ -1240,6 +1303,17 @@ namespace KelasiNaBiso.Controllers
                     {
                         searchMethod = "EMAIL";
                     }
+                    else
+                    {
+                        // Distinguer « inexistant » vs « inactif » (login reste refusé si inactif)
+                        var anyStatus = await _utilisateurRepository.GetByEmailAnyStatusAsync(request.EmailOuTelephone);
+                        if (anyStatus != null && anyStatus.Statut != true)
+                        {
+                            _logger.LogWarning(
+                                $"❌ Compte désactivé pour l'utilisateur {anyStatus.IdUtilisateur} - {anyStatus.Email}");
+                            return Unauthorized(new { message = "Compte désactivé" });
+                        }
+                    }
                 }
                 
                 // Si pas trouvé, essayer par DefaultUsername
@@ -1256,8 +1330,9 @@ namespace KelasiNaBiso.Controllers
                 // Si toujours pas trouvé, essayer par téléphone
                 if (utilisateur == null)
                 {
-                    _logger.LogInformation($"🔍 Recherche par TELEPHONE: {request.EmailOuTelephone}");
-                    var utilisateurs = await _utilisateurRepository.GetByTelephoneAsync(request.EmailOuTelephone);
+                    var telephoneNormalise = TelephoneNormalizer.Normalize(request.EmailOuTelephone);
+                    _logger.LogInformation($"🔍 Recherche par TELEPHONE: {telephoneNormalise}");
+                    var utilisateurs = await _utilisateurRepository.GetByTelephoneAsync(telephoneNormalise ?? request.EmailOuTelephone!);
                     utilisateur = utilisateurs?.FirstOrDefault();
                     if (utilisateur != null)
                     {
@@ -1885,6 +1960,7 @@ namespace KelasiNaBiso.Controllers
         /// </remarks>
         [HttpPut("toggle-statut/{id}")]
         [Authorize(Roles = "Admin,Super-Admin")]
+        [Permission("Utilisateur.Update")]
         [ProducesResponseType(200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(403)]
@@ -2139,7 +2215,17 @@ namespace KelasiNaBiso.Controllers
 
                 if (targetUser == null)
                 {
-                    return NotFound(new { message = $"Utilisateur {dto.IdUtilisateur} introuvable" });
+                    return NotFound(new
+                    {
+                        message = $"Utilisateur {dto.IdUtilisateur} introuvable dans la base connectée à l'API. " +
+                                  "Si la ligne apparaît dans phpMyAdmin, vérifiez que c'est la même base/serveur que la connection string de production."
+                    });
+                }
+
+                if (targetUser.Statut != true)
+                {
+                    _logger.LogWarning(
+                        $"⚠️ Réinitialisation demandée pour utilisateur inactif {dto.IdUtilisateur} (Statut={targetUser.Statut}) par User {userId}");
                 }
 
                 // 4️⃣ Admin : Vérifier qu'il réinitialise uniquement dans SON école
@@ -2235,6 +2321,7 @@ namespace KelasiNaBiso.Controllers
         /// <returns>Message de succès</returns>
         [HttpPost("{id}/roles/{roleId}")]
         [Authorize(Roles = "Admin,Super-Admin")]
+        [Permission("Utilisateur.Update")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(404)]
@@ -2311,6 +2398,7 @@ namespace KelasiNaBiso.Controllers
         /// <returns>Message de succès</returns>
         [HttpDelete("{id}/roles/{roleId}")]
         [Authorize(Roles = "Admin,Super-Admin")]
+        [Permission("Utilisateur.Update")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(404)]
@@ -2395,6 +2483,7 @@ namespace KelasiNaBiso.Controllers
         /// <returns>Message de succès</returns>
         [HttpPut("{id}/roles/{roleId}/primary")]
         [Authorize(Roles = "Admin,Super-Admin")]
+        [Permission("Utilisateur.Update")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(404)]

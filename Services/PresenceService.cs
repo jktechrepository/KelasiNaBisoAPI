@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using KelasiNaBiso.Data;
 using KelasiNaBiso.Models;
+using KelasiNaBiso.Models.DTOs;
 using KelasiNaBiso.Models.DTOs.Pagination;
 using KelasiNaBiso.Services.Repositories;
 using KelasiNaBiso.Services.Notifications;
@@ -18,29 +19,59 @@ namespace KelasiNaBiso.Services
         private readonly INotificationDispatcher _notificationDispatcher;
         private readonly INotificationJobQueue _notificationJobQueue;
         private readonly IDashboardHubService _dashboardHubService;
+        private readonly IInscriptionActiveResolver _inscriptionResolver;
+        private readonly EleveAnneeScopeHelper _scope;
 
         public PresenceService(
             KelasiNaBisoDbContext context,
             ILogger<PresenceService> logger,
             INotificationDispatcher notificationDispatcher,
             INotificationJobQueue notificationJobQueue,
-            IDashboardHubService dashboardHubService)
+            IDashboardHubService dashboardHubService,
+            IInscriptionActiveResolver inscriptionResolver,
+            EleveAnneeScopeHelper scope)
         {
             _context = context;
             _logger = logger;
             _notificationDispatcher = notificationDispatcher;
             _notificationJobQueue = notificationJobQueue;
             _dashboardHubService = dashboardHubService;
+            _inscriptionResolver = inscriptionResolver;
+            _scope = scope;
         }
 
-        // ✅ NOUVELLES MÉTHODES PAGINÉES
-        public async Task<PagedResult<Presence>> GetAllPagedAsync(PagedRequest request)
+        private IQueryable<Presence> ApplyAnneeEcoleFilter(
+            IQueryable<Presence> query, int idEcole, int idAnneeScolaire)
         {
-            var query = _context.Presences
-                .Include(p => p.Eleve)
-                .Include(p => p.Agent)
-               // .Include(p => p.Vacation)
-                .AsQueryable();
+            var eleveIds = _scope.GetEleveIdsInEcoleAnnee(idEcole, idAnneeScolaire);
+            return query.Where(p =>
+                p.IdAgent != null
+                || (p.IdEleve != null && eleveIds.Contains(p.IdEleve.Value)));
+        }
+
+        private IQueryable<Presence> ApplyAnneeEleveFilter(
+            IQueryable<Presence> query, int idEleve, int idAnneeScolaire)
+        {
+            return query.Where(p => p.IdEleve == idEleve && _context.Inscriptions.Any(i =>
+                i.IdEleve == idEleve
+                && i.IdAnneeScolaire == idAnneeScolaire
+                && i.Statut == true
+                && i.StatutInscription != null
+                && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                    || i.StatutInscription == "Confirme"
+                    || i.StatutInscription.StartsWith("Confirm"))));
+        }
+
+        public async Task<ElevesAnneeScopedResult<PagedResult<Presence>>> GetAllPagedAsync(
+            int idEcole, PagedRequest request, int? idAnneeScolaire = null)
+        {
+            var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole, idAnneeScolaire);
+            var query = ApplyAnneeEcoleFilter(
+                _context.Presences
+                    .Include(p => p.Eleve)
+                    .Include(p => p.Agent)
+                    .AsQueryable(),
+                ecole, annee);
 
             // Filtrer par statut
             if (!request.IncludeInactive)
@@ -71,43 +102,51 @@ namespace KelasiNaBiso.Services
                     : query.OrderByDescending(p => p.DateDuJour).ThenByDescending(p => p.HeureArrivee);
             }
 
-            return await query.ToPagedAsync(request);
+            var paged = await query.ToPagedAsync(request);
+            return EleveAnneeScopeHelper.Wrap(paged, ecole, annee);
         }
 
-        public async Task<CursorPaginatedResult<Presence>> GetAllCursorPagedAsync(CursorPaginationRequest request)
+        public async Task<ElevesAnneeScopedResult<CursorPaginatedResult<Presence>>> GetAllCursorPagedAsync(
+            int idEcole, CursorPaginationRequest request, int? idAnneeScolaire = null)
         {
-            var query = _context.Presences
-                .Include(p => p.Eleve)
-                .Include(p => p.Agent)
-               // .Include(p => p.Vacation)
-                .AsQueryable();
+            var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole, idAnneeScolaire);
+            var query = ApplyAnneeEcoleFilter(
+                _context.Presences
+                    .Include(p => p.Eleve)
+                    .Include(p => p.Agent)
+                    .AsQueryable(),
+                ecole, annee);
 
-            // Filtrer par statut
             if (!request.IncludeInactive)
-            {
                 query = query.Where(p => p.Statut == true);
-            }
 
-            // Appliquer la recherche
             if (!string.IsNullOrWhiteSpace(request.SearchTerm))
             {
                 var searchLower = request.SearchTerm.ToLower();
                 query = query.Where(p =>
                     (p.Observation != null && p.Observation.ToLower().Contains(searchLower)) ||
-                    (p.TypePresence != null && p.TypePresence.ToLower().Contains(searchLower))
-                );
+                    (p.TypePresence != null && p.TypePresence.ToLower().Contains(searchLower)));
             }
 
-            // Utiliser IdPresence comme curseur
-            return await query.ToCursorPagedAsync(request, p => p.IdPresence);
+            var paged = await query.ToCursorPagedAsync(request, p => p.IdPresence);
+            return EleveAnneeScopeHelper.Wrap(paged, ecole, annee);
         }
 
-        public async Task<PagedResult<Presence>> GetByElevePagedAsync(int idEleve, PagedRequest request)
+        public async Task<ElevesAnneeScopedResult<PagedResult<Presence>>> GetByElevePagedAsync(
+            int idEleve, PagedRequest request, int? idAnneeScolaire = null)
         {
-            var query = _context.Presences
-                .Include(p => p.Eleve)
-             //   .Include(p => p.Vacation)
-                .Where(p => p.IdEleve == idEleve);
+            var idEcole = await _inscriptionResolver.GetEcoleCouranteAsync(idEleve, idAnneeScolaire);
+            if (!idEcole.HasValue)
+                idEcole = await _inscriptionResolver.GetEcoleCouranteAsync(idEleve, null);
+            if (!idEcole.HasValue)
+                throw new InvalidOperationException($"Élève {idEleve} introuvable ou sans inscription confirmée.");
+
+            var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole.Value, idAnneeScolaire);
+            var query = ApplyAnneeEleveFilter(
+                _context.Presences
+                    .Include(p => p.Eleve)
+                    .AsQueryable(),
+                idEleve, annee);
 
             // Filtrer par statut
             if (!request.IncludeInactive)
@@ -115,14 +154,14 @@ namespace KelasiNaBiso.Services
                 query = query.Where(p => p.Statut == true);
             }
 
-            return await query.ToPagedAsync(request, p => p.DateDuJour);
+            var paged = await query.ToPagedAsync(request, p => p.DateDuJour);
+            return EleveAnneeScopeHelper.Wrap(paged, ecole, annee);
         }
 
         public async Task<PagedResult<Presence>> GetByAgentPagedAsync(int idAgent, PagedRequest request)
         {
             var query = _context.Presences
                 .Include(p => p.Agent)
-               // .Include(p => p.Vacation)
                 .Where(p => p.IdAgent == idAgent);
 
             // Filtrer par statut
@@ -151,31 +190,31 @@ namespace KelasiNaBiso.Services
             return await query.ToPagedAsync(request, p => p.HeureArrivee);
         }
 
-        public async Task<PagedResult<Presence>> GetByDateRangePagedAsync(DateTime dateDebut, DateTime dateFin, PagedRequest request)
+        public async Task<ElevesAnneeScopedResult<PagedResult<Presence>>> GetByDateRangePagedAsync(
+            int idEcole, DateTime dateDebut, DateTime dateFin, PagedRequest request, int? idAnneeScolaire = null)
         {
-            var query = _context.Presences
-                .Include(p => p.Eleve)
-                .Include(p => p.Agent)
-              //  .Include(p => p.Vacation)
+            var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole, idAnneeScolaire);
+            var query = ApplyAnneeEcoleFilter(
+                _context.Presences
+                    .Include(p => p.Eleve)
+                    .Include(p => p.Agent)
+                    .AsQueryable(),
+                ecole, annee)
                 .Where(p => p.DateDuJour.Date >= dateDebut.Date && p.DateDuJour.Date <= dateFin.Date);
 
-            // Filtrer par statut
             if (!request.IncludeInactive)
-            {
                 query = query.Where(p => p.Statut == true);
-            }
 
-            // Appliquer la recherche
             if (!string.IsNullOrWhiteSpace(request.SearchTerm))
             {
                 var searchLower = request.SearchTerm.ToLower();
                 query = query.Where(p =>
                     (p.Observation != null && p.Observation.ToLower().Contains(searchLower)) ||
-                    (p.TypePresence != null && p.TypePresence.ToLower().Contains(searchLower))
-                );
+                    (p.TypePresence != null && p.TypePresence.ToLower().Contains(searchLower)));
             }
 
-            return await query.ToPagedAsync(request, p => p.DateDuJour);
+            var paged = await query.ToPagedAsync(request, p => p.DateDuJour);
+            return EleveAnneeScopeHelper.Wrap(paged, ecole, annee);
         }
 
         public async Task<PagedResult<Presence>> GetByTypePersonnePagedAsync(string typePersonne, PagedRequest request)
@@ -196,14 +235,19 @@ namespace KelasiNaBiso.Services
         }
 
         // ⚠️ DEPRECATED: Anciennes méthodes (conserver pour rétrocompatibilité)
-        public async Task<IEnumerable<Presence>> GetAllAsync()
+        public async Task<ElevesAnneeScopedResult<IEnumerable<Presence>>> GetAllAsync(
+            int idEcole, int? idAnneeScolaire = null)
         {
-            return await _context.Presences
-                .Include(p => p.Eleve)
-                .Include(p => p.Agent) // ✅ POINTAGE AGENT: Inclure l'agent
-              //  .Include(p => p.Vacation)
-                .Where(p => p.Statut == true) // ✅ Filtrer uniquement les présences actives
+            var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole, idAnneeScolaire);
+            var data = await ApplyAnneeEcoleFilter(
+                    _context.Presences
+                        .Include(p => p.Eleve)
+                        .Include(p => p.Agent)
+                        .AsQueryable(),
+                    ecole, annee)
+                .Where(p => p.Statut == true)
                 .ToListAsync();
+            return EleveAnneeScopeHelper.Wrap<IEnumerable<Presence>>(data, ecole, annee);
         }
 
         public async Task<Presence> GetByIdAsync(int id)
@@ -216,14 +260,21 @@ namespace KelasiNaBiso.Services
                 .FirstOrDefaultAsync(p => p.IdPresence == id);
         }
 
-        public async Task<IEnumerable<Presence>> GetByEleveAsync(int idEleve)
+        public async Task<ElevesAnneeScopedResult<IEnumerable<Presence>>> GetByEleveAsync(
+            int idEleve, int? idAnneeScolaire = null)
         {
-            return await _context.Presences
-              //  .Include(p => p.Vacation)
-                .Where(p => p.IdEleve == idEleve)
-                .Where(p => p.Statut == true) // ✅ Filtrer uniquement les présences actives
+            var idEcole = await _inscriptionResolver.GetEcoleCouranteAsync(idEleve, idAnneeScolaire);
+            if (!idEcole.HasValue)
+                idEcole = await _inscriptionResolver.GetEcoleCouranteAsync(idEleve, null);
+            if (!idEcole.HasValue)
+                throw new InvalidOperationException($"Élève {idEleve} introuvable ou sans inscription confirmée.");
+
+            var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole.Value, idAnneeScolaire);
+            var data = await ApplyAnneeEleveFilter(_context.Presences.AsQueryable(), idEleve, annee)
+                .Where(p => p.Statut == true)
                 .OrderByDescending(p => p.DateDuJour)
                 .ToListAsync();
+            return EleveAnneeScopeHelper.Wrap<IEnumerable<Presence>>(data, ecole, annee);
         }
 
         public async Task<IEnumerable<Presence>> GetByVacationAsync(int IdVacation)
@@ -485,16 +536,7 @@ namespace KelasiNaBiso.Services
                 // Récupérer l'idEcole selon le type de présence
                 if (presence.IdEleve.HasValue)
                 {
-                    // Charger l'élève avec ses relations pour récupérer l'école
-                    var eleve = await _context.Eleves
-                        .Include(e => e.Classe)
-                            .ThenInclude(c => c.Direction)
-                        .FirstOrDefaultAsync(e => e.IdEleve == presence.IdEleve.Value);
-
-                    if (eleve?.Classe?.Direction != null)
-                    {
-                        idEcole = eleve.Classe.Direction.IdEcole;
-                    }
+                    idEcole = await _inscriptionResolver.GetEcoleCouranteAsync(presence.IdEleve.Value);
                 }
                 else if (presence.IdAgent.HasValue)
                 {

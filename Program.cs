@@ -6,33 +6,14 @@ using KelasiNaBiso.Services.Notifications;
 using KelasiNaBiso.Services.Reporting;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
-using AutoMapper;
 using Microsoft.Extensions.DependencyInjection;
 using KelasiNaBisoAPI.Services.Repositories;
 using KelasiNaBisoAPI.Services;
 using Serilog;
 using AspNetCoreRateLimit;
-using System.Reflection;
 using Amazon.S3;
 using Amazon;
 using FastReport.Web;
-
-// ═══════════════════════════════════════════════════════════════════════════════════
-// Assembly pour JWT (compatibilité entre JwtBearer 6.0.25 et JWT 8.3.1)
-// ═══════════════════════════════════════════════════════════════════════════════════
-AppDomain.CurrentDomain.AssemblyResolve += (sender, args) =>
-{
-    string assemblyName = new AssemblyName(args.Name).Name;
-    if (assemblyName == "System.IdentityModel.Tokens.Jwt")
-    {
-        // Charger la version 8.3.1 au lieu de 6.10.0.0
-        var assembly = Assembly.LoadFrom(
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "System.IdentityModel.Tokens.Jwt.dll")
-        );
-        return assembly;
-    }
-    return null;
-};
 
 // ═══════════════════════════════════════════════════════════════════════════════════
 //  CONFIGURATION SERILOG (Étape 1 : Charger la configuration avant CreateBuilder)
@@ -60,13 +41,18 @@ try
     Log.Information(" Serilog configuré avec succès");
 
 // En local uniquement : port fixe. Sur IIS/LWS (dev-knb), laisser le reverse proxy gérer les URLs.
-if (builder.Environment.IsDevelopment())
+// Ne pas forcer d'URL en environnement Testing (WebApplicationFactory).
+if (builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Testing"))
 {
     builder.WebHost.UseUrls("https://0.0.0.0:7102");
 }
 
 // Add services to the container.
-builder.Services.AddControllers();
+builder.Services.AddControllers(options =>
+{
+    // Isolation multi-école : bloque idEcole/ecoleId hors JWT (sauf Super-Admin / IT-Support)
+    options.Filters.Add<KelasiNaBiso.Attributes.SchoolTenantActionFilter>();
+});
 builder.Services.AddRazorPages();
 
 // ═══════════════════════════════════════════════════════════════════════════════════
@@ -118,26 +104,54 @@ builder.Services.AddSingleton<IRateLimitConfiguration, RateLimitConfiguration>()
 
 Log.Information(" Rate Limiting configuré (AspNetCoreRateLimit)");
 
+// JWT : secret obligatoire (pas de fallback forgeable en prod)
+var jwtSecret = builder.Configuration["Jwt:SecretKey"];
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "KelasiNaBiso";
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "KelasiNaBisoUsers";
+
+if (builder.Environment.IsEnvironment("Testing"))
+{
+    // Clé stable pour WebApplicationFactory (évite décalage génération/validation)
+    jwtSecret = "KelasiNaBiso-Test-SecretKey-Min32Chars-ForHS256!!";
+    jwtIssuer = "KelasiNaBiso";
+    jwtAudience = "KelasiNaBisoUsers";
+}
+else if (string.IsNullOrWhiteSpace(jwtSecret))
+{
+    throw new InvalidOperationException(
+        "Configuration manquante: Jwt:SecretKey. Définir la clé dans appsettings ou les variables d'environnement.");
+}
+
 // Configuration JWT avec authentification Bearer
 builder.Services.AddAuthentication("Bearer")
     .AddJwtBearer("Bearer", options =>
     {
-        options.RequireHttpsMetadata = false; // Pour le développement
+        options.RequireHttpsMetadata = !builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Testing");
         options.SaveToken = true;
         options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
         {
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(
-                System.Text.Encoding.UTF8.GetBytes(builder.Configuration["Jwt:SecretKey"] ?? "KelasiNaBiso-SecretKey-2025-V1-Ultra-Secure-Key-For-JWT-Token-Generation")
+                System.Text.Encoding.UTF8.GetBytes(jwtSecret)
             ),
-            ValidateIssuer = false, // Pas de validation d'issuer pour simplifier
-            ValidateAudience = false, // Pas de validation d'audience pour simplifier
-            ValidateLifetime = true, // Valider l'expiration du token
-            ClockSkew = TimeSpan.Zero, // Pas de tolérance sur l'expiration
+            ValidateIssuer = true,
+            ValidIssuer = jwtIssuer,
+            ValidateAudience = true,
+            ValidAudience = jwtAudience,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.Zero,
             RoleClaimType = System.Security.Claims.ClaimTypes.Role,
             NameClaimType = System.Security.Claims.ClaimTypes.NameIdentifier
         };
     });
+
+// Propager les valeurs JWT Testing aux services qui lisent IConfiguration
+if (builder.Environment.IsEnvironment("Testing"))
+{
+    builder.Configuration["Jwt:SecretKey"] = jwtSecret;
+    builder.Configuration["Jwt:Issuer"] = jwtIssuer;
+    builder.Configuration["Jwt:Audience"] = jwtAudience;
+}
 
 builder.Services.AddAuthorization();
 builder.Services.AddEndpointsApiExplorer();
@@ -177,11 +191,34 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
+var kelasiConnectionString = builder.Configuration.GetConnectionString("KelasiConnection")
+    ?? throw new InvalidOperationException("Connection string 'KelasiConnection' manquante.");
+
+// Pomelo : MariaDB ≥ 10.5 génère INSERT…RETURNING (non supporté par MySQL / MariaDB < 10.5).
+// Priorité : Database:ServerVersion (ex. "8.0.36-mysql") → sinon AutoDetect → sinon MySQL 8.0.
+ServerVersion mysqlServerVersion;
+var configuredServerVersion = builder.Configuration["Database:ServerVersion"];
+if (!string.IsNullOrWhiteSpace(configuredServerVersion))
+{
+    mysqlServerVersion = ServerVersion.Parse(configuredServerVersion);
+}
+else
+{
+    try
+    {
+        mysqlServerVersion = ServerVersion.AutoDetect(kelasiConnectionString);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"⚠️ AutoDetect ServerVersion échoué ({ex.Message}). Fallback MySQL 8.0.36.");
+        mysqlServerVersion = new MySqlServerVersion(new Version(8, 0, 36));
+    }
+}
+
+Console.WriteLine($"🗄️ EF MySQL/MariaDB ServerVersion: {mysqlServerVersion}");
+
 builder.Services.AddDbContext<KelasiNaBisoDbContext>(options =>
-    options.UseMySql(
-        builder.Configuration.GetConnectionString("KelasiConnection"),
-        new MariaDbServerVersion(new Version(10, 11, 0))
-    ));
+    options.UseMySql(kelasiConnectionString, mysqlServerVersion));
 
 // Enregistrement du service JWT
 builder.Services.AddScoped<ISimpleJwtService, SimpleJwtService>();
@@ -202,18 +239,23 @@ builder.Services.AddScoped<IClasseRepository, ClasseService>();
 builder.Services.AddScoped<IUtilisateurRepository, UtilisateurService>();
 builder.Services.AddScoped<ITuteurRepository, TuteurService>();
 builder.Services.AddScoped<IInscriptionRepository, InscriptionService>();
+builder.Services.AddScoped<IInscriptionActiveResolver, InscriptionActiveResolver>();
 builder.Services.AddScoped<ExcelInscriptionService>();
 builder.Services.AddScoped<ExcelInscriptionServiceV2>();
 builder.Services.AddScoped<ExcelPaiementService>();
 builder.Services.AddScoped<ExcelPaiementServiceV2>();
 builder.Services.AddScoped<PaiementCrashedService>(); // ✅ Service pour gérer les paiements échoués
 builder.Services.AddScoped<INoteRepository, NoteService>();
+builder.Services.AddScoped<IBulletinService, BulletinService>();
 builder.Services.AddScoped<ICoursRepository, CoursService>();
 builder.Services.AddScoped<IAffectationCoursRepository, AffectationCoursService>();
 builder.Services.AddScoped<ITitulaireClasseRepository, TitulaireClasseService>(); //  Gestion titulaires Maternelle/Primaire
+builder.Services.AddScoped<IPedagogieAuthorizationService, PedagogieAuthorizationService>(); // ACL Titulaire ∪ Affectation (année)
 builder.Services.AddScoped<IMessageRepository, MessageService>();
 builder.Services.AddScoped<IPresenceRepository, PresenceService>();
+builder.Services.AddScoped<EleveAnneeScopeHelper>();
 builder.Services.AddScoped<IPresenceReportingService, PresenceReportingService>(); //  Service de reporting présence
+builder.Services.AddScoped<KelasiNaBiso.Services.Reporting.IFeuilleAppelExcelExporter, KelasiNaBiso.Services.Reporting.FeuilleAppelExcelExporter>();
 builder.Services.AddScoped<ISmsNotificationService, TwilioSmsService>(); //  Service SMS Twilio
 builder.Services.AddScoped<IVacationRepository, VacationService>();
 builder.Services.AddScoped<IAgentRepository, AgentService>();
@@ -341,6 +383,7 @@ Log.Information("MOKO Afrika services configurés (PayIn/PayOut/wallet/callback/
 builder.Services.AddFastReport();
 builder.Services.AddHttpClient<IReportImageResolver, ReportImageResolver>();
 builder.Services.AddScoped<ICarteReportService, CarteReportService>();
+builder.Services.AddScoped<IBulletinReportService, BulletinReportService>();
 Log.Information("FastReport cartes scolaires configuré");
 
 // ✨ NOUVEAU : Services RBAC avec permissions
@@ -364,14 +407,37 @@ builder.Services.AddSignalR(options =>
     options.HandshakeTimeout = TimeSpan.FromSeconds(15); // Timeout de handshake
 });
 
-// CORS : toutes origines (web + apps hybrides). Les apps natives n'utilisent pas CORS.
-// SetIsOriginAllowed (et non AllowAnyOrigin) pour rester compatible avec AllowCredentials + JWT.
+// CORS : allowlist configurable (Cors:AllowedOrigins). En Development, localhost autorisé.
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend",
         policy =>
         {
-            policy.SetIsOriginAllowed(_ => true)
+            var configuredOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+                ?? Array.Empty<string>();
+
+            var origins = configuredOrigins
+                .Where(o => !string.IsNullOrWhiteSpace(o))
+                .Select(o => o.Trim().TrimEnd('/'))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing"))
+            {
+                origins.Add("http://localhost:3000");
+                origins.Add("http://localhost:5173");
+                origins.Add("http://localhost:4200");
+                origins.Add("https://localhost:3000");
+                origins.Add("https://localhost:5173");
+            }
+
+            if (origins.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "Configuration manquante: Cors:AllowedOrigins (tableau d'origines frontend autorisées).");
+            }
+
+            policy.WithOrigins(origins.Distinct(StringComparer.OrdinalIgnoreCase).ToArray())
                   .AllowAnyHeader()
                   .AllowAnyMethod()
                   .AllowCredentials()
@@ -392,8 +458,16 @@ app.UseResponseCompression();
 Log.Information(" Response Compression activée (Brotli/Gzip)");
 
 //  ACTIVATION DU RATE LIMITING (AVANT l'authentification)
-app.UseIpRateLimiting();
-Log.Information(" Rate Limiting activé - Protection contre brute-force et abus");
+// Désactivé en Testing : le client de test n'a souvent pas d'IP distante (NRE AspNetCoreRateLimit).
+if (!app.Environment.IsEnvironment("Testing"))
+{
+    app.UseIpRateLimiting();
+    Log.Information(" Rate Limiting activé - Protection contre brute-force et abus");
+}
+else
+{
+    Log.Information(" Rate Limiting désactivé (environnement Testing)");
+}
 
 // Swagger disponible dans tous les environnements
 app.UseSwagger();
@@ -434,47 +508,47 @@ app.MapHub<KelasiNaBisoAPI.Hubs.NotificationHub>("/hubs/notifications");
 app.MapHub<KelasiNaBisoAPI.Hubs.DashboardHub>("/hubs/dashboard"); // Hub pour dashboards en temps réel
 app.MapHub<KelasiNaBisoAPI.Hubs.DevoirADomicileHub>("/hubs/devoirs-adomicile"); // Hub pour devoirs à domicile en temps réel
 
-// Apply migrations and initialize default data
-using (var scope = app.Services.CreateScope())
+// Apply migrations and initialize default data (hors tests d'intégration InMemory)
+if (!app.Environment.IsEnvironment("Testing"))
 {
-    var services = scope.ServiceProvider;
-    try
+    using (var scope = app.Services.CreateScope())
     {
-        var context = services.GetRequiredService<KelasiNaBisoDbContext>();
-        var logger = services.GetRequiredService<ILogger<Program>>();
-        
-        // 1. Appliquer les migrations d'abord
-        //  TEMPORAIREMENT DÉSACTIVÉ : Les migrations doivent être appliquées manuellement
-        // logger.LogInformation("Application des migrations à la base de données...");
-        // context.Database.Migrate();
-        // logger.LogInformation("Migrations appliquées avec succès.");
-        
-        // 2. Créer les vues et procédures stockées
-        logger.LogInformation("Création des vues et procédures stockées...");
-        context.CreateViewUtilisateur();
-        context.CreateViewEleve();
-        // context.CreateInscriptionStoredProcedure(); // Temporairement désactivé pour MySQL/MariaDB
-        context.CreateViewEleveParEcole();
-        context.CreateViewVuePaiementsFraisParEcole();
-        context.CreateViewVuePointagePresenceParEcole();
-        context.CreateViewVueRepertoireAgentsParParent();
-        //  OBSOLÈTE: CreateViewVueRepertoireEnseignantsParParent supprimé
-        logger.LogInformation("Vues et procédures stockées créées avec succès.");
+        var services = scope.ServiceProvider;
+        try
+        {
+            var context = services.GetRequiredService<KelasiNaBisoDbContext>();
+            var logger = services.GetRequiredService<ILogger<Program>>();
+            // Dev: migrations ON par défaut (vues inclus via AddReportingViews). Prod: false sauf config explicite.
+            var applyMigrationsDefault = app.Environment.IsDevelopment();
+            var applyMigrations = app.Configuration.GetValue("Database:ApplyMigrationsOnStartup", applyMigrationsDefault);
 
-        // 3. Initialiser les données par défaut (Super-Admin, Ekelasi School, etc.)
-        logger.LogInformation("Initialisation des données par défaut...");
-        await context.InitializeDefaultDataAsync();
-        logger.LogInformation("Initialisation des données par défaut terminée avec succès.");
-        
-        // 4.  NOUVEAU : Initialiser les permissions RBAC
-        logger.LogInformation("Initialisation des permissions RBAC...");
-        await PermissionSeeder.SeedPermissionsAsync(context);
-        logger.LogInformation("Permissions RBAC initialisées avec succès.");
-    }
-    catch (Exception ex)
-    {
-        var logger = services.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "Une erreur s'est produite lors de l'initialisation de la base de données.");
+            // 1. Migrations EF (schéma + vues — docs/SCHEMA_SOURCE_OF_TRUTH.md)
+            if (applyMigrations)
+            {
+                logger.LogInformation("Application des migrations EF (Database:ApplyMigrationsOnStartup=true)...");
+                context.Database.Migrate();
+                logger.LogInformation("Migrations appliquées avec succès (tables + vues reporting).");
+            }
+            else
+            {
+                logger.LogInformation("Migrations au démarrage désactivées (utiliser: dotnet ef database update).");
+            }
+
+            // 2. Initialiser les données par défaut (Super-Admin, Ekelasi School, etc.)
+            logger.LogInformation("Initialisation des données par défaut...");
+            await context.InitializeDefaultDataAsync();
+            logger.LogInformation("Initialisation des données par défaut terminée avec succès.");
+            
+            // 3. Initialiser les permissions RBAC
+            logger.LogInformation("Initialisation des permissions RBAC...");
+            await PermissionSeeder.SeedPermissionsAsync(context);
+            logger.LogInformation("Permissions RBAC initialisées avec succès.");
+        }
+        catch (Exception ex)
+        {
+            var logger = services.GetRequiredService<ILogger<Program>>();
+            logger.LogError(ex, "Une erreur s'est produite lors de l'initialisation de la base de données.");
+        }
     }
 }
 
@@ -487,6 +561,7 @@ app.Run();
 catch (Exception ex)
 {
     Log.Fatal(ex, "❌ L'application s'est arrêtée de manière inattendue");
+    throw;
 }
 finally
 {

@@ -23,7 +23,8 @@ namespace KelasiNaBiso.Services
         public SimpleJwtService(IConfiguration configuration)
         {
             _configuration = configuration;
-            _secretKey = _configuration["Jwt:SecretKey"] ?? "KelasiNaBiso_SecretKey_2024_SuperSecure_Key_For_Production_Use_Only";
+            _secretKey = _configuration["Jwt:SecretKey"]
+                ?? throw new InvalidOperationException("Jwt:SecretKey manquant dans la configuration.");
             _issuer = _configuration["Jwt:Issuer"] ?? "KelasiNaBiso";
             _audience = _configuration["Jwt:Audience"] ?? "KelasiNaBisoUsers";
             _expirationMinutes = int.Parse(_configuration["Jwt:ExpirationMinutes"] ?? "1440");

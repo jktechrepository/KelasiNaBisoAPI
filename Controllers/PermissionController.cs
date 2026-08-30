@@ -84,7 +84,7 @@ namespace KelasiNaBiso.Controllers
         /// Récupère les permissions par catégorie (ex: "Ecole", "Paiement", etc.)
         /// </summary>
         [HttpGet("by-category/{category}")]
-      //  [Permission("Permission.ReadAll")]
+        [Permission("Permission.ReadAll")]
         public async Task<ActionResult<IEnumerable<Permission>>> GetPermissionsByCategory(string category)
         {
             try
@@ -103,7 +103,7 @@ namespace KelasiNaBiso.Controllers
         /// Récupère toutes les permissions d'un rôle spécifique
         /// </summary>
         [HttpGet("role/{roleId}")]
-      //  [Permission("Permission.ReadAll")]
+        [Permission("Permission.ReadAll")]
         public async Task<ActionResult<IEnumerable<Permission>>> GetRolePermissions(int roleId)
         {
             try
@@ -127,7 +127,9 @@ namespace KelasiNaBiso.Controllers
         {
             try
             {
-                var userIdClaim = User.FindFirst("UserId")?.Value;
+                var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                               ?? User.FindFirst("UserId")?.Value
+                               ?? User.FindFirst("sub")?.Value;
                 
                 if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int userId))
                 {
@@ -153,6 +155,7 @@ namespace KelasiNaBiso.Controllers
         /// </summary>
         [HttpPost]
         [Permission("Permission.Create")]
+        [Authorize(Roles = "Super-Admin")]
         public async Task<ActionResult<Permission>> CreatePermission([FromBody] Permission permission)
         {
             try
@@ -215,7 +218,8 @@ namespace KelasiNaBiso.Controllers
         /// Supprime une permission (Super-Admin uniquement)
         /// </summary>
         [HttpDelete("{id}")]
-      //  [Permission("Permission.Delete")]
+        [Permission("Permission.Delete")]
+        [Authorize(Roles = "Super-Admin")]
         public async Task<IActionResult> DeletePermission(int id)
         {
             try
@@ -245,7 +249,8 @@ namespace KelasiNaBiso.Controllers
         /// </summary>
         /// <param name="request">Objet contenant roleId et permissionId</param>
         [HttpPost("assign")]
-      //  [Permission("Permission.Assign")]
+        [Permission("Permission.Assign")]
+        [Authorize(Roles = "Super-Admin")]
         public async Task<IActionResult> AssignPermissionToRole([FromBody] AssignPermissionRequest request)
         {
             try
@@ -276,7 +281,8 @@ namespace KelasiNaBiso.Controllers
         /// </summary>
         /// <param name="request">Objet contenant roleId et permissionId</param>
         [HttpPost("revoke")]
-       // [Permission("Permission.Revoke")]
+        [Permission("Permission.Revoke")]
+        [Authorize(Roles = "Super-Admin")]
         public async Task<IActionResult> RevokePermissionFromRole([FromBody] AssignPermissionRequest request)
         {
             try
@@ -306,7 +312,8 @@ namespace KelasiNaBiso.Controllers
         /// Assigne plusieurs permissions à un rôle en une seule opération
         /// </summary>
         [HttpPost("assign-bulk")]
-      //  [Permission("Permission.Assign")]
+        [Permission("Permission.Assign")]
+        [Authorize(Roles = "Super-Admin")]
         public async Task<IActionResult> AssignMultiplePermissions([FromBody] AssignMultiplePermissionsRequest request)
         {
             try
@@ -360,7 +367,9 @@ namespace KelasiNaBiso.Controllers
         {
             try
             {
-                var userIdClaim = User.FindFirst("UserId")?.Value;
+                var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                               ?? User.FindFirst("UserId")?.Value
+                               ?? User.FindFirst("sub")?.Value;
                 
                 if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int userId))
                 {

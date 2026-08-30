@@ -1,315 +1,673 @@
+using KelasiNaBiso.Helpers;
 using KelasiNaBiso.Models;
+using KelasiNaBiso.Models.DTOs;
+using KelasiNaBiso.Services;
 using KelasiNaBiso.Services.Repositories;
-using KelasiNaBiso.Attributes;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace KelasiNaBiso.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize] // 🔒 Vue Élèves - Token JWT requis
+    [Authorize]
     public class V_EleveController : ControllerBase
     {
         private readonly IV_EleveRepository _vEleveRepository;
+        private readonly EleveAnneeScopeHelper _scope;
 
-        public V_EleveController(IV_EleveRepository vEleveRepository)
+        public V_EleveController(IV_EleveRepository vEleveRepository, EleveAnneeScopeHelper scope)
         {
             _vEleveRepository = vEleveRepository;
+            _scope = scope;
         }
 
-        // GET: api/V_Eleve
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<V_Eleve>>> GetV_Eleves()
+        private async Task<IActionResult?> ForbidClasseSchoolAsync(int idClasse)
         {
-            var vEleves = await _vEleveRepository.GetAllAsync();
-            return Ok(vEleves);
+            int idEcole;
+            try
+            {
+                idEcole = await _scope.ResolveIdEcoleForClasseAsync(idClasse);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+
+            return this.ForbidIfWrongSchool(idEcole);
         }
 
-        // GET: api/V_Eleve/5
+        private async Task<IActionResult?> ForbidSectionSchoolAsync(int idSection)
+        {
+            int idEcole;
+            try
+            {
+                idEcole = await _scope.ResolveIdEcoleForSectionAsync(idSection);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+
+            return this.ForbidIfWrongSchool(idEcole);
+        }
+
+        private async Task<IActionResult?> ForbidOptionSchoolAsync(int idOption)
+        {
+            int idEcole;
+            try
+            {
+                idEcole = await _scope.ResolveIdEcoleForOptionAsync(idOption);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+
+            return this.ForbidIfWrongSchool(idEcole);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> GetV_Eleves(
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
+        {
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetAllAsync(resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
         [HttpGet("{id}")]
         public async Task<ActionResult<V_Eleve>> GetV_Eleve(int id)
         {
             var vEleve = await _vEleveRepository.GetByIdAsync(id);
             if (vEleve == null)
-            {
                 return NotFound();
-            }
             return Ok(vEleve);
         }
 
-        // GET: api/V_Eleve/reference/{reference}
         [HttpGet("reference/{reference}")]
         public async Task<ActionResult<V_Eleve>> GetV_EleveByReference(Guid reference)
         {
             var vEleve = await _vEleveRepository.GetByReferenceAsync(reference);
             if (vEleve == null)
-            {
                 return NotFound();
-            }
             return Ok(vEleve);
         }
 
-        // GET: api/V_Eleve/matricule/{matricule}
         [HttpGet("matricule/{matricule}")]
         public async Task<ActionResult<V_Eleve>> GetV_EleveByMatricule(string matricule)
         {
             var vEleve = await _vEleveRepository.GetByMatriculeAsync(matricule);
             if (vEleve == null)
-            {
                 return NotFound();
-            }
             return Ok(vEleve);
         }
 
-        // GET: api/V_Eleve/ecole/{idEcole}
         [HttpGet("ecole/{idEcole}")]
-        public async Task<ActionResult<IEnumerable<V_Eleve>>> GetV_ElevesByEcole(int idEcole)
+        public async Task<IActionResult> GetV_ElevesByEcole(int idEcole, [FromQuery] int? idAnneeScolaire = null)
         {
-            var vEleves = await _vEleveRepository.GetByEcoleAsync(idEcole);
-            return Ok(vEleves);
+            var deny = this.ForbidIfWrongSchool(idEcole);
+            if (deny != null)
+                return deny;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetByEcoleAsync(idEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/classe/{idClasse}
         [HttpGet("classe/{idClasse}")]
-        public async Task<ActionResult<IEnumerable<V_Eleve>>> GetV_ElevesByClasse(int idClasse)
+        public async Task<IActionResult> GetV_ElevesByClasse(int idClasse, [FromQuery] int? idAnneeScolaire = null)
         {
-            var vEleves = await _vEleveRepository.GetByClasseAsync(idClasse);
-            return Ok(vEleves);
+            var deny = await ForbidClasseSchoolAsync(idClasse);
+            if (deny != null)
+                return deny;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetByClasseAsync(idClasse, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/tuteur/{idTuteur}
         [HttpGet("tuteur/{idTuteur}")]
-        public async Task<ActionResult<IEnumerable<V_Eleve>>> GetV_ElevesByTuteur(int idTuteur)
+        public async Task<IActionResult> GetV_ElevesByTuteur(
+            int idTuteur,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var vEleves = await _vEleveRepository.GetByTuteurAsync(idTuteur);
-            return Ok(vEleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetByTuteurAsync(idTuteur, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/statut/{statut}
         [HttpGet("statut/{statut}")]
-        public async Task<ActionResult<IEnumerable<V_Eleve>>> GetV_ElevesByStatut(bool statut)
+        public async Task<IActionResult> GetV_ElevesByStatut(
+            bool statut,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var vEleves = await _vEleveRepository.GetByStatutAsync(statut);
-            return Ok(vEleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetByStatutAsync(statut, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/genre/{genre}
         [HttpGet("genre/{genre}")]
-        public async Task<ActionResult<IEnumerable<V_Eleve>>> GetV_ElevesByGenre(string genre)
+        public async Task<IActionResult> GetV_ElevesByGenre(
+            string genre,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var vEleves = await _vEleveRepository.GetByGenreAsync(genre);
-            return Ok(vEleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetByGenreAsync(genre, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/nationalite/{nationalite}
         [HttpGet("nationalite/{nationalite}")]
-        public async Task<ActionResult<IEnumerable<V_Eleve>>> GetV_ElevesByNationalite(string nationalite)
+        public async Task<IActionResult> GetV_ElevesByNationalite(
+            string nationalite,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var vEleves = await _vEleveRepository.GetByNationaliteAsync(nationalite);
-            return Ok(vEleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetByNationaliteAsync(nationalite, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/province/{province}
         [HttpGet("province/{province}")]
-        public async Task<ActionResult<IEnumerable<V_Eleve>>> GetV_ElevesByProvince(string province)
+        public async Task<IActionResult> GetV_ElevesByProvince(
+            string province,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var vEleves = await _vEleveRepository.GetByProvinceAsync(province);
-            return Ok(vEleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetByProvinceAsync(province, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/ville/{ville}
         [HttpGet("ville/{ville}")]
-        public async Task<ActionResult<IEnumerable<V_Eleve>>> GetV_ElevesByVille(string ville)
+        public async Task<IActionResult> GetV_ElevesByVille(
+            string ville,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var vEleves = await _vEleveRepository.GetByVilleAsync(ville);
-            return Ok(vEleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetByVilleAsync(ville, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/commune/{commune}
         [HttpGet("commune/{commune}")]
-        public async Task<ActionResult<IEnumerable<V_Eleve>>> GetV_ElevesByCommune(string commune)
+        public async Task<IActionResult> GetV_ElevesByCommune(
+            string commune,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var vEleves = await _vEleveRepository.GetByCommuneAsync(commune);
-            return Ok(vEleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetByCommuneAsync(commune, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/date-creation/{date}
         [HttpGet("date-creation/{date}")]
-        public async Task<ActionResult<IEnumerable<V_Eleve>>> GetV_ElevesByDateCreation(DateTime date)
+        public async Task<IActionResult> GetV_ElevesByDateCreation(
+            DateTime date,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var vEleves = await _vEleveRepository.GetByDateCreationAsync(date);
-            return Ok(vEleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetByDateCreationAsync(date, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/date-creation-range
         [HttpGet("date-creation-range")]
-        public async Task<ActionResult<IEnumerable<V_Eleve>>> GetV_ElevesByDateCreationRange(
-            [FromQuery] DateTime dateDebut, [FromQuery] DateTime dateFin)
+        public async Task<IActionResult> GetV_ElevesByDateCreationRange(
+            [FromQuery] DateTime dateDebut,
+            [FromQuery] DateTime dateFin,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var vEleves = await _vEleveRepository.GetByDateCreationRangeAsync(dateDebut, dateFin);
-            return Ok(vEleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetByDateCreationRangeAsync(
+                    dateDebut, dateFin, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/date-naissance/{dateNaissance}
         [HttpGet("date-naissance/{dateNaissance}")]
-        public async Task<ActionResult<IEnumerable<V_Eleve>>> GetV_ElevesByDateNaissance(DateTime dateNaissance)
+        public async Task<IActionResult> GetV_ElevesByDateNaissance(
+            DateTime dateNaissance,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var vEleves = await _vEleveRepository.GetByDateNaissanceAsync(dateNaissance);
-            return Ok(vEleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetByDateNaissanceAsync(dateNaissance, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/date-naissance-range
         [HttpGet("date-naissance-range")]
-        public async Task<ActionResult<IEnumerable<V_Eleve>>> GetV_ElevesByDateNaissanceRange(
-            [FromQuery] DateTime dateDebut, [FromQuery] DateTime dateFin)
+        public async Task<IActionResult> GetV_ElevesByDateNaissanceRange(
+            [FromQuery] DateTime dateDebut,
+            [FromQuery] DateTime dateFin,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var vEleves = await _vEleveRepository.GetByDateNaissanceRangeAsync(dateDebut, dateFin);
-            return Ok(vEleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetByDateNaissanceRangeAsync(
+                    dateDebut, dateFin, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/nom-complet/{nomComplet}
         [HttpGet("nom-complet/{nomComplet}")]
-        public async Task<ActionResult<IEnumerable<V_Eleve>>> GetV_ElevesByNomComplet(string nomComplet)
+        public async Task<IActionResult> GetV_ElevesByNomComplet(
+            string nomComplet,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var vEleves = await _vEleveRepository.GetByNomCompletAsync(nomComplet);
-            return Ok(vEleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetByNomCompletAsync(nomComplet, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/nom/{nom}
         [HttpGet("nom/{nom}")]
-        public async Task<ActionResult<IEnumerable<V_Eleve>>> GetV_ElevesByNom(string nom)
+        public async Task<IActionResult> GetV_ElevesByNom(
+            string nom,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var vEleves = await _vEleveRepository.GetByNomAsync(nom);
-            return Ok(vEleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetByNomAsync(nom, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/prenom/{prenom}
         [HttpGet("prenom/{prenom}")]
-        public async Task<ActionResult<IEnumerable<V_Eleve>>> GetV_ElevesByPrenom(string prenom)
+        public async Task<IActionResult> GetV_ElevesByPrenom(
+            string prenom,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var vEleves = await _vEleveRepository.GetByPrenomAsync(prenom);
-            return Ok(vEleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetByPrenomAsync(prenom, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/lieu-naissance/{lieuNaissance}
         [HttpGet("lieu-naissance/{lieuNaissance}")]
-        public async Task<ActionResult<IEnumerable<V_Eleve>>> GetV_ElevesByLieuNaissance(string lieuNaissance)
+        public async Task<IActionResult> GetV_ElevesByLieuNaissance(
+            string lieuNaissance,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var vEleves = await _vEleveRepository.GetByLieuNaissanceAsync(lieuNaissance);
-            return Ok(vEleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetByLieuNaissanceAsync(lieuNaissance, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/section/{idSection}
         [HttpGet("section/{idSection}")]
-        public async Task<ActionResult<IEnumerable<V_Eleve>>> GetV_ElevesBySection(int idSection)
+        public async Task<IActionResult> GetV_ElevesBySection(int idSection, [FromQuery] int? idAnneeScolaire = null)
         {
-            var vEleves = await _vEleveRepository.GetBySectionAsync(idSection);
-            return Ok(vEleves);
+            var deny = await ForbidSectionSchoolAsync(idSection);
+            if (deny != null)
+                return deny;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetBySectionAsync(idSection, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/option/{idOption}
         [HttpGet("option/{idOption}")]
-        public async Task<ActionResult<IEnumerable<V_Eleve>>> GetV_ElevesByOption(int idOption)
+        public async Task<IActionResult> GetV_ElevesByOption(int idOption, [FromQuery] int? idAnneeScolaire = null)
         {
-            var vEleves = await _vEleveRepository.GetByOptionAsync(idOption);
-            return Ok(vEleves);
+            var deny = await ForbidOptionSchoolAsync(idOption);
+            if (deny != null)
+                return deny;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetByOptionAsync(idOption, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/statut-tuteur/{statutTuteur}
         [HttpGet("statut-tuteur/{statutTuteur}")]
-        public async Task<ActionResult<IEnumerable<V_Eleve>>> GetV_ElevesByStatutTuteur(bool statutTuteur)
+        public async Task<IActionResult> GetV_ElevesByStatutTuteur(
+            bool statutTuteur,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var vEleves = await _vEleveRepository.GetByStatutTuteurAsync(statutTuteur);
-            return Ok(vEleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetByStatutTuteurAsync(statutTuteur, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/email-tuteur/{emailTuteur}
         [HttpGet("email-tuteur/{emailTuteur}")]
-        public async Task<ActionResult<IEnumerable<V_Eleve>>> GetV_ElevesByEmailTuteur(string emailTuteur)
+        public async Task<IActionResult> GetV_ElevesByEmailTuteur(
+            string emailTuteur,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var vEleves = await _vEleveRepository.GetByEmailTuteurAsync(emailTuteur);
-            return Ok(vEleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetByEmailTuteurAsync(emailTuteur, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/telephone-tuteur/{telephoneTuteur}
         [HttpGet("telephone-tuteur/{telephoneTuteur}")]
-        public async Task<ActionResult<IEnumerable<V_Eleve>>> GetV_ElevesByTelephoneTuteur(string telephoneTuteur)
+        public async Task<IActionResult> GetV_ElevesByTelephoneTuteur(
+            string telephoneTuteur,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var vEleves = await _vEleveRepository.GetByTelephoneTuteurAsync(telephoneTuteur);
-            return Ok(vEleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetByTelephoneTuteurAsync(telephoneTuteur, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/count
         [HttpGet("count")]
-        public async Task<ActionResult<int>> GetV_ElevesCount()
+        public async Task<IActionResult> GetV_ElevesCount(
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var count = await _vEleveRepository.GetCountAsync();
-            return Ok(count);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetCountAsync(resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/count/ecole/{idEcole}
         [HttpGet("count/ecole/{idEcole}")]
-        public async Task<ActionResult<int>> GetV_ElevesCountByEcole(int idEcole)
+        public async Task<IActionResult> GetV_ElevesCountByEcole(int idEcole, [FromQuery] int? idAnneeScolaire = null)
         {
-            var count = await _vEleveRepository.GetCountByEcoleAsync(idEcole);
-            return Ok(count);
+            var deny = this.ForbidIfWrongSchool(idEcole);
+            if (deny != null)
+                return deny;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetCountByEcoleAsync(idEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/count/classe/{idClasse}
         [HttpGet("count/classe/{idClasse}")]
-        public async Task<ActionResult<int>> GetV_ElevesCountByClasse(int idClasse)
+        public async Task<IActionResult> GetV_ElevesCountByClasse(int idClasse, [FromQuery] int? idAnneeScolaire = null)
         {
-            var count = await _vEleveRepository.GetCountByClasseAsync(idClasse);
-            return Ok(count);
+            var deny = await ForbidClasseSchoolAsync(idClasse);
+            if (deny != null)
+                return deny;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetCountByClasseAsync(idClasse, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/count/tuteur/{idTuteur}
         [HttpGet("count/tuteur/{idTuteur}")]
-        public async Task<ActionResult<int>> GetV_ElevesCountByTuteur(int idTuteur)
+        public async Task<IActionResult> GetV_ElevesCountByTuteur(
+            int idTuteur,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var count = await _vEleveRepository.GetCountByTuteurAsync(idTuteur);
-            return Ok(count);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetCountByTuteurAsync(idTuteur, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/count/statut/{statut}
         [HttpGet("count/statut/{statut}")]
-        public async Task<ActionResult<int>> GetV_ElevesCountByStatut(bool statut)
+        public async Task<IActionResult> GetV_ElevesCountByStatut(
+            bool statut,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var count = await _vEleveRepository.GetCountByStatutAsync(statut);
-            return Ok(count);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetCountByStatutAsync(statut, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/count/genre/{genre}
         [HttpGet("count/genre/{genre}")]
-        public async Task<ActionResult<int>> GetV_ElevesCountByGenre(string genre)
+        public async Task<IActionResult> GetV_ElevesCountByGenre(
+            string genre,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var count = await _vEleveRepository.GetCountByGenreAsync(genre);
-            return Ok(count);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _vEleveRepository.GetCountByGenreAsync(genre, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/V_Eleve/exists/{id}
         [HttpGet("exists/{id}")]
-        public async Task<ActionResult<bool>> V_EleveExists(int id)
-        {
-            var exists = await _vEleveRepository.ExistsAsync(id);
-            return Ok(exists);
-        }
+        public async Task<ActionResult<bool>> V_EleveExists(int id) =>
+            Ok(await _vEleveRepository.ExistsAsync(id));
 
-        // GET: api/V_Eleve/exists/reference/{reference}
         [HttpGet("exists/reference/{reference}")]
-        public async Task<ActionResult<bool>> V_EleveExistsByReference(Guid reference)
-        {
-            var exists = await _vEleveRepository.ExistsByReferenceAsync(reference);
-            return Ok(exists);
-        }
+        public async Task<ActionResult<bool>> V_EleveExistsByReference(Guid reference) =>
+            Ok(await _vEleveRepository.ExistsByReferenceAsync(reference));
 
-        // GET: api/V_Eleve/exists/matricule/{matricule}
         [HttpGet("exists/matricule/{matricule}")]
-        public async Task<ActionResult<bool>> V_EleveExistsByMatricule(string matricule)
-        {
-            var exists = await _vEleveRepository.ExistsByMatriculeAsync(matricule);
-            return Ok(exists);
-        }
+        public async Task<ActionResult<bool>> V_EleveExistsByMatricule(string matricule) =>
+            Ok(await _vEleveRepository.ExistsByMatriculeAsync(matricule));
     }
 }

@@ -20,7 +20,9 @@ namespace KelasiNaBiso.Tests.Unit.Services
         public ClasseServiceTests()
         {
             _context = TestDbContextFactory.CreateInMemoryContext();
-            _classeService = new ClasseService(_context);
+            var scope = new EleveAnneeScopeHelper(
+                _context, new InscriptionActiveResolver(_context), new AnneeScolaireService(_context));
+            _classeService = new ClasseService(_context, new InscriptionActiveResolver(_context), scope);
         }
 
         [Fact]

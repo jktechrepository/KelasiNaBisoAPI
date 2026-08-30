@@ -89,8 +89,9 @@ namespace KelasiNaBiso.Services.MokoAfrika
         {
             var paiement = await _context.Paiements
                 .Include(p => p.Eleve)
-                    .ThenInclude(e => e!.Classe)
-                        .ThenInclude(c => c!.Direction)
+                    .ThenInclude(e => e!.Inscriptions)
+                        .ThenInclude(i => i.Classe)
+                            .ThenInclude(c => c.Direction)
                 .FirstOrDefaultAsync(p => p.IdPaiement == idPaiement, cancellationToken);
 
             if (paiement == null)

@@ -1,4 +1,5 @@
 using KelasiNaBiso.Data;
+using KelasiNaBiso.Helpers;
 using KelasiNaBiso.Models;
 using KelasiNaBiso.Models.DTOs;
 using KelasiNaBiso.Services.Repositories;
@@ -86,6 +87,8 @@ namespace KelasiNaBiso.Services
 
         public async Task<Agent> CreateAsync(Agent agent)
         {
+            agent.TelephoneAgent = TelephoneNormalizer.Normalize(agent.TelephoneAgent);
+
             // ✅ UNICITÉ EMAIL AGENT: Vérifier que l'email n'existe pas déjà
             if (!string.IsNullOrEmpty(agent.EmailAgent))
             {
@@ -376,7 +379,7 @@ namespace KelasiNaBiso.Services
             utilisateur.NomUtilisateur = agent.Nom;
             utilisateur.PrenomUtilisateur = agent.Prenom;
             utilisateur.PostNomUtilisateur = agent.Postnom;
-            utilisateur.Telephone = agent.TelephoneAgent;
+            utilisateur.Telephone = TelephoneNormalizer.Normalize(agent.TelephoneAgent);
             utilisateur.Email = agent.EmailAgent;
             utilisateur.PhotoUrl = agent.PhotoUrl;
             utilisateur.Genre = agent.Genre;
@@ -542,7 +545,7 @@ namespace KelasiNaBiso.Services
 
                 // Utiliser l'email de l'agent s'il est fourni, sinon vide
                 string email = agent.EmailAgent ?? "";
-                string telephone = agent.TelephoneAgent ?? "";
+                string telephone = TelephoneNormalizer.Normalize(agent.TelephoneAgent) ?? "";
                 
                 // ═══════════════════════════════════════════════════════════════════
                 // ✅ MULTI-RÔLES : Vérifier si un utilisateur existe déjà par email/téléphone

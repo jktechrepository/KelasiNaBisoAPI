@@ -8,150 +8,142 @@ namespace KelasiNaBiso.Services
     public class EleveParEcoleService : IEleveParEcoleRepository
     {
         private readonly KelasiNaBisoDbContext _context;
+        private readonly EleveAnneeScopeHelper _scope;
 
-        public EleveParEcoleService(KelasiNaBisoDbContext context)
+        public EleveParEcoleService(KelasiNaBisoDbContext context, EleveAnneeScopeHelper scope)
         {
             _context = context;
+            _scope = scope;
         }
 
-        public async Task<IEnumerable<EleveParEcoleDTO>> GetAllAsync()
+        private async Task<ElevesAnneeScopedResult<IEnumerable<EleveParEcoleDTO>>> QueryEcoleScopedAsync(
+            int idEcole,
+            int? idAnneeScolaire,
+            Func<IQueryable<EleveParEcoleDTO>, IQueryable<EleveParEcoleDTO>>? filter = null)
         {
-            return await _context.EleveParEcole
-                .OrderBy(e => e.NomCompletEleve)
-                .ToListAsync();
+            var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole, idAnneeScolaire);
+            var ids = _scope.GetEleveIdsInEcoleAnnee(ecole, annee);
+            var query = _context.EleveParEcole.AsNoTracking().Where(e => ids.Contains(e.IdEleve));
+            if (filter != null)
+                query = filter(query);
+
+            var data = await query.OrderBy(e => e.NomCompletEleve).ToListAsync();
+            return EleveAnneeScopeHelper.Wrap<IEnumerable<EleveParEcoleDTO>>(data, ecole, annee);
         }
 
-        public async Task<EleveParEcoleDTO?> GetByIdAsync(int idEleve)
+        private async Task<ElevesAnneeScopedResult<IEnumerable<EleveParEcoleDTO>>> QueryClasseScopedAsync(
+            int idClasse,
+            int? idAnneeScolaire,
+            Func<IQueryable<EleveParEcoleDTO>, IQueryable<EleveParEcoleDTO>>? filter = null)
         {
-            return await _context.EleveParEcole
-                .FirstOrDefaultAsync(e => e.IdEleve == idEleve);
+            var (ecole, annee) = await _scope.ResolveClasseAnneeAsync(idClasse, idAnneeScolaire);
+            var ids = _scope.GetEleveIdsInClasseAnnee(idClasse, annee);
+            var query = _context.EleveParEcole.AsNoTracking().Where(e => ids.Contains(e.IdEleve));
+            if (filter != null)
+                query = filter(query);
+
+            var data = await query.OrderBy(e => e.NomCompletEleve).ToListAsync();
+            return EleveAnneeScopeHelper.Wrap<IEnumerable<EleveParEcoleDTO>>(data, ecole, annee);
         }
 
-        public async Task<IEnumerable<EleveParEcoleDTO>> GetByEcoleAsync(int idEcole)
+        private async Task<ElevesAnneeScopedResult<int>> CountEcoleScopedAsync(
+            int idEcole,
+            int? idAnneeScolaire,
+            Func<IQueryable<EleveParEcoleDTO>, IQueryable<EleveParEcoleDTO>>? filter = null)
         {
-            return await _context.EleveParEcole
-                .Where(e => e.IdEcole == idEcole)
-                .OrderBy(e => e.NomCompletEleve)
-                .ToListAsync();
+            var result = await QueryEcoleScopedAsync(idEcole, idAnneeScolaire, filter);
+            return EleveAnneeScopeHelper.Wrap(result.Data.Count(), result.IdEcole, result.IdAnneeScolaire);
         }
 
-        public async Task<IEnumerable<EleveParEcoleDTO>> GetByClasseAsync(int idClasse)
+        private async Task<ElevesAnneeScopedResult<int>> CountClasseScopedAsync(
+            int idClasse,
+            int? idAnneeScolaire,
+            Func<IQueryable<EleveParEcoleDTO>, IQueryable<EleveParEcoleDTO>>? filter = null)
         {
-            return await _context.EleveParEcole
-                .Where(e => e.IdClasse == idClasse)
-                .OrderBy(e => e.NomCompletEleve)
-                .ToListAsync();
+            var result = await QueryClasseScopedAsync(idClasse, idAnneeScolaire, filter);
+            return EleveAnneeScopeHelper.Wrap(result.Data.Count(), result.IdEcole, result.IdAnneeScolaire);
         }
 
-        public async Task<IEnumerable<EleveParEcoleDTO>> GetByDirectionAsync(int idDirection)
+        public Task<ElevesAnneeScopedResult<IEnumerable<EleveParEcoleDTO>>> GetAllAsync(int idEcole, int? idAnneeScolaire = null) =>
+            QueryEcoleScopedAsync(idEcole, idAnneeScolaire);
+
+        public async Task<EleveParEcoleDTO?> GetByIdAsync(int idEleve) =>
+            await _context.EleveParEcole.AsNoTracking().FirstOrDefaultAsync(e => e.IdEleve == idEleve);
+
+        public Task<ElevesAnneeScopedResult<IEnumerable<EleveParEcoleDTO>>> GetByEcoleAsync(int idEcole, int? idAnneeScolaire = null) =>
+            QueryEcoleScopedAsync(idEcole, idAnneeScolaire, q => q.Where(e => e.IdEcole == idEcole));
+
+        public Task<ElevesAnneeScopedResult<IEnumerable<EleveParEcoleDTO>>> GetByClasseAsync(int idClasse, int? idAnneeScolaire = null) =>
+            QueryClasseScopedAsync(idClasse, idAnneeScolaire, q => q.Where(e => e.IdClasse == idClasse));
+
+        public async Task<ElevesAnneeScopedResult<IEnumerable<EleveParEcoleDTO>>> GetByDirectionAsync(
+            int idDirection, int? idAnneeScolaire = null)
         {
-            return await _context.EleveParEcole
-                .Where(e => e.IdDirection == idDirection)
-                .OrderBy(e => e.NomCompletEleve)
-                .ToListAsync();
+            var idEcole = await _scope.ResolveIdEcoleForDirectionAsync(idDirection);
+            return await QueryEcoleScopedAsync(idEcole, idAnneeScolaire, q => q.Where(e => e.IdDirection == idDirection));
         }
 
-        public async Task<IEnumerable<EleveParEcoleDTO>> GetByOptionAsync(int idOption)
+        public async Task<ElevesAnneeScopedResult<IEnumerable<EleveParEcoleDTO>>> GetByOptionAsync(
+            int idOption, int? idAnneeScolaire = null)
         {
-            return await _context.EleveParEcole
-                .Where(e => e.IdOption == idOption)
-                .OrderBy(e => e.NomCompletEleve)
-                .ToListAsync();
+            var idEcole = await _scope.ResolveIdEcoleForOptionAsync(idOption);
+            return await QueryEcoleScopedAsync(idEcole, idAnneeScolaire, q => q.Where(e => e.IdOption == idOption));
         }
 
-        public async Task<IEnumerable<EleveParEcoleDTO>> GetByTuteurAsync(int idTuteur)
-        {
-            return await _context.EleveParEcole
-                .Where(e => e.IdTuteur == idTuteur)
-                .OrderBy(e => e.NomCompletEleve)
-                .ToListAsync();
-        }
+        public Task<ElevesAnneeScopedResult<IEnumerable<EleveParEcoleDTO>>> GetByTuteurAsync(
+            int idTuteur, int idEcole, int? idAnneeScolaire = null) =>
+            QueryEcoleScopedAsync(idEcole, idAnneeScolaire, q => q.Where(e => e.IdTuteur == idTuteur));
 
-        public async Task<IEnumerable<EleveParEcoleDTO>> GetByStatutAsync(bool statut)
-        {
-            return await _context.EleveParEcole
-                .Where(e => e.Statut == statut)
-                .OrderBy(e => e.NomCompletEleve)
-                .ToListAsync();
-        }
+        public Task<ElevesAnneeScopedResult<IEnumerable<EleveParEcoleDTO>>> GetByStatutAsync(
+            bool statut, int idEcole, int? idAnneeScolaire = null) =>
+            QueryEcoleScopedAsync(idEcole, idAnneeScolaire, q => q.Where(e => e.Statut == statut));
 
-        public async Task<IEnumerable<EleveParEcoleDTO>> GetByGenreAsync(string genre)
-        {
-            return await _context.EleveParEcole
-                .Where(e => e.Genre == genre)
-                .OrderBy(e => e.NomCompletEleve)
-                .ToListAsync();
-        }
+        public Task<ElevesAnneeScopedResult<IEnumerable<EleveParEcoleDTO>>> GetByGenreAsync(
+            string genre, int idEcole, int? idAnneeScolaire = null) =>
+            QueryEcoleScopedAsync(idEcole, idAnneeScolaire, q => q.Where(e => e.Genre == genre));
 
-        public async Task<IEnumerable<EleveParEcoleDTO>> GetByAgeRangeAsync(int minAge, int maxAge)
-        {
-            return await _context.EleveParEcole
-                .Where(e => e.Age >= minAge && e.Age <= maxAge)
-                .OrderBy(e => e.NomCompletEleve)
-                .ToListAsync();
-        }
+        public Task<ElevesAnneeScopedResult<IEnumerable<EleveParEcoleDTO>>> GetByAgeRangeAsync(
+            int minAge, int maxAge, int idEcole, int? idAnneeScolaire = null) =>
+            QueryEcoleScopedAsync(idEcole, idAnneeScolaire, q => q.Where(e => e.Age >= minAge && e.Age <= maxAge));
 
-        public async Task<IEnumerable<EleveParEcoleDTO>> GetByProvinceAsync(string province)
-        {
-            return await _context.EleveParEcole
-                .Where(e => e.ProvinceEleve == province)
-                .OrderBy(e => e.NomCompletEleve)
-                .ToListAsync();
-        }
+        public Task<ElevesAnneeScopedResult<IEnumerable<EleveParEcoleDTO>>> GetByProvinceAsync(
+            string province, int idEcole, int? idAnneeScolaire = null) =>
+            QueryEcoleScopedAsync(idEcole, idAnneeScolaire, q => q.Where(e => e.ProvinceEleve == province));
 
-        public async Task<IEnumerable<EleveParEcoleDTO>> GetByVilleAsync(string ville)
-        {
-            return await _context.EleveParEcole
-                .Where(e => e.VilleEleve == ville)
-                .OrderBy(e => e.NomCompletEleve)
-                .ToListAsync();
-        }
+        public Task<ElevesAnneeScopedResult<IEnumerable<EleveParEcoleDTO>>> GetByVilleAsync(
+            string ville, int idEcole, int? idAnneeScolaire = null) =>
+            QueryEcoleScopedAsync(idEcole, idAnneeScolaire, q => q.Where(e => e.VilleEleve == ville));
 
-        public async Task<IEnumerable<EleveParEcoleDTO>> GetByCommuneAsync(string commune)
-        {
-            return await _context.EleveParEcole
-                .Where(e => e.CommuneEleve == commune)
-                .OrderBy(e => e.NomCompletEleve)
-                .ToListAsync();
-        }
+        public Task<ElevesAnneeScopedResult<IEnumerable<EleveParEcoleDTO>>> GetByCommuneAsync(
+            string commune, int idEcole, int? idAnneeScolaire = null) =>
+            QueryEcoleScopedAsync(idEcole, idAnneeScolaire, q => q.Where(e => e.CommuneEleve == commune));
 
-        public async Task<IEnumerable<EleveParEcoleDTO>> GetByTuteurContactAsync(string contact)
-        {
-            return await _context.EleveParEcole
-                .Where(e => e.TelephoneTuteur == contact ||
-                           e.EmailTuteur == contact ||
-                           e.TelephoneRepresentant == contact)
-                .OrderBy(e => e.NomCompletEleve)
-                .ToListAsync();
-        }
+        public Task<ElevesAnneeScopedResult<IEnumerable<EleveParEcoleDTO>>> GetByTuteurContactAsync(
+            string contact, int idEcole, int? idAnneeScolaire = null) =>
+            QueryEcoleScopedAsync(idEcole, idAnneeScolaire, q =>
+                q.Where(e => e.TelephoneTuteur == contact
+                    || e.EmailTuteur == contact
+                    || e.TelephoneRepresentant == contact));
 
-        public async Task<IEnumerable<EleveParEcoleDTO>> SearchAsync(string searchTerm)
-        {
-            return await _context.EleveParEcole
-                .Where(e => e.NomCompletEleve.Contains(searchTerm) ||
-                           e.Matricule.Contains(searchTerm) ||
-                           e.NomEcole.Contains(searchTerm) ||
-                           e.NomClasse.Contains(searchTerm))
-                .OrderBy(e => e.NomCompletEleve)
-                .ToListAsync();
-        }
+        public Task<ElevesAnneeScopedResult<IEnumerable<EleveParEcoleDTO>>> SearchAsync(
+            string searchTerm, int idEcole, int? idAnneeScolaire = null) =>
+            QueryEcoleScopedAsync(idEcole, idAnneeScolaire, q =>
+                q.Where(e =>
+                    (e.NomCompletEleve != null && e.NomCompletEleve.Contains(searchTerm))
+                    || (e.Matricule != null && e.Matricule.Contains(searchTerm))
+                    || (e.NomEcole != null && e.NomEcole.Contains(searchTerm))
+                    || (e.NomClasse != null && e.NomClasse.Contains(searchTerm))));
 
-        public async Task<int> GetCountByEcoleAsync(int idEcole)
-        {
-            return await _context.EleveParEcole
-                .CountAsync(e => e.IdEcole == idEcole);
-        }
+        public Task<ElevesAnneeScopedResult<int>> GetCountByEcoleAsync(int idEcole, int? idAnneeScolaire = null) =>
+            CountEcoleScopedAsync(idEcole, idAnneeScolaire, q => q.Where(e => e.IdEcole == idEcole));
 
-        public async Task<int> GetCountByClasseAsync(int idClasse)
-        {
-            return await _context.EleveParEcole
-                .CountAsync(e => e.IdClasse == idClasse);
-        }
+        public Task<ElevesAnneeScopedResult<int>> GetCountByClasseAsync(int idClasse, int? idAnneeScolaire = null) =>
+            CountClasseScopedAsync(idClasse, idAnneeScolaire, q => q.Where(e => e.IdClasse == idClasse));
 
-        public async Task<int> GetCountByDirectionAsync(int idDirection)
+        public async Task<ElevesAnneeScopedResult<int>> GetCountByDirectionAsync(int idDirection, int? idAnneeScolaire = null)
         {
-            return await _context.EleveParEcole
-                .CountAsync(e => e.IdDirection == idDirection);
+            var idEcole = await _scope.ResolveIdEcoleForDirectionAsync(idDirection);
+            return await CountEcoleScopedAsync(idEcole, idAnneeScolaire, q => q.Where(e => e.IdDirection == idDirection));
         }
     }
 }

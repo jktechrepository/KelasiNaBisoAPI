@@ -2,6 +2,7 @@ using KelasiNaBiso.Models;
 using KelasiNaBiso.Models.DTOs;
 using KelasiNaBiso.Services.Repositories;
 using KelasiNaBiso.Attributes;
+using KelasiNaBiso.Helpers;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 
@@ -9,7 +10,7 @@ namespace KelasiNaBiso.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize] // 🔒 Frais scolaires - Token JWT requis
+    [Authorize]
     public class FraisController : ControllerBase
     {
         private readonly IFraisRepository _fraisRepository;
@@ -19,87 +20,99 @@ namespace KelasiNaBiso.Controllers
             _fraisRepository = fraisRepository;
         }
 
-        // GET: api/Frais
         [HttpGet]
+        [RequireGlobalAccess]
         public async Task<ActionResult<IEnumerable<Frais>>> GetFrais()
         {
             var frais = await _fraisRepository.GetAllAsync();
             return Ok(frais);
         }
 
-        // GET: api/Frais/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Frais>> GetFrais(int id)
         {
             var frais = await _fraisRepository.GetByIdAsync(id);
             if (frais == null)
-            {
                 return NotFound();
-            }
             return Ok(frais);
         }
 
-        // GET: api/Frais/eleve/5
-        [HttpGet("eleve/{idEleve}")]
-        //public async Task<ActionResult<IEnumerable<Frais>>> GetFraisByEleve(int idEleve)
-        //{
-        //    var frais = await _fraisRepository.GetByEleveAsync(idEleve);
-        //    return Ok(frais);
-        //}
-
-        // GET: api/Frais/direction/5
         [HttpGet("ecole/{idEcole}")]
-        public async Task<ActionResult<IEnumerable<Frais>>> GetFraisByEcole(int idEcole)
+        public async Task<IActionResult> GetFraisByEcole(
+            int idEcole,
+            [FromQuery] int? idAnneeScolaire = null,
+            [FromQuery] int? idClasse = null)
         {
-            var frais = await _fraisRepository.GetByEcoleAsync(idEcole);
-            return Ok(frais);
+            var deny = this.ForbidIfWrongSchool(idEcole);
+            if (deny != null)
+                return deny;
+
+            try
+            {
+                return Ok(await _fraisRepository.GetByEcoleAsync(idEcole, idAnneeScolaire, idClasse));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/Frais/ecole/{idEcole}/libelle?libelleFrais=Minerval
-        /// <summary>
-        /// Récupère un frais par son libellé dans une école spécifique
-        /// </summary>
         [HttpGet("ecole/{idEcole}/libelle")]
-        public async Task<ActionResult<Frais>> GetFraisByEcoleAndLibelle(int idEcole, [FromQuery] string libelleFrais)
+        public async Task<IActionResult> GetFraisByEcoleAndLibelle(
+            int idEcole,
+            [FromQuery] string libelleFrais,
+            [FromQuery] int? idAnneeScolaire = null,
+            [FromQuery] int? idClasse = null)
         {
             if (string.IsNullOrWhiteSpace(libelleFrais))
-            {
                 return BadRequest(new { message = "Le paramètre libelleFrais est requis" });
-            }
 
-            var frais = await _fraisRepository.GetByEcoleAndLibelleAsync(idEcole, libelleFrais);
-            if (frais == null)
+            var deny = this.ForbidIfWrongSchool(idEcole);
+            if (deny != null)
+                return deny;
+
+            try
             {
-                return NotFound(new { message = $"Aucun frais trouvé avec le libellé '{libelleFrais}' dans l'école {idEcole}" });
+                var result = await _fraisRepository.GetByEcoleAndLibelleAsync(
+                    idEcole, libelleFrais, idAnneeScolaire, idClasse);
+                if (result.Data == null)
+                {
+                    return NotFound(new
+                    {
+                        message = $"Aucun frais trouvé avec le libellé '{libelleFrais}' dans l'école {idEcole}"
+                    });
+                }
+                return Ok(result);
             }
-            return Ok(frais);
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/Frais/direction/5
         [HttpGet("direction/{idDirection}")]
-        public async Task<ActionResult<IEnumerable<Frais>>> GetFraisByDirection(int idDirection)
+        public async Task<IActionResult> GetFraisByDirection(
+            int idDirection,
+            [FromQuery] int? idAnneeScolaire = null,
+            [FromQuery] int? idClasse = null)
         {
-            var frais = await _fraisRepository.GetByDirectionAsync(idDirection);
+            try
+            {
+                return Ok(await _fraisRepository.GetByDirectionAsync(idDirection, idAnneeScolaire, idClasse));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpGet("annee/{idAnneeScolaire}")]
+        public async Task<ActionResult<IEnumerable<Frais>>> GetFraisByAnnee(int idAnneeScolaire)
+        {
+            var frais = await _fraisRepository.GetByAnneeAsync(idAnneeScolaire);
             return Ok(frais);
         }
 
-        // GET: api/Frais/annee/2024
-        [HttpGet("annee/{anneeScolaire}")]
-        //public async Task<ActionResult<IEnumerable<Frais>>> GetFraisByAnnee(int anneeScolaire)
-        //{
-        //    var frais = await _fraisRepository.GetByAnneeAsync(anneeScolaire);
-        //    return Ok(frais);
-        //}
-
-        // GET: api/Frais/statut/true
-        [HttpGet("statut/{statut}")]
-        //public async Task<ActionResult<IEnumerable<Frais>>> GetFraisByStatut(bool statut)
-        //{
-        //    var frais = await _fraisRepository.GetByStatutAsync(statut);
-        //    return Ok(frais);
-        //}
-
-        // GET: api/Frais/exists/5
         [HttpGet("exists/{id}")]
         public async Task<ActionResult<bool>> FraisExists(int id)
         {
@@ -107,39 +120,38 @@ namespace KelasiNaBiso.Controllers
             return Ok(exists);
         }
 
-        // POST: api/Frais
         [HttpPost]
+        [Permission("Frais.Create")]
         public async Task<ActionResult<Frais>> CreateFrais(Frais frais)
         {
             if (!ModelState.IsValid)
-            {
                 return BadRequest(ModelState);
-            }
 
-            var createdFrais = await _fraisRepository.CreateAsync(frais);
-            return CreatedAtAction(nameof(GetFrais), new { id = createdFrais.IdFrais }, createdFrais);
+            try
+            {
+                var createdFrais = await _fraisRepository.CreateAsync(frais);
+                return CreatedAtAction(nameof(GetFrais), new { id = createdFrais.IdFrais }, createdFrais);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // PUT: api/Frais/5
         [HttpPut("{id}")]
         [Authorize(Roles = "Admin,Super-Admin")]
+        [Permission("Frais.Update")]
         public async Task<ActionResult<Frais>> UpdateFrais(int id, [FromBody] UpdateFraisDto dto)
         {
             if (id != dto.IdFrais)
-            {
                 return BadRequest(new { message = "L'ID ne correspond pas" });
-            }
 
             if (!ModelState.IsValid)
-            {
                 return BadRequest(ModelState);
-            }
 
             var existing = await _fraisRepository.GetByIdAsync(id);
             if (existing == null)
-            {
                 return NotFound(new { message = "Frais non trouvé" });
-            }
 
             existing.LibelleFrais = dto.LibelleFrais;
             existing.Montant = dto.Montant;
@@ -148,25 +160,35 @@ namespace KelasiNaBiso.Controllers
             existing.Periodicite = dto.Periodicite;
             existing.Description = dto.Description;
 
-            var updated = await _fraisRepository.UpdateAsync(existing);
-            return Ok(updated);
+            if (dto.IdAnneeScolaire.HasValue && dto.IdAnneeScolaire.Value > 0)
+                existing.IdAnneeScolaire = dto.IdAnneeScolaire.Value;
+
+            if (dto.IdClasse.HasValue)
+                existing.IdClasse = dto.IdClasse.Value > 0 ? dto.IdClasse : null;
+
+            try
+            {
+                var updated = await _fraisRepository.UpdateAsync(existing);
+                return Ok(updated);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // DELETE: api/Frais/5
         [HttpDelete("{id}")]
+        [Permission("Frais.Delete")]
         public async Task<IActionResult> DeleteFrais(int id)
         {
             var success = await _fraisRepository.DeleteAsync(id);
             if (!success)
-            {
                 return NotFound();
-            }
-
             return NoContent();
         }
 
-        // PUT: api/Frais/toggle-statut/{id}
         [HttpPut("toggle-statut/{id}")]
+        [Permission("Frais.Update")]
         public async Task<ActionResult<object>> ToggleStatut(int id)
         {
             try
@@ -176,7 +198,8 @@ namespace KelasiNaBiso.Controllers
                     return NotFound(new { message = "Frais non trouvé" });
 
                 var frais = await _fraisRepository.GetByIdAsync(id);
-                return Ok(new { 
+                return Ok(new
+                {
                     message = "Statut modifié avec succès",
                     nouveauStatut = frais != null,
                     frais = frais

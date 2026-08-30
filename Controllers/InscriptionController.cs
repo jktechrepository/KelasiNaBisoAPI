@@ -83,41 +83,69 @@ namespace KelasiNaBiso.Controllers
         /// Récupère les inscriptions d'une classe avec pagination
         /// </summary>
         [HttpGet("classe/{idClasse}/paged")]
-        [ProducesResponseType(typeof(PagedResult<Inscription>), 200)]
-        public async Task<ActionResult<PagedResult<Inscription>>> GetInscriptionsByClassePaged(int idClasse, [FromQuery] PagedRequest request)
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<PagedResult<Inscription>>), 200)]
+        public async Task<ActionResult> GetInscriptionsByClassePaged(
+            int idClasse,
+            [FromQuery] PagedRequest request,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var result = await _inscriptionRepository.GetByClassePagedAsync(idClasse, request);
-            return Ok(result);
+            try
+            {
+                return Ok(await _inscriptionRepository.GetByClassePagedAsync(idClasse, request, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/Inscription/classe/5 (VERSION NON PAGINÉE - DEPRECATED)
         [HttpGet("classe/{idClasse}")]
         [Obsolete("Utiliser /api/Inscription/classe/{idClasse}/paged pour la pagination")]
-        public async Task<ActionResult<IEnumerable<Inscription>>> GetInscriptionsByClasse(int idClasse)
+        public async Task<ActionResult> GetInscriptionsByClasse(
+            int idClasse,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var inscriptions = await _inscriptionRepository.GetByClasseAsync(idClasse);
-            return Ok(inscriptions);
+            try
+            {
+                return Ok(await _inscriptionRepository.GetByClasseAsync(idClasse, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // ✅ GET: api/Inscription/ecoles/{idecole}/paged (NOUVELLE VERSION PAGINÉE)
-        /// <summary>
-        /// Récupère les inscriptions d'une école avec pagination
-        /// </summary>
         [HttpGet("ecoles/{idecole}/paged")]
-        [ProducesResponseType(typeof(PagedResult<Inscription>), 200)]
-        public async Task<ActionResult<PagedResult<Inscription>>> GetInscriptionsByEcolePaged(int idecole, [FromQuery] PagedRequest request)
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<PagedResult<Inscription>>), 200)]
+        public async Task<ActionResult> GetInscriptionsByEcolePaged(
+            int idecole,
+            [FromQuery] PagedRequest request,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var result = await _inscriptionRepository.GetByEcolePagedAsync(idecole, request);
-            return Ok(result);
+            try
+            {
+                return Ok(await _inscriptionRepository.GetByEcolePagedAsync(idecole, request, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/Inscription/ecoles/5 (VERSION NON PAGINÉE - DEPRECATED)
         [HttpGet("ecoles/{idecole}")]
         [Obsolete("Utiliser /api/Inscription/ecoles/{idecole}/paged pour la pagination")]
-        public async Task<ActionResult<IEnumerable<Inscription>>> GetInscriptionsByEcole(int idecole)
+        public async Task<ActionResult> GetInscriptionsByEcole(
+            int idecole,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var inscriptions = await _inscriptionRepository.GetByEcoleAsync(idecole);
-            return Ok(inscriptions);
+            try
+            {
+                return Ok(await _inscriptionRepository.GetByEcoleAsync(idecole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // GET: api/Inscription/annee/2024
@@ -160,33 +188,10 @@ namespace KelasiNaBiso.Controllers
 
 
 
-        /*
-        // POST: api/Inscription
-        [HttpPost("{nomEcole}")]
-        public async Task<ActionResult<InscriptionResult>> CreateInscription(string nomEcole,  CreateInscriptionDto inscriptionDto)
-        {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState);
-            }
+        // Endpoint SP retiré : sp_CreateInscription utilisait Eleves.IdClasse / Tuteurs.IdEcole.
+        // Utiliser POST /api/Inscription/new/{nomEcole} → CreateInscriptionAsync.
 
-            // r�cup�ration  du matricule �l�ve
-            inscriptionDto.MatriculeEleve = _inscriptionRepository.GenerateMatriculeEleve(nomEcole, inscriptionDto);
-
-
-            var result = await _inscriptionRepository.CreateInscriptionWithStoredProcedureAsync(inscriptionDto);
-
-            if (result.Success)
-            {
-                return CreatedAtAction(nameof(GetInscription), new { id = result.IdInscription }, result);
-            }
-            else
-            {
-                return BadRequest(new { error = result.Message });
-            }
-        } */
-
-        // POST: api/Inscription/new (nouvelle méthode sans procédure stockée)
+        // POST: api/Inscription/new (chemin EF — source de vérité Inscription)
         [HttpPost("new/{nomEcole}")]
         public async Task<ActionResult<InscriptionResult>> CreateInscriptionNew(string nomEcole, CreateInscriptionDto inscriptionDto)
         {

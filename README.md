@@ -121,7 +121,7 @@ Le projet utilise **MariaDB 10.11** avec Entity Framework Core (Pomelo provider)
 ```json
 {
   "ConnectionStrings": {
-    "KelasiConnection": "Server=localhost;Database=KelasiNaBisoDb;User=kansa;Password=kansa2025;Port=3306;SslMode=none;CharSet=utf8mb4;"
+    "KelasiConnection": "Server=localhost;Database=KelasiNaBisoDb;User=kansa;Password=YOUR_DB_PASSWORD;Port=3306;SslMode=none;CharSet=utf8mb4;"
   }
 }
 ```

@@ -1,4 +1,5 @@
 using KelasiNaBiso.Models;
+using KelasiNaBiso.Models.DTOs;
 using KelasiNaBiso.Models.DTOs.Pagination;
 
 namespace KelasiNaBiso.Services.Repositories
@@ -21,9 +22,9 @@ namespace KelasiNaBiso.Services.Repositories
         Task<bool> DeleteAsync(int id);
         Task<bool> ExistsAsync(int id);
         Task<bool> ExistsByNomAsync(string nom);
-        Task<IEnumerable<Eleve>> GetElevesAsync(int idClasse);
+        Task<ElevesAnneeScopedResult<IEnumerable<Eleve>>> GetElevesAsync(int idClasse, int? idAnneeScolaire = null);
         Task<IEnumerable<Cours>> GetCoursAsync(int idClasse);
-        Task<IEnumerable<Inscription>> GetInscriptionsAsync(int idClasse);
+        Task<ElevesAnneeScopedResult<IEnumerable<Inscription>>> GetInscriptionsAsync(int idClasse, int? idAnneeScolaire = null);
       //  Task<IEnumerable<Frais>> GetFraisAsync(int idClasse);
         Task<IEnumerable<Evaluation>> GetEvaluationsAsync(int idClasse);
         

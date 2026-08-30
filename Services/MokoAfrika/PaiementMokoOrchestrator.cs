@@ -73,15 +73,21 @@ namespace KelasiNaBiso.Services.MokoAfrika
                 throw new ArgumentException("Le téléphone du payeur est requis.");
 
             var eleve = await _context.Eleves
-                .Include(e => e.Classe)
-                    .ThenInclude(c => c!.Direction)
+                .Include(e => e.Inscriptions)
+                    .ThenInclude(i => i.Classe)
+                        .ThenInclude(c => c.Direction)
                 .FirstOrDefaultAsync(e => e.IdEleve == request.IdEleve, cancellationToken)
                 ?? throw new KeyNotFoundException($"Élève {request.IdEleve} introuvable.");
 
-            if (eleve.Classe?.Direction == null)
+            var inscription = eleve.Inscriptions
+                .Where(i => i.Statut == true &&
+                    (i.StatutInscription == "Confirmé" || i.StatutInscription == "Confirme" || i.StatutInscription.StartsWith("Confirm")))
+                .OrderByDescending(i => i.DateInscription)
+                .FirstOrDefault();
+            if (inscription?.Classe?.Direction == null)
                 throw new InvalidOperationException("L'élève n'est pas rattaché à une école.");
 
-            var idEcole = eleve.Classe.Direction.IdEcole
+            var idEcole = inscription.Classe.Direction.IdEcole
                 ?? throw new InvalidOperationException("L'école de l'élève est indéfinie.");
 
             var frais = await _context.Frais
@@ -91,6 +97,12 @@ namespace KelasiNaBiso.Services.MokoAfrika
 
             if (frais.Direction.IdEcole != idEcole)
                 throw new InvalidOperationException("Ce frais n'appartient pas à l'école de l'élève.");
+
+            if (frais.IdAnneeScolaire != inscription.IdAnneeScolaire)
+                throw new InvalidOperationException("Ce frais n'appartient pas à l'année scolaire de l'élève.");
+
+            if (frais.IdClasse.HasValue && frais.IdClasse.Value != inscription.IdClasse)
+                throw new InvalidOperationException("Ce frais n'est pas applicable à la classe de l'élève.");
 
             var infoPaiement = await _context.EcolesInfoPaiementMobile
                 .FirstOrDefaultAsync(i => i.IdEcole == idEcole && i.Statut, cancellationToken)

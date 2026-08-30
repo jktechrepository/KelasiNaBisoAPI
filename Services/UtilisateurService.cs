@@ -1,4 +1,5 @@
 using KelasiNaBiso.Data;
+using KelasiNaBiso.Helpers;
 using KelasiNaBiso.Models;
 using KelasiNaBiso.Services.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -122,11 +123,28 @@ namespace KelasiNaBiso.Services
 
         public async Task<Utilisateur> GetByEmailAsync(string email)
         {
+            var normalized = NormalizeEmail(email);
             return await _context.Utilisateurs
                 .Include(u => u.Ecole) // ✨ NOUVEAU : Inclure l'école pour vérifier son statut
                 .Where(u => u.Statut == true) // ✅ Filtrer uniquement les utilisateurs actifs
-                .FirstOrDefaultAsync(u => u.Email == email);
+                .FirstOrDefaultAsync(u => u.Email != null && u.Email.ToLower() == normalized);
         }
+
+        /// <summary>
+        /// Recherche admin : trouve aussi les comptes inactifs (Statut false/null).
+        /// Le login continue d'utiliser <see cref="GetByEmailAsync"/> (actifs seulement).
+        /// </summary>
+        public async Task<Utilisateur?> GetByEmailAnyStatusAsync(string email)
+        {
+            var normalized = NormalizeEmail(email);
+            return await _context.Utilisateurs
+                .Include(u => u.Ecole)
+                .Include(u => u.Role)
+                .FirstOrDefaultAsync(u => u.Email != null && u.Email.ToLower() == normalized);
+        }
+
+        private static string NormalizeEmail(string email) =>
+            (email ?? string.Empty).Trim().ToLowerInvariant();
 
         public async Task<Utilisateur> GetByDefaultUsernameAsync(string defaultUsername)
         {
@@ -215,17 +233,23 @@ namespace KelasiNaBiso.Services
 
         public async Task<IEnumerable<Utilisateur>> GetByTelephoneAsync(string telephone)
         {
+            var normalized = TelephoneNormalizer.Normalize(telephone) ?? telephone;
+
             return await _context.Utilisateurs
                 .Include(u => u.Ecole)
                 .Include(u => u.Role)
-                .Where(u => u.Telephone == telephone)
-                .Where(u => u.Statut == true) // ✅ Filtrer uniquement les utilisateurs actifs
+                .Where(u => u.Telephone != null
+                    && (u.Telephone == normalized
+                        || u.Telephone.Replace(" ", "").Replace("-", "") == normalized))
+                .Where(u => u.Statut == true)
                 .OrderByDescending(u => u.DateCreation)
                 .ToListAsync();
         }
 
         public async Task<Utilisateur> CreateAsync(Utilisateur utilisateur)
         {
+            utilisateur.Telephone = TelephoneNormalizer.Normalize(utilisateur.Telephone);
+
             // ✅ UNICITÉ EMAIL: Vérifier que l'email n'existe pas déjà
             if (!string.IsNullOrEmpty(utilisateur.Email))
             {
@@ -259,6 +283,8 @@ namespace KelasiNaBiso.Services
             var existingUtilisateur = await _context.Utilisateurs.FindAsync(utilisateur.IdUtilisateur);
             if (existingUtilisateur == null)
                 return null;
+
+            utilisateur.Telephone = TelephoneNormalizer.Normalize(utilisateur.Telephone);
 
             // ✅ UNICITÉ EMAIL: Vérifier que le nouvel email n'est pas déjà utilisé par un autre utilisateur
             if (!string.IsNullOrEmpty(utilisateur.Email) && utilisateur.Email != existingUtilisateur.Email)

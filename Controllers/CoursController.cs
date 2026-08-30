@@ -19,6 +19,10 @@ namespace KelasiNaBiso.Controllers
             _coursRepository = coursRepository;
         }
 
+        /// <summary>
+        /// Catalogue des cours (structure pédagogique par classe). Pas de filtre année scolaire :
+        /// pour l'enseignement par année, utiliser GET /api/AffectationCours/annee-scolaire/{idAnneeScolaire}.
+        /// </summary>
         // GET: api/Cours
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Cours>>> GetCours()
@@ -65,18 +69,33 @@ namespace KelasiNaBiso.Controllers
 
         // GET: api/Cours/5/notes
         [HttpGet("{id}/notes")]
-        public async Task<ActionResult<IEnumerable<Note>>> GetCoursNotes(int id)
+        public async Task<ActionResult<IEnumerable<Note>>> GetCoursNotes(
+            int id,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var notes = await _coursRepository.GetNotesAsync(id);
-            return Ok(notes);
+            try
+            {
+                return Ok(await _coursRepository.GetNotesAsync(id, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/Cours/5/evaluations
         [HttpGet("{id}/evaluations")]
-        public async Task<ActionResult<IEnumerable<Evaluation>>> GetCoursEvaluations(int id)
+        public async Task<ActionResult<IEnumerable<Evaluation>>> GetCoursEvaluations(
+            int id,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var evaluations = await _coursRepository.GetEvaluationsAsync(id);
-            return Ok(evaluations);
+            try
+            {
+                return Ok(await _coursRepository.GetEvaluationsAsync(id, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // GET: api/Cours/5/ressources

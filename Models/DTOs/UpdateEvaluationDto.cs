@@ -9,9 +9,14 @@ namespace KelasiNaBiso.Models.DTOs
         
         [StringLength(50)]
         public string? TypeEvaluation { get; set; }
+
+        [StringLength(200)]
+        public string? TitreEvaluation { get; set; }
+
+        [StringLength(255)]
+        public string? Periode { get; set; }
         
-       // [Range(0, 10)]
-        public double Coefficient { get; set; }
+        public double? Coefficient { get; set; }
         
         [Required]
         public int IdCours { get; set; }

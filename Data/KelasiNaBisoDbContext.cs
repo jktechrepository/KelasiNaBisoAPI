@@ -1,4 +1,4 @@
-﻿using KelasiNaBiso.Models;
+using KelasiNaBiso.Models;
 using Microsoft.EntityFrameworkCore;
 using System.Xml;
 using System.Linq;
@@ -85,11 +85,7 @@ namespace KelasiNaBiso.Data
             base.OnModelCreating(modelBuilder);
 
             // Configuration des relations et contraintes
-            modelBuilder.Entity<Eleve>()
-                .HasOne(e => e.Classe)
-                .WithMany(c => c.Eleves)
-                .HasForeignKey(e => e.IdClasse)
-                .OnDelete(DeleteBehavior.NoAction);
+            // Classe courante : via Inscription uniquement
 
             modelBuilder.Entity<Eleve>()
                 .HasOne(e => e.Tuteur)
@@ -209,13 +205,15 @@ namespace KelasiNaBiso.Data
                 .IsUnique()
                 .HasDatabaseName("IX_Eleves_SerialNumber_Unique");
 
-            // ✅ UNICITÉ COMPOSITE ÉLÈVE: Index unique composite pour prévenir les doublons
-            // Empêche la création de doublons basés sur : Nom + Postnom + Prenom + DateNaissance + IdTuteur + IdClasse
-            // Note : MariaDB/MySQL ne supporte pas les index filtrés, le filtre par Statut = 1 est géré dans le code C#
+            // ✅ UNICITÉ COMPOSITE ÉLÈVE: sans IdClasse (classe via Inscription)
             modelBuilder.Entity<Eleve>()
-                .HasIndex(e => new { e.Nom, e.Postnom, e.Prenom, e.DateNaissance, e.IdTuteur, e.IdClasse })
+                .HasIndex(e => new { e.Nom, e.Postnom, e.Prenom, e.DateNaissance, e.IdTuteur })
                 .IsUnique()
-                .HasDatabaseName("IX_Eleves_Unique_Nom_Prenom_DateNaissance_Tuteur_Classe");
+                .HasDatabaseName("IX_Eleves_Unique_Nom_Prenom_DateNaissance_Tuteur");
+
+            modelBuilder.Entity<Inscription>()
+                .HasIndex(i => new { i.IdEleve, i.IdAnneeScolaire, i.Statut })
+                .HasDatabaseName("IX_Inscriptions_Eleve_Annee_Statut");
 
             // ✅ UNICITÉ MATRICULE AGENT: Index unique sur le matricule
             modelBuilder.Entity<Agent>()
@@ -241,11 +239,7 @@ namespace KelasiNaBiso.Data
                 .IsUnique()
                 .HasDatabaseName("IX_Tuteurs_Email_Unique");
 
-            modelBuilder.Entity<Tuteur>()
-                .HasOne(t => t.Ecole)
-                .WithMany(e => e.Tuteurs)
-                .HasForeignKey(t => t.IdEcole)
-                .OnDelete(DeleteBehavior.NoAction);
+            // École du tuteur : via Inscription des enfants (pas de FK Tuteur → Ecole)
 
             // ✅ FIX: Configuration explicite pour gérer les valeurs NULL en base de données
             // S'assure que toutes les propriétés string nullable acceptent bien les valeurs NULL
@@ -442,6 +436,23 @@ namespace KelasiNaBiso.Data
                 .WithMany(d => d.Frais)
                 .HasForeignKey(f => f.IdDirection)
                 .OnDelete(DeleteBehavior.NoAction);
+
+            modelBuilder.Entity<Frais>()
+                .HasOne(f => f.AnneeScolaire)
+                .WithMany(a => a.Frais)
+                .HasForeignKey(f => f.IdAnneeScolaire)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            modelBuilder.Entity<Frais>()
+                .HasOne(f => f.Classe)
+                .WithMany(c => c.Frais)
+                .HasForeignKey(f => f.IdClasse)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            modelBuilder.Entity<Frais>()
+                .HasIndex(f => new { f.IdDirection, f.IdAnneeScolaire, f.LibelleFrais, f.IdClasse })
+                .HasDatabaseName("IX_Frais_Direction_Annee_Libelle_Classe");
 
             modelBuilder.Entity<Paiement>()
                 .HasOne(p => p.Eleve)
@@ -678,6 +689,12 @@ namespace KelasiNaBiso.Data
                 .IsRequired(false)
                 .OnDelete(DeleteBehavior.SetNull);
 
+            modelBuilder.Entity<DevoirADomicile>()
+                .HasOne(d => d.AnneeScolaire)
+                .WithMany()
+                .HasForeignKey(d => d.IdAnneeScolaire)
+                .OnDelete(DeleteBehavior.Restrict);
+
             // Index pour performance
             modelBuilder.Entity<DevoirADomicile>()
                 .HasIndex(d => d.IdClasse)
@@ -700,8 +717,16 @@ namespace KelasiNaBiso.Data
                 .HasDatabaseName("IX_DevoirADomicile_DatePublication");
 
             modelBuilder.Entity<DevoirADomicile>()
+                .HasIndex(d => d.IdAnneeScolaire)
+                .HasDatabaseName("IX_DevoirADomicile_IdAnneeScolaire");
+
+            modelBuilder.Entity<DevoirADomicile>()
                 .HasIndex(d => new { d.IdClasse, d.Statut })
                 .HasDatabaseName("IX_DevoirADomicile_Classe_Statut");
+
+            modelBuilder.Entity<DevoirADomicile>()
+                .HasIndex(d => new { d.IdClasse, d.IdAnneeScolaire, d.Statut })
+                .HasDatabaseName("IX_DevoirADomicile_Classe_Annee_Statut");
 
             modelBuilder.Entity<Message>()
                 .HasOne(m => m.Expediteur)
@@ -997,602 +1022,17 @@ namespace KelasiNaBiso.Data
 
         }
 
-        // ═══════════════════════════════════════════════════════════════════════════════════
-        // 🛠️ MÉTHODE UTILITAIRE : VÉRIFICATION EXISTENCE VUE
-        // ═══════════════════════════════════════════════════════════════════════════════════
+        // Vues de reporting : source de vérité = Migrations/20260727084551_AddReportingViews.cs
+        // (plus de CreateView* au démarrage — voir docs/SCHEMA_SOURCE_OF_TRUTH.md)
 
         /// <summary>
-        /// Vérifie si une vue existe dans la base de données
+        /// Ancienne création de sp_CreateInscription (T-SQL + Eleves.IdClasse / Tuteurs.IdEcole).
+        /// Supprimée : utiliser <c>InscriptionService.CreateInscriptionAsync</c>.
         /// </summary>
-        /// <param name="viewName">Nom de la vue à vérifier</param>
-        /// <returns>True si la vue existe, False sinon</returns>
-        private bool ViewExists(string viewName)
-        {
-            try
-            {
-                var sql = $@"
-                    SELECT COUNT(*) 
-                    FROM information_schema.views 
-                    WHERE table_schema = DATABASE() 
-                    AND table_name = '{viewName}'";
-
-                var connection = Database.GetDbConnection();
-                
-                // Ouvrir la connexion si elle est fermée
-                if (connection.State != System.Data.ConnectionState.Open)
-                {
-                    connection.Open();
-                }
-                
-                using var command = connection.CreateCommand();
-                command.CommandText = sql;
-                var result = command.ExecuteScalar();
-                
-                // NE PAS fermer la connexion ici, EF Core s'en charge
-                
-                return result != null && Convert.ToInt32(result) > 0;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"⚠️  Erreur lors de la vérification de la vue {viewName}: {ex.Message}");
-                return false; // En cas d'erreur, on considère que la vue n'existe pas (pour forcer la recréation)
-            }
-        }
-
-        /// <summary>
-        /// Calcule un hash MD5 d'une chaîne SQL pour détecter les changements
-        /// </summary>
-        /// <param name="sql">Requête SQL à hasher</param>
-        /// <returns>Hash MD5 de la requête</returns>
-        private string GetSqlHash(string sql)
-        {
-            using (var md5 = System.Security.Cryptography.MD5.Create())
-            {
-                var inputBytes = System.Text.Encoding.ASCII.GetBytes(sql.Trim());
-                var hashBytes = md5.ComputeHash(inputBytes);
-                return Convert.ToHexString(hashBytes);
-            }
-        }
-
-        /// <summary>
-        /// Récupère le hash stocké pour une vue (via un commentaire dans la vue elle-même)
-        /// </summary>
-        /// <param name="viewName">Nom de la vue</param>
-        /// <returns>Hash stocké ou null si non trouvé</returns>
-        private string? GetStoredViewHash(string viewName)
-        {
-            try
-            {
-                var sql = $@"
-                    SELECT VIEW_DEFINITION 
-                    FROM information_schema.views 
-                    WHERE table_schema = DATABASE() 
-                    AND table_name = '{viewName}'";
-
-                var connection = Database.GetDbConnection();
-                
-                // Ouvrir la connexion si elle est fermée
-                if (connection.State != System.Data.ConnectionState.Open)
-                {
-                    connection.Open();
-                }
-                
-                using var command = connection.CreateCommand();
-                command.CommandText = sql;
-                var result = command.ExecuteScalar();
-                
-                // NE PAS fermer la connexion ici, EF Core s'en charge
-                
-                if (result == null)
-                    return null;
-                
-                var viewDefinition = result.ToString();
-                
-                if (string.IsNullOrEmpty(viewDefinition))
-                    return null;
-
-                // Extraire le hash du commentaire (format: /* HASH:xxxxx */)
-                var match = System.Text.RegularExpressions.Regex.Match(viewDefinition, @"/\* HASH:([A-F0-9]+) \*/");
-                return match.Success ? match.Groups[1].Value : null;
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        /// <summary>
-        /// Crée ou met à jour une vue uniquement si nécessaire (vue absente ou définition changée)
-        /// </summary>
-        /// <param name="viewName">Nom de la vue</param>
-        /// <param name="createViewSql">SQL de création de la vue</param>
-        /// <param name="forceRecreate">Forcer la recréation même si la vue existe</param>
-        private void CreateOrUpdateViewIfNeeded(string viewName, string createViewSql, bool forceRecreate = false)
-        {
-            try
-            {
-                bool viewExists = ViewExists(viewName);
-                string currentHash = GetSqlHash(createViewSql);
-
-                if (!viewExists)
-                {
-                    Console.WriteLine($"🆕 Vue '{viewName}' n'existe pas → Création...");
-                    
-                    // Ajouter le hash dans un commentaire pour tracking
-                    var sqlWithHash = $"/* HASH:{currentHash} */ {createViewSql}";
-                    
-                    Database.ExecuteSqlRaw(sqlWithHash);
-                    Console.WriteLine($"✅ Vue '{viewName}' créée avec succès (Hash: {currentHash})");
-                }
-                else if (forceRecreate)
-                {
-                    Console.WriteLine($"🔄 Recréation forcée de la vue '{viewName}'...");
-                    Database.ExecuteSqlRaw($"DROP VIEW IF EXISTS {viewName}");
-                    
-                    var sqlWithHash = $"/* HASH:{currentHash} */ {createViewSql}";
-                    Database.ExecuteSqlRaw(sqlWithHash);
-                    Console.WriteLine($"✅ Vue '{viewName}' recréée avec succès (Hash: {currentHash})");
-                }
-                else
-                {
-                    string? storedHash = GetStoredViewHash(viewName);
-                    
-                    if (storedHash == null || storedHash != currentHash)
-                    {
-                        Console.WriteLine($"🔄 Vue '{viewName}' a changé (Hash: {storedHash} → {currentHash}) → Mise à jour...");
-                        Database.ExecuteSqlRaw($"DROP VIEW IF EXISTS {viewName}");
-                        
-                        var sqlWithHash = $"/* HASH:{currentHash} */ {createViewSql}";
-                        Database.ExecuteSqlRaw(sqlWithHash);
-                        Console.WriteLine($"✅ Vue '{viewName}' mise à jour avec succès");
-                    }
-                    else
-                    {
-                        Console.WriteLine($"✓ Vue '{viewName}' déjà à jour (Hash: {currentHash})");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"❌ Erreur lors de la création/mise à jour de la vue '{viewName}': {ex.Message}");
-            }
-        }
-
-        // ═══════════════════════════════════════════════════════════════════════════════════
-        // 📊 CRÉATION DES VUES SQL (OPTIMISÉ AVEC VÉRIFICATION)
-        // ═══════════════════════════════════════════════════════════════════════════════════
-        public void CreateViewUtilisateur()
-        {
-            var sql = @"CREATE VIEW V_Utilisateur AS
-                                       SELECT 
-                        u.IdUtilisateur,
-                        u.ReferenceUtilisateur,
-                        u.NomUtilisateur,
-                        u.PostNomUtilisateur,
-                        u.PrenomUtilisateur,
-                        a.Matricule As Email,
-                        u.Telephone,
-                        u.PhotoUrl,
-                        u.LieuNaissance,
-                        u.DateNaissance,
-                        u.Genre,
-                        u.Statut,
-                        u.DateCreation,
-                        u.IsConnecte,
-                        u.Province,
-                        u.Ville,
-                        u.Commune,
-                        u.Quartier,
-                        u.Avenue,
-                        u.Numero,
-                        r.IdRole,
-                        a.Fonction AS NomRole,
-                        r.DateCreation AS DateCreationRole,
-                        e.IdEcole,
-                        e.Nom AS NomEcole,
-                        e.Slogan AS SloganEcole,
-                        e.Type AS TypeEcole,
-                        e.Logo AS LogoUrl,
-                        e.Telephone AS TelephoneEcole,
-                        e.EmailContact AS EmailContactEcole,
-                        e.SiteWeb AS SiteWebEcole,
-                        e.ProvinceEducationnel,
-                        e.NomCompletResponsable,
-                        e.Description AS DescriptionEcole,
-                        e.DateCreation AS DateCreationEcole,
-                        e.Province AS ProvinceEcole,
-                        e.Ville AS VilleEcole,
-                        e.Commune AS CommuneEcole,
-                        e.Quartier AS QuartierEcole,
-                        e.Avenue AS AvenueEcole,
-                        e.Numero AS NumeroEcole
-                    FROM Utilisateurs u   
-                    LEFT JOIN agents  a ON u.Email =  a.EmailAgent
-                    LEFT JOIN Roles   r ON u.IdRole  =  r.IdRole
-                    LEFT JOIN Ecoles  e ON u.IdEcole =  e.IdEcole
-                    where u.idRole <> 4 and a.SerialNumber is null  ";
-
-            CreateOrUpdateViewIfNeeded("V_Utilisateur", sql);
-        }
-        public void CreateViewEleveParEcole()
-        {
-            var sql = @"CREATE VIEW EleveParEcole AS
-                SELECT 
-                    -- Eleve
-                    e.IdEleve,
-                    e.ReferenceEleve,
-                    CONCAT(e.Prenom, ' ', e.Nom, ' ', e.Postnom) AS NomCompletEleve,
-                    e.Genre,
-                    e.DateNaissance,
-                    YEAR(CURDATE()) - YEAR(e.DateNaissance) AS Age,
-                    e.LieuNaissance,
-                    e.PhotoUrl,
-                    e.Nationalite,
-                    e.Matricule,
-                    e.Province AS ProvinceEleve,
-                    e.Ville AS VilleEleve,
-                    e.Commune AS CommuneEleve,
-                    e.Quartier AS QuartierEleve,
-                    e.Avenue AS AvenueEleve,
-                    e.Numero AS NumeroEleve,
-                    e.Commentaire,
-                    e.Statut,
-
-                    -- Classe
-                    c.IdClasse,
-                    c.NomClasse,
-
-                    -- Direction
-                    d.IdDirection,
-                    d.NomDirection,
-
-                    -- Option
-                    o.IdOption,
-                    o.NomOption,
-
-                    -- Tuteur
-                    t.IdTuteur,
-                    t.NomComplet AS NomCompletTuteur,
-                    t.Genre AS GenreTuteur,
-                    t.Email AS EmailTuteur,
-                    t.Telephone AS TelephoneTuteur,
-                    t.NomCompletRepresentant,
-                    t.TelephoneRepresentant,
-                    t.Statut AS StatutTuteur,
-                    t.PhotoTuteurUrl,
-                    t.PieceIdentiteTuteur,
-
-                    -- Ecole
-                    ec.IdEcole,
-                    ec.Nom AS NomEcole,
-                    ec.Slogan,
-                    ec.Longitute,
-                    ec.Latitude,
-                    ec.Type,
-                    ec.Logo AS LogoUrl,
-                    ec.Telephone AS TelephoneEcole,
-                    ec.EmailContact,
-                    ec.SiteWeb,
-                    ec.ProvinceEducationnel,
-                    ec.NomCompletResponsable,
-                    ec.Description,
-                    ec.Province AS ProvinceEcole,
-                    ec.Ville AS VilleEcole,
-                    ec.Commune AS CommuneEcole,
-                    ec.Quartier AS QuartierEcole,
-                    ec.Avenue AS AvenueEcole,
-                    ec.Numero AS NumeroEcole
-
-                FROM Eleves e
-                LEFT JOIN Classes c ON e.IdClasse = c.IdClasse
-                LEFT JOIN Directions d ON c.IdDirection = d.IdDirection
-                LEFT JOIN Options o ON c.IdOption = o.IdOption
-                LEFT JOIN Tuteurs t ON e.IdTuteur = t.IdTuteur
-                LEFT JOIN Ecoles ec ON d.IdEcole = ec.IdEcole 
-                where e.SerialNumber is null and e.STATUT is true ";
-
-            CreateOrUpdateViewIfNeeded("EleveParEcole", sql);
-        }
-        public void CreateViewEleve()
-        {
-            var sql = @"CREATE VIEW V_Eleve AS
-                SELECT 
-                    e.IdEleve,
-                    e.ReferenceEleve,
-                    
-                    -- Champs Ã‰lÃ¨ve
-                    e.Matricule,
-                    e.Nom,
-                    e.Postnom,
-                    e.Prenom,
-                    e.NomComplet,
-                    e.Genre,
-                    e.DateNaissance,
-                    e.LieuNaissance,
-                    e.PhotoUrl,
-                    e.Nationalite,
-                    e.Commentaire,
-                    e.Statut,
-                    e.DateCreation,
-                    
-                    -- Champs Adresse Ã‰lÃ¨ve
-                    e.Province,
-                    e.Ville,
-                    e.Commune,
-                    e.Quartier,
-                    e.Avenue,
-                    e.Numero,
-                    
-                    -- Champs Classe
-                    c.IdClasse,
-                    c.NomClasse,
-                    c.DateCreation AS DateCreationClasse,
-                    
-                    -- Champs Section
-                    s.IdSection,
-                    s.NomSection,
-                    s.DateCreation AS DateCreationSection,
-                    
-                    -- Champs Option
-                    o.IdOption,
-                    o.NomOption,
-                    o.DateCreation AS DateCreationOption,
-                    
-                    -- Champs Tuteur
-                    t.IdTuteur,
-                    t.NomComplet AS NomCompletTuteur,
-                    t.Genre AS GenreTuteur,
-                    t.Email AS EmailTuteur,
-                    t.Telephone AS TelephoneTuteur,
-                    t.NomCompletRepresentant,
-                    t.TelephoneRepresentant,
-                    t.PhotoTuteurUrl,
-                    t.PieceIdentiteTuteur,
-                    t.Statut AS StatutTuteur,
-                    t.DateCreation AS DateCreationTuteur,
-                    
-                    -- Champs Ã‰cole (via Tuteur)
-                    ec.IdEcole,
-                    ec.Nom AS NomEcole,
-                    ec.Slogan AS SloganEcole,
-                    ec.Type AS TypeEcole,
-                    ec.Logo AS LogoUrlEcole,
-                    ec.Telephone AS TelephoneEcole,
-                    ec.EmailContact AS EmailContactEcole,
-                    ec.SiteWeb AS SiteWebEcole,
-                    ec.ProvinceEducationnel AS ProvinceEducationnel,
-                    ec.NomCompletResponsable AS NomCompletResponsable,
-                    ec.Description AS DescriptionEcole,
-                    ec.DateCreation AS DateCreationEcole,
-                    
-                    -- Champs Adresse Ã‰cole
-                    ec.Province AS ProvinceEcole,
-                    ec.Ville AS VilleEcole,
-                    ec.Commune AS CommuneEcole,
-                    ec.Quartier AS QuartierEcole,
-                    ec.Avenue AS AvenueEcole,
-                    ec.Numero AS NumeroEcole
-                    
-                FROM Eleves e
-                LEFT JOIN Classes c ON e.IdClasse = c.IdClasse
-                LEFT JOIN Sections s ON c.IdSection = s.IdSection
-                LEFT JOIN Options o ON c.IdOption = o.IdOption
-                LEFT JOIN Tuteurs t ON e.IdTuteur = t.IdTuteur
-                LEFT JOIN Ecoles ec ON t.IdEcole = ec.IdEcole";
-
-            CreateOrUpdateViewIfNeeded("V_Eleve", sql);
-        }
-
-        // DÉSACTIVÉ TEMPORAIREMENT - À RÉÉCRIRE POUR MARIADB/MYSQL
-        // Cette procédure utilise la syntaxe T-SQL (SQL Server) incompatible avec MariaDB
+        [Obsolete("SP legacy retirée. Utiliser InscriptionService.CreateInscriptionAsync.")]
         public void CreateInscriptionStoredProcedure()
         {
-            // TODO: Réécrire cette procédure stockée en syntaxe MySQL/MariaDB
-            /*
-            var sql = @"
-                -- =============================================
-                -- ProcÃedure stockÃee pour crÃeer une inscription
-                -- GÃ¨re les 3 cas : Nouveau ÃelÃ¨ve + Nouveau tuteur, Nouveau ÃelÃ¨ve + Ancien tuteur, Ancien ÃelÃ¨ve (RÃeinscription)
-                -- =============================================
-                CREATE PROCEDURE sp_CreateInscription
-                    IN p_Type VARCHAR(50),                    -- 'Inscription' ou 'RÃeinscription'
-                    IN p_IdEcole INT,
-                    IN p_IdClasse INT,
-                    IN p_IdAnneeScolaire INT,
-                    IN p_DateInscription DATETIME,
-                    IN p_StatutInscription VARCHAR(20),
-                    
-                    -- DonnÃees de l'ÃelÃ¨ve
-                    IN p_NomEleve VARCHAR(100),
-                    IN p_PostnomEleve VARCHAR(100),
-                    IN p_PrenomEleve VARCHAR(100),
-                    IN p_GenreEleve VARCHAR(10),
-                    IN p_DateNaissanceEleve DATE,
-                    IN p_LieuNaissanceEleve VARCHAR(100),
-                    IN p_NationaliteEleve VARCHAR(50),
-                    IN p_CommentaireEleve TEXT,
-                    IN p_PhotoEleveUrl TEXT,
-                    IN p_MatriculeEleve VARCHAR(100),
-                    IN p_ProvinceEleve VARCHAR(100),
-                    IN p_VilleEleve VARCHAR(100),
-                    IN p_CommuneEleve VARCHAR(100),
-                    IN p_QuartierEleve VARCHAR(100),
-                    IN p_AvenueEleve VARCHAR(100),
-                    IN p_NumeroEleve VARCHAR(100),
-                    
-                    -- DonnÃees du tuteur
-                    IN p_NomCompletTuteur VARCHAR(150),
-                    IN p_GenreTuteur VARCHAR(10),
-                    IN p_EmailTuteur VARCHAR(100),
-                    IN p_TelephoneTuteur VARCHAR(20),
-                    IN p_NomCompletRepresentant VARCHAR(150),
-                    IN p_TelephoneRepresentant VARCHAR(20),
-                    IN p_PhotoTuteurUrl TEXT,
-                    IN p_PieceIdentiteTuteur VARCHAR(100),
-                    
-                    -- Pour les cas de rÃeinscription
-                    IN p_IdEleveExistant INT,
-                    IN p_IdTuteurExistant INT,
-                    
-                    -- ParamÃ¨tres de sortie
-                    OUT p_IdInscription INT,
-                    OUT p_IdEleve INT,
-                    OUT p_IdTuteur INT,
-                    OUT p_Message VARCHAR(500),
-                    OUT p_Success BOOLEAN
-                BEGIN
-                    
-                    BEGIN TRY
-                        BEGIN TRANSACTION;
-                        
-                        DECLARE @NewIdTuteur INT = NULL;
-                        DECLARE @NewIdEleve INT = NULL;
-                        DECLARE @NewIdInscription INT = NULL;
-                        DECLARE @TuteurExists BIT = 0;
-                        DECLARE @EleveExists BIT = 0;
-                        
-                        -- VÃerifier si c'est une RÃeinscription
-                        IF @IdEleveExistant IS NOT NULL
-                        BEGIN
-                            -- Cas d'une RÃeinscription  
-                            SET  @Type =  'RÃeinscription' ;
-                            SET @EleveExists = 1;
-                            SET @NewIdEleve = @IdEleveExistant;
-                            
-                            -- Mettre Ã  jour le statut de l'ÃelÃ¨ve
-                            UPDATE Eleves 
-                            SET Statut = 'True', IdClasse=@IdClasse 
-                            WHERE IdEleve = @IdEleveExistant;
-                            
-                            -- Mettre Ã  jour le statut du tuteur associÃe
-                            UPDATE Tuteurs 
-                            SET Statut = 'True' 
-                            WHERE IdTuteur = (SELECT IdTuteur FROM Eleves WHERE IdEleve = @IdEleveExistant);
-                            
-                            SET @Message = 'RÃeinscription effectuÃee avec succÃ¨s.';
-
-                           
-                        END
-                        ELSE
-                        BEGIN
-                            -- Cas d'un nouvel ÃelÃ¨ve
-                            SET  @Type =  'Inscription' ;
-
-                            -- VÃerifier si le tuteur existe dÃejÃ 
-                            IF @IdTuteurExistant IS NOT NULL
-                            BEGIN
-                                SET @TuteurExists = 1;
-                                SET @NewIdTuteur = @IdTuteurExistant;
-                                
-                                -- Mettre Ã  jour le statut du tuteur existant
-                                UPDATE Tuteurs 
-                                SET Statut = 'True' 
-                                WHERE IdTuteur = @IdTuteurExistant;
-                                
-                                SET @Message = 'Inscription effectuÃee avec succÃ¨s.';
-                            END
-                            ELSE
-                            BEGIN
-                                -- VÃerifier si un tuteur avec les mÃªmes coordonnÃees existe dÃejÃ 
-                                SELECT @NewIdTuteur = IdTuteur, @TuteurExists = 1
-                                FROM Tuteurs 
-                                WHERE NomComplet = @NomCompletTuteur 
-                                  AND Telephone = @TelephoneTuteur 
-                                  AND IdEcole = @IdEcole;
-                                
-                                IF @TuteurExists = 1
-                                BEGIN
-                                    -- Mettre Ã  jour le statut du tuteur existant
-                                    UPDATE Tuteurs 
-                                    SET Statut = 'True' 
-                                    WHERE IdTuteur = @NewIdTuteur;
-                                    
-                                    SET @Message = 'Inscription effectuÃee avec succÃ¨s.';
-                                END
-                                ELSE
-                                BEGIN
-                                    -- CrÃeer un nouveau tuteur
-                                    INSERT INTO Tuteurs (
-                                        NomComplet,              Genre,                        Email, 
-                                        Telephone,               NomCompletRepresentant,       TelephoneRepresentant, 
-                                        IdEcole,                 Statut,                       DateCreation, 
-                                        PhotoTuteurUrl,          PieceIdentiteTuteur
-                                    )
-                                    VALUES (
-                                        @NomCompletTuteur,       @GenreTuteur,                  @EmailTuteur, 
-                                        @TelephoneTuteur,        @NomCompletRepresentant,       @TelephoneRepresentant,
-                                        @IdEcole,                'True',                        GETDATE(),
-                                        @PhotoTuteurUrl,          @PieceIdentiteTuteur
-                                    );
-                                    
-                                    SET @NewIdTuteur = SCOPE_IDENTITY();
-                                    SET @Message = 'Inscription effectuÃee avec succÃ¨s. Nouveau tuteur crÃeÃe.';
-                                END
-                            END
-                            
-                            -- CrÃeer le nouvel ÃelÃ¨ve
-                            INSERT INTO Eleves (
-                                ReferenceEleve,             Nom,               Postnom, 
-                                Prenom,                     NomComplet,        Genre, 
-                                DateNaissance,              LieuNaissance,     Nationalite,
-                                Commentaire,                IdClasse,          IdTuteur, 
-                                Statut,                     DateCreation,      PhotoUrl,          
-                                Matricule,
-                                -- Champs d'adresse hÃeritÃes
-                                Province,         Ville,         Commune,         Quartier,        Avenue,       Numero
-                            )
-                            VALUES (
-                                NEWID(),                    @NomEleve,                                                       @PostnomEleve, 
-                                @PrenomEleve,               @NomEleve + ' ' + @PostnomEleve + ' ' + @PrenomEleve,            @GenreEleve, 
-                                @DateNaissanceEleve,        @LieuNaissanceEleve,                                             @NationaliteEleve,
-                                @CommentaireEleve,          @IdClasse,                                                       @NewIdTuteur, 
-                                'True',                     GETDATE(),                                                       @PhotoEleveUrl,          
-                                @MatriculeEleve,
-                                -- Valeurs  des Champs d'adresse hÃeritÃes
-                                @ProvinceEleve,   @VilleEleve,    @CommuneEleve,  @QuartierEleve,    @AvenueEleve,  @NumeroEleve
-                            );
-                            
-                            SET @NewIdEleve = SCOPE_IDENTITY();
-                        END
-                        
-                        -- CrÃeer l'inscription
-                        INSERT INTO Inscriptions (
-                            Type,                IdEleve,           IdEcole,              
-                            IdClasse,            IdAnneeScolaire,   DateInscription, 
-                            StatutInscription,   DateCreation
-                        )
-                        VALUES (
-                            @Type,               @NewIdEleve,        @IdEcole, 
-                            @IdClasse,           @IdAnneeScolaire,   @DateInscription, 
-                            @StatutInscription,  GETDATE()
-                        );
-                        
-                        SET @NewIdInscription = SCOPE_IDENTITY();
-                        
-                        -- Assigner les valeurs de sortie
-                        SET @IdInscription = @NewIdInscription;
-                        SET @IdEleve = @NewIdEleve;
-                        SET @IdTuteur = @NewIdTuteur;
-                        SET @Success = 1;
-                        
-                        COMMIT TRANSACTION;
-                        
-                    END TRY
-                    BEGIN CATCH
-                        IF @@TRANCOUNT > 0
-                            ROLLBACK TRANSACTION;
-                            
-                        SET @Success = 0;
-                        SET @Message = 'Erreur lors de l''inscription : ' + ERROR_MESSAGE();
-                        SET @IdInscription = NULL;
-                        SET @IdEleve = NULL;
-                        SET @IdTuteur = NULL;
-                    END CATCH
-                END";
-
-            Database.ExecuteSqlRaw(sql);
-            */
-            Console.WriteLine("⚠️  Procédure stockée sp_CreateInscription désactivée (migration vers MariaDB en cours)");
+            Console.WriteLine("⚠️  sp_CreateInscription n'est plus créée (legacy Eleves.IdClasse / Tuteurs.IdEcole). Utiliser CreateInscriptionAsync.");
         }
 
         // DÉSACTIVÉ - REMPLACÉ PAR InitializeDefaultDataAsync()
@@ -1936,301 +1376,7 @@ namespace KelasiNaBiso.Data
             return matricule;
         }
         
-        public void CreateViewVuePaiementsFraisParEcole()
-        {
-            var sql = @"CREATE VIEW VuePaiementsFraisParEcole AS
-                SELECT DISTINCT
-                    -- Paiement
-                    p.IdPaiement,
-                    p.DatePaiement,
-                    p.Montant,
-                    p.Devise,
-                    p.ModePaiement,
-                    p.Statut AS StatutPaiement,
-                 --   p.ReferenceTransaction,
-                    p.JustificatifUrl,
-                    p.Commentaire AS CommentairePaiement,
-                    p.DateEnregistrement,
-                    p.ReferencePaiemenet,
-                    p.DateCreation AS DateCreationPaiement,
-
-                    -- Ã‰lÃ¨ve
-                    e.IdEleve,
-                    e.ReferenceEleve,
-                    e.Prenom,
-                    e.Nom,
-                    e.Postnom,
-                    CONCAT(e.Prenom, ' ', e.Nom, ' ', e.Postnom) AS NomCompletFormatÃe,
-                    e.NomComplet AS NomCompletOriginal,
-                    e.Genre,
-                    e.DateNaissance,
-                    YEAR(CURDATE()) - YEAR(e.DateNaissance) AS Age,
-                    e.LieuNaissance,
-                    e.PhotoUrl,
-                    e.Nationalite,
-                    e.Matricule,
-                    e.Province AS ProvinceEleve,
-                    e.Ville AS VilleEleve,
-                    e.Commune AS CommuneEleve,
-                    e.Quartier AS QuartierEleve,
-                    e.Avenue AS AvenueEleve,
-                    e.Numero AS NumeroEleve,
-                    e.Commentaire AS CommentaireEleve,
-                    e.Statut AS StatutEleve,
-                    e.DateCreation AS DateCreationEleve,
-
-                    -- Classe
-                    c.IdClasse,
-                    c.NomClasse,
-                    c.DateCreation AS DateCreationClasse,
-
-                    -- Section
-                    s.IdSection,
-                    s.NomSection,
-                    s.DateCreation AS DateCreationSection,
-
-                    -- Direction
-                    d.IdDirection,
-                    d.NomDirection,
-                    d.DateCreation AS DateCreationDirection,
-
-                    -- Option
-                    o.IdOption,
-                    o.NomOption,
-                    o.DateCreation AS DateCreationOption,
-
-                    -- Ã‰cole
-                    ec.IdEcole,
-                    ec.Nom AS NomEcole,
-                    ec.Slogan,
-                    ec.Longitute,
-                    ec.Latitude,
-                    ec.Type AS TypeEcole,
-                    ec.Logo AS LogoUrl,
-                    ec.Telephone AS TelephoneEcole,
-                    ec.EmailContact,
-                    ec.SiteWeb,
-                    ec.ProvinceEducationnel,
-                    ec.NomCompletResponsable,
-                    ec.Description AS DescriptionEcole,
-                    ec.Province AS ProvinceEcole,
-                    ec.Ville AS VilleEcole,
-                    ec.Commune AS CommuneEcole,
-                    ec.Quartier AS QuartierEcole,
-                    ec.Avenue AS AvenueEcole,
-                    ec.Numero AS NumeroEcole,
-                    ec.DateCreation AS DateCreationEcole,
-
-                    -- Frais
-                    f.IdFrais,
-                    f.LibelleFrais,
-                    f.Montant AS MontantFrais,
-                    f.Devise AS DeviseFrais,
-                    f.DateCreation AS DateCreationFrais,
-
-                    -- Tuteur
-                    t.IdTuteur,
-                    t.NomComplet AS NomTuteur,
-                    t.Genre AS GenreTuteur,
-                    t.Email AS EmailTuteur,
-                    t.Telephone AS TelephoneTuteur,
-                    t.NomCompletRepresentant,
-                    t.TelephoneRepresentant,
-                    t.Statut AS StatutTuteur,
-                    t.PhotoTuteurUrl,
-                    t.PieceIdentiteTuteur,
-                    t.DateCreation AS DateCreationTuteur
-
-                FROM Paiements p
-                INNER JOIN Eleves e ON p.IdEleve = e.IdEleve
-                INNER JOIN Tuteurs t ON e.IdTuteur = t.IdTuteur
-                INNER JOIN Classes c ON e.IdClasse = c.IdClasse
-                LEFT JOIN Sections s ON c.IdSection = s.IdSection
-                INNER JOIN Directions d ON c.IdDirection = d.IdDirection
-                LEFT JOIN Options o ON c.IdOption = o.IdOption
-                INNER JOIN Frais f ON p.IdFrais = f.IdFrais
-                INNER JOIN Ecoles ec ON d.IdEcole = ec.IdEcole";
-
-            CreateOrUpdateViewIfNeeded("VuePaiementsFraisParEcole", sql);
-        }
-
-        public void CreateViewVuePointagePresenceParEcole()
-        {
-            var sql = @"CREATE VIEW VuePointagePresenceParEcole AS
-                SELECT DISTINCT
-                    -- PrÃesence
-                    p.IdPresence,
-                    p.DateDuJour,
-                    p.HeureArrivee,
-                    p.HeureDepart,
-                    p.Statut AS StatutPresence,
-                    p.Longitute,
-                    p.Latitude,
-                    p.DateCreation AS DateCreationPresence,
-
-                    -- Ã‰lÃ¨ve
-                    e.IdEleve,
-                    e.ReferenceEleve,
-                    e.Prenom,
-                    e.Nom,
-                    e.Postnom,
-                    CONCAT(e.Prenom, ' ', e.Nom, ' ', e.Postnom) AS NomCompletFormatÃe,
-                    e.Genre,
-                    e.DateNaissance,
-                    YEAR(CURDATE()) - YEAR(e.DateNaissance) AS Age,
-                    e.LieuNaissance,
-                    e.PhotoUrl,
-                    e.Nationalite,
-                    e.Matricule,
-                    e.Province AS ProvinceEleve,
-                    e.Ville AS VilleEleve,
-                    e.Commune AS CommuneEleve,
-                    e.Quartier AS QuartierEleve,
-                    e.Avenue AS AvenueEleve,
-                    e.Numero AS NumeroEleve,
-                    e.Statut AS StatutEleve,
-                    e.DateCreation AS DateCreationEleve,
-
-                    -- Classe
-                    c.IdClasse,
-                    c.NomClasse,
-                    c.DateCreation AS DateCreationClasse,
-
-                    -- Option
-                    o.IdOption,
-                    o.NomOption,
-                    o.DateCreation AS DateCreationOption,
-
-                    -- Section
-                    s.IdSection,
-                    s.NomSection,
-                    s.DateCreation AS DateCreationSection,
-
-                    -- Direction
-                    d.IdDirection,
-                    d.NomDirection,
-                    d.DateCreation AS DateCreationDirection,
-
-                    -- Ã‰cole
-                    ec.IdEcole,
-                    ec.Nom AS NomEcole,
-                    ec.Slogan,
-                    ec.Longitute AS LongituteEcole,
-                    ec.Latitude AS LatitudeEcole,
-                    ec.Type AS TypeEcole,
-                    ec.Logo AS LogoUrl,
-                    ec.Telephone AS TelephoneEcole,
-                    ec.EmailContact,
-                    ec.SiteWeb,
-                    ec.ProvinceEducationnel,
-                    ec.NomCompletResponsable,
-                    ec.Description AS DescriptionEcole,
-                    ec.Province AS ProvinceEcole,
-                    ec.Ville AS VilleEcole,
-                    ec.Commune AS CommuneEcole,
-                    ec.Quartier AS QuartierEcole,
-                    ec.Avenue AS AvenueEcole,
-                    ec.Numero AS NumeroEcole,
-                    ec.DateCreation AS DateCreationEcole,
-
-                    -- Horaire / Vacation
-                    v.IdVacation,
-                    v.NomVacation,
-                    v.HeureDebut,
-                    v.HeureFin,
-                    v.HeureDebutPause,
-                    v.HeureFinPause,
-                    v.NombreJoursParSemaine,
-                    v.DateCreation AS DateCreationVacation,
-
-                    -- Tuteur
-                    t.IdTuteur,
-                    t.NomComplet AS NomTuteur,
-                    t.Genre AS GenreTuteur,
-                    t.Email AS EmailTuteur,
-                    t.Telephone AS TelephoneTuteur,
-                    t.NomCompletRepresentant,
-                    t.TelephoneRepresentant,
-                    t.Statut AS StatutTuteur,
-                    t.PhotoTuteurUrl,
-                    t.PieceIdentiteTuteur,
-                    t.DateCreation AS DateCreationTuteur
-
-                FROM Presences p
-                INNER JOIN Eleves e ON p.IdEleve = e.IdEleve
-                INNER JOIN Tuteurs t ON e.IdTuteur = t.IdTuteur
-                INNER JOIN Classes c ON e.IdClasse = c.IdClasse
-                LEFT JOIN Options o ON c.IdOption = o.IdOption
-                LEFT JOIN Sections s ON c.IdSection = s.IdSection
-                INNER JOIN Directions d ON c.IdDirection = d.IdDirection
-                LEFT JOIN Vacations v ON p.IdVacation = v.IdVacation
-                INNER JOIN Ecoles ec ON d.IdEcole = ec.IdEcole";
-
-            CreateOrUpdateViewIfNeeded("VuePointagePresenceParEcole", sql);
-        }
-
-        public void CreateViewVueRepertoireAgentsParParent()
-        {
-            var sql = @"CREATE VIEW Vue_RepertoireAgentsParParent AS
-                SELECT 
-                    e.IdAgent,
-                    CONCAT(e.Nom, ' ', e.Postnom, ' ', e.Prenom) AS NomCompletAgent,
-                    e.Genre AS GenreAgent,
-                    e.Numero AS TelephoneAgent,
-                    e.EmailAgent, 
-                    e.PhotoUrl AS PhotoAgent,
-                    e.DateCreation AS DateCreationAgent,
-
-                    c.IdCours,
-                    c.NomCours,
-                    c.Description AS DescriptionCours, 
-                    c.DateCreation AS DateCreationCours,
-
-                    cl.IdClasse,
-                    cl.NomClasse,
-                    cl.DateCreation AS DateCreationClasse,
-
-                    an.IdAnneeScolaire,
-                    an.LibelleAnneeScolaire,
-                    an.DateDebut,
-                    an.DateFin,
-                    an.DateCreation AS DateCreationAnnee,
-
-                    el.IdEleve,
-                    el.NomComplet AS NomCompletEleve,
-                    el.Genre AS GenreEleve,
-                    el.Matricule,
-                    el.Statut AS StatutEleve,
-                    el.DateCreation AS DateCreationEleve,
-
-                    tut.IdTuteur,
-                    tut.NomComplet AS NomCompletTuteur,
-                    tut.Genre AS GenreTuteur,
-                    tut.Telephone AS TelephoneTuteur,
-                    tut.Email AS EmailTuteur,
-                    tut.NomCompletRepresentant,
-                    tut.TelephoneRepresentant,
-                    tut.Statut AS StatutTuteur,
-                    tut.DateCreation AS DateCreationTuteur,
-
-                    ec.IdEcole,
-                    ec.Nom AS NomEcole,
-                    ec.Type AS TypeEcole,
-                    ec.DateCreation AS DateCreationEcole
-
-                FROM Eleves el
-                INNER JOIN Tuteurs tut ON el.IdTuteur = tut.IdTuteur
-                INNER JOIN Classes cl ON el.IdClasse = cl.IdClasse
-                INNER JOIN Cours c ON cl.IdClasse = c.IdClasse
-                INNER JOIN AffectationsCours ac ON c.IdCours = ac.IdCours
-                INNER JOIN Agents e ON ac.IdAgent = e.IdAgent
-                INNER JOIN Directions d ON cl.IdDirection = d.IdDirection
-                INNER JOIN Ecoles ec ON d.IdEcole = ec.IdEcole
-                LEFT JOIN AnneeScolaires an ON an.IdEcole = ec.IdEcole
-                WHERE el.Statut = 'True' AND tut.Statut = 'True' AND ac.Statut = 1";
-
-            CreateOrUpdateViewIfNeeded("Vue_RepertoireAgentsParParent", sql);
-        }
+        // CreateViewVue* retirés — migration AddReportingViews
 
         // ❌ OBSOLÈTE: CreateViewVueRepertoireEnseignantsParParent() supprimé
         // ✅ NOUVEAU: Utilisez CreateViewVueRepertoireAgentsParParent() à la place

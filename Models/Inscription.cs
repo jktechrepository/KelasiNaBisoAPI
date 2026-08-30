@@ -21,7 +21,7 @@ namespace KelasiNaBiso.Models
         public DateTime DateInscription { get; set; }
         [Required]
         [MaxLength(20)]
-        public string StatutInscription { get; set; } //En attente, Annul��, Confirm���
+        public string StatutInscription { get; set; } = "Confirmé"; // En attente, Annulé, Confirmé
         public bool? Statut { get; set; } = true;
 
         // Attributs Techniques

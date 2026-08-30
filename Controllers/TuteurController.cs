@@ -4,6 +4,7 @@ using KelasiNaBiso.Services.Repositories;
 using KelasiNaBiso.Attributes;
 using KelasiNaBiso.Services;
 using KelasiNaBiso.Models.Enums;
+using KelasiNaBiso.Helpers;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
@@ -18,17 +19,21 @@ namespace KelasiNaBiso.Controllers
     {
         private readonly ITuteurRepository _tuteurRepository;
         private readonly ICurrentUserService _currentUserService;
+        private readonly IInscriptionActiveResolver _inscriptionResolver;
 
         public TuteurController(
             ITuteurRepository tuteurRepository,
-            ICurrentUserService currentUserService)
+            ICurrentUserService currentUserService,
+            IInscriptionActiveResolver inscriptionResolver)
         {
             _tuteurRepository = tuteurRepository;
             _currentUserService = currentUserService;
+            _inscriptionResolver = inscriptionResolver;
         }
 
         // GET: api/Tuteur
         [HttpGet]
+        [RequireGlobalAccess]
         public async Task<ActionResult<IEnumerable<Tuteur>>> GetTuteurs()
         {
             var tuteurs = await _tuteurRepository.GetAllAsync();
@@ -49,18 +54,41 @@ namespace KelasiNaBiso.Controllers
 
         // GET: api/Tuteur/ecole/5
         [HttpGet("ecole/{idEcole}")]
-        public async Task<ActionResult<IEnumerable<Tuteur>>> GetTuteursByEcole(int idEcole)
+        public async Task<IActionResult> GetTuteursByEcole(int idEcole, [FromQuery] int? idAnneeScolaire = null)
         {
-            var tuteurs = await _tuteurRepository.GetByEcoleAsync(idEcole);
-            return Ok(tuteurs);
+            var deny = this.ForbidIfWrongSchool(idEcole);
+            if (deny != null)
+                return deny;
+
+            try
+            {
+                return Ok(await _tuteurRepository.GetByEcoleAsync(idEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // GET: api/Tuteur/5/eleves
         [HttpGet("{id}/eleves")]
-        public async Task<ActionResult<IEnumerable<Eleve>>> GetTuteurEleves(int id)
+        public async Task<IActionResult> GetTuteurEleves(
+            int id,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var eleves = await _tuteurRepository.GetElevesAsync(id);
-            return Ok(eleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _tuteurRepository.GetElevesAsync(id, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // POST: api/Tuteur
@@ -120,7 +148,7 @@ namespace KelasiNaBiso.Controllers
                     if (string.Equals(currentRole, UserRoles.ADMIN, StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(currentRole, UserRoles.DIRECTEUR, StringComparison.OrdinalIgnoreCase))
                     {
-                        if (currentEcoleId == 0 || existingTuteur.IdEcole != currentEcoleId)
+                        if (currentEcoleId == 0 || !await _inscriptionResolver.IsTuteurInEcoleAsync(existingTuteur.IdTuteur, currentEcoleId))
                         {
                             return StatusCode(StatusCodes.Status403Forbidden, new { message = "Vous ne pouvez modifier que les tuteurs de votre école." });
                         }

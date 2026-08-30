@@ -37,5 +37,8 @@ namespace KelasiNaBiso.Models
         [JsonIgnore]
         [ValidateNever]
         public ICollection<Notification> Notifications { get; set; }
+        [JsonIgnore]
+        [ValidateNever]
+        public ICollection<Frais> Frais { get; set; }
     }
 }

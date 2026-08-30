@@ -29,9 +29,8 @@ namespace KelasiNaBiso.Services
             var nombreEleves = await _context.Eleves
                 .AsNoTracking()
                 .Where(e => e.Statut == true
-                    && e.Classe != null
-                    && e.Classe.Direction != null
-                    && e.Classe.Direction.IdEcole != null)
+                    && e.Inscriptions.Any(i => i.Statut == true
+                        && (i.StatutInscription == "Confirmé" || i.StatutInscription == "Confirme" || i.StatutInscription.StartsWith("Confirm"))))
                 .CountAsync(cancellationToken);
 
             var nombrePersonnel = await _context.Agents

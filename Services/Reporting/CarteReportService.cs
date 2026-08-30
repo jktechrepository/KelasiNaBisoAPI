@@ -155,7 +155,8 @@ namespace KelasiNaBiso.Services.Reporting
         public async Task<WebReport> BuildElevesEcoleReportAsync(int idEcole, int? idClasse,
             CancellationToken cancellationToken = default)
         {
-            var eleves = (await _vEleveRepository.GetByEcoleAsync(idEcole)).ToList();
+            var scoped = await _vEleveRepository.GetByEcoleAsync(idEcole);
+            var eleves = scoped.Data.ToList();
             if (idClasse.HasValue)
                 eleves = eleves.Where(e => e.IdClasse == idClasse.Value).ToList();
 

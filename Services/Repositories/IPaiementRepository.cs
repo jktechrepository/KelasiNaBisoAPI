@@ -1,27 +1,31 @@
 using KelasiNaBiso.Models;
+using KelasiNaBiso.Models.DTOs;
 using KelasiNaBiso.Models.DTOs.Pagination;
 
 namespace KelasiNaBiso.Services.Repositories
 {
     public interface IPaiementRepository
     {
-        // ✅ NOUVELLES MÉTHODES PAGINÉES
-        Task<PagedResult<Paiement>> GetAllPagedAsync(PagedRequest request);
-        Task<CursorPaginatedResult<Paiement>> GetAllCursorPagedAsync(CursorPaginationRequest request);
-        Task<PagedResult<Paiement>> GetByElevePagedAsync(int idEleve, PagedRequest request);
-        Task<PagedResult<Paiement>> GetByEcolePagedAsync(int idEcole, PagedRequest request);
-        Task<PagedResult<Paiement>> GetByDateRangePagedAsync(DateTime dateDebut, DateTime dateFin, PagedRequest request);
+        Task<ElevesAnneeScopedResult<PagedResult<Paiement>>> GetAllPagedAsync(
+            int idEcole, PagedRequest request, int? idAnneeScolaire = null);
+        Task<ElevesAnneeScopedResult<CursorPaginatedResult<Paiement>>> GetAllCursorPagedAsync(
+            int idEcole, CursorPaginationRequest request, int? idAnneeScolaire = null);
+        Task<ElevesAnneeScopedResult<PagedResult<Paiement>>> GetByElevePagedAsync(
+            int idEleve, PagedRequest request, int? idAnneeScolaire = null);
+        Task<ElevesAnneeScopedResult<PagedResult<Paiement>>> GetByEcolePagedAsync(
+            int idEcole, PagedRequest request, int? idAnneeScolaire = null);
+        Task<ElevesAnneeScopedResult<PagedResult<Paiement>>> GetByDateRangePagedAsync(
+            int idEcole, DateTime dateDebut, DateTime dateFin, PagedRequest request, int? idAnneeScolaire = null);
         Task<PagedResult<Paiement>> GetByModePaiementPagedAsync(string modePaiement, PagedRequest request);
         Task<PagedResult<Paiement>> GetByStatutPaiementPagedAsync(string statut, PagedRequest request);
         
-        // ⚠️ ANCIENNES MÉTHODES (DEPRECATED - Conserver pour rétrocompatibilité)
-        Task<IEnumerable<Paiement>> GetAllAsync();
+        Task<ElevesAnneeScopedResult<IEnumerable<Paiement>>> GetAllAsync(int idEcole, int? idAnneeScolaire = null);
         Task<Paiement> GetByIdAsync(int id);
         Task<Paiement> GetByReferenceAsync(string reference);
-        Task<IEnumerable<Paiement>> GetByEleveAsync(int idEleve);
+        Task<ElevesAnneeScopedResult<IEnumerable<Paiement>>> GetByEleveAsync(int idEleve, int? idAnneeScolaire = null);
         Task<IEnumerable<Paiement>> GetByUtilisateurAsync(int idUtilisateur);
         Task<IEnumerable<Paiement>> GetByFraisAsync(int idFrais);
-        Task<IEnumerable<Paiement>> GetByEcoleAsync(int idEcole);
+        Task<ElevesAnneeScopedResult<IEnumerable<Paiement>>> GetByEcoleAsync(int idEcole, int? idAnneeScolaire = null);
         Task<IEnumerable<Paiement>> GetByModePaiementAsync(string modePaiement);
         Task<IEnumerable<Paiement>> GetByStatutAsync(string statut);
         Task<IEnumerable<Paiement>> GetByDatePaiementAsync(DateTime date);
@@ -32,11 +36,7 @@ namespace KelasiNaBiso.Services.Repositories
         Task<bool> DeleteAsync(int id);
         Task<bool> ExistsAsync(int id);
         Task<bool> ExistsByReferenceAsync(string reference);
-        
-        // ✅ SOFT DELETE
         Task<bool> ToggleStatutAsync(int id);
-
-        /// <summary>Envoie notification tuteur + dashboard après confirmation PayIn MOKO.</summary>
         Task NotifierPaiementConfirmeAsync(int idPaiement, CancellationToken cancellationToken = default);
     }
 }

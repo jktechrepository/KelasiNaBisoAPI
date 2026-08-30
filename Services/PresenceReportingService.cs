@@ -10,11 +10,20 @@ namespace KelasiNaBiso.Services
     {
         private readonly KelasiNaBisoDbContext _context;
         private readonly ICacheService _cacheService;
+        private readonly IInscriptionActiveResolver _inscriptionResolver;
+        private readonly EleveAnneeScopeHelper _scope;
+        private static readonly TimeSpan HeureRetardReference = TimeSpan.Parse("08:00");
 
-        public PresenceReportingService(KelasiNaBisoDbContext context, ICacheService cacheService)
+        public PresenceReportingService(
+            KelasiNaBisoDbContext context,
+            ICacheService cacheService,
+            IInscriptionActiveResolver inscriptionResolver,
+            EleveAnneeScopeHelper scope)
         {
             _context = context;
             _cacheService = cacheService;
+            _inscriptionResolver = inscriptionResolver;
+            _scope = scope;
         }
 
         // ═══════════════════════════════════════════════════════
@@ -155,13 +164,16 @@ namespace KelasiNaBiso.Services
         {
             var periodeDto = ResolvePeriode(null, dateDebut, dateFin, periode);
 
-            // Récupérer l'élève avec sa classe
+            // Récupérer l'élève avec inscriptions (classe via inscription active)
             var eleve = await _context.Eleves
-                .Include(e => e.Classe)
+                .Include(e => e.Inscriptions).ThenInclude(i => i.Classe)
                 .FirstOrDefaultAsync(e => e.IdEleve == idEleve);
 
             if (eleve == null)
                 throw new KeyNotFoundException($"Élève avec l'ID {idEleve} introuvable");
+
+            var inscriptionActive = await _inscriptionResolver.GetInscriptionActiveAsync(idEleve);
+            var nomClasse = inscriptionActive?.Classe?.NomClasse ?? "";
 
             // Récupérer les présences de l'élève sur la période
             var presences = await _context.Presences
@@ -196,7 +208,7 @@ namespace KelasiNaBiso.Services
                     IdEleve = eleve.IdEleve,
                     NomComplet = eleve.NomComplet ?? $"{eleve.Prenom} {eleve.Nom} {eleve.Postnom}",
                     Matricule = eleve.Matricule ?? "",
-                    Classe = eleve.Classe?.NomClasse ?? "",
+                    Classe = nomClasse,
                     PhotoUrl = eleve.PhotoUrl
                 },
                 Periode = periodeDto,
@@ -228,11 +240,14 @@ namespace KelasiNaBiso.Services
             var periodeDto = ResolvePeriode(null, dateDebut, dateFin, periode);
 
             var eleve = await _context.Eleves
-                .Include(e => e.Classe)
+                .Include(e => e.Inscriptions).ThenInclude(i => i.Classe)
                 .FirstOrDefaultAsync(e => e.IdEleve == idEleve);
 
             if (eleve == null)
                 throw new KeyNotFoundException($"Élève avec l'ID {idEleve} introuvable");
+
+            var inscriptionActive = await _inscriptionResolver.GetInscriptionActiveAsync(idEleve);
+            var nomClasse = inscriptionActive?.Classe?.NomClasse ?? "";
 
             // Récupérer les présences avec retards
             var presences = await _context.Presences
@@ -276,7 +291,7 @@ namespace KelasiNaBiso.Services
                     IdEleve = eleve.IdEleve,
                     NomComplet = eleve.NomComplet ?? $"{eleve.Prenom} {eleve.Nom}",
                     Matricule = eleve.Matricule ?? "",
-                    Classe = eleve.Classe?.NomClasse ?? ""
+                    Classe = nomClasse
                 },
                 Periode = periodeDto,
                 HeureReference = heureReference,
@@ -323,14 +338,14 @@ namespace KelasiNaBiso.Services
                 throw new KeyNotFoundException($"Classe avec l'ID {idClasse} introuvable");
 
             // Effectif total de la classe
-            var effectifTotal = await _context.Eleves
-                .Where(e => e.IdClasse == idClasse && e.Statut == true)
-                .CountAsync();
+            var elevesClasseQuery = _inscriptionResolver.FilterElevesInClasse(_context.Eleves, idClasse);
+            var effectifTotal = await elevesClasseQuery.CountAsync();
+            var eleveIds = await elevesClasseQuery.Select(e => e.IdEleve).ToListAsync();
 
             // Récupérer les présences de tous les élèves de la classe sur la période
             var presencesClasse = await _context.Presences
                 .Include(p => p.Eleve)
-                .Where(p => p.Eleve!.IdClasse == idClasse)
+                .Where(p => p.IdEleve != null && eleveIds.Contains(p.IdEleve.Value))
                 .Where(p => p.DateDuJour.Date >= periodeDto.DateDebut && p.DateDuJour.Date <= periodeDto.DateFin)
                 .Where(p => p.Statut == true)
                 .ToListAsync();
@@ -379,9 +394,7 @@ namespace KelasiNaBiso.Services
             // Ajouter les détails par élève si demandé
             if (includeDetails)
             {
-                var elevesClasse = await _context.Eleves
-                    .Where(e => e.IdClasse == idClasse && e.Statut == true)
-                    .ToListAsync();
+                var elevesClasse = await elevesClasseQuery.ToListAsync();
 
                 result.ParEleve = new List<ElevePresenceDto>();
 
@@ -442,6 +455,107 @@ namespace KelasiNaBiso.Services
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Feuille d'appel nominative pour une classe et une date.
+        /// </summary>
+        public async Task<FeuilleAppelClasseDto> GetFeuilleAppelAsync(
+            int idClasse,
+            DateTime date,
+            int? idAnneeScolaire = null)
+        {
+            var jour = date.Date;
+
+            var classe = await _context.Classes
+                .AsNoTracking()
+                .Include(c => c.Direction!)
+                    .ThenInclude(d => d.Ecole)
+                .FirstOrDefaultAsync(c => c.IdClasse == idClasse);
+
+            if (classe == null)
+                throw new KeyNotFoundException($"Classe avec l'ID {idClasse} introuvable");
+
+            var idEcole = classe.Direction?.IdEcole
+                ?? throw new InvalidOperationException(
+                    $"Classe {idClasse} introuvable ou non rattachée à une école.");
+
+            if (idEcole <= 0)
+                throw new InvalidOperationException(
+                    $"Classe {idClasse} introuvable ou non rattachée à une école.");
+
+            var nomEcole = classe.Direction?.Ecole?.Nom;
+            var resolvedAnnee = await _scope.ResolveIdAnneeScolaireAsync(idEcole, idAnneeScolaire);
+
+            var eleves = await _inscriptionResolver
+                .FilterElevesInClasse(_context.Eleves.AsNoTracking(), idClasse, resolvedAnnee)
+                .OrderBy(e => e.NomComplet)
+                .ToListAsync();
+
+            var eleveIds = eleves.Select(e => e.IdEleve).ToList();
+
+            var presencesDuJour = eleveIds.Count == 0
+                ? new List<Presence>()
+                : await _context.Presences
+                    .AsNoTracking()
+                    .Where(p => p.IdEleve != null
+                        && eleveIds.Contains(p.IdEleve.Value)
+                        && p.DateDuJour.Date == jour
+                        && p.Statut == true)
+                    .ToListAsync();
+
+            var presenceByEleve = presencesDuJour
+                .GroupBy(p => p.IdEleve!.Value)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderByDescending(p => p.DateCreation).First());
+
+            var lignes = new List<FeuilleAppelLigneDto>();
+            foreach (var eleve in eleves)
+            {
+                presenceByEleve.TryGetValue(eleve.IdEleve, out var presence);
+                var statutJour = ResolveStatutJour(presence);
+
+                lignes.Add(new FeuilleAppelLigneDto
+                {
+                    IdEleve = eleve.IdEleve,
+                    Matricule = eleve.Matricule,
+                    NomComplet = eleve.NomComplet ?? $"{eleve.Prenom} {eleve.Nom}".Trim(),
+                    Genre = eleve.Genre,
+                    StatutJour = statutJour,
+                    IdPresence = presence?.IdPresence,
+                    IsPresent = presence?.IsPresent,
+                    HeureArrivee = presence != null ? presence.HeureArrivee : null,
+                    HeureDepart = presence?.HeureDepart,
+                    Observation = presence?.Observation
+                });
+            }
+
+            return new FeuilleAppelClasseDto
+            {
+                IdClasse = classe.IdClasse,
+                NomClasse = classe.NomClasse ?? string.Empty,
+                IdEcole = idEcole,
+                NomEcole = nomEcole,
+                IdAnneeScolaire = resolvedAnnee,
+                Date = jour,
+                Effectif = lignes.Count,
+                NbPresents = lignes.Count(l => l.StatutJour == FeuilleAppelStatutJour.Present),
+                NbAbsents = lignes.Count(l => l.StatutJour == FeuilleAppelStatutJour.Absent),
+                NbRetards = lignes.Count(l => l.StatutJour == FeuilleAppelStatutJour.Retard),
+                Lignes = lignes
+            };
+        }
+
+        private static string ResolveStatutJour(Presence? presence)
+        {
+            if (presence == null || presence.IsPresent != true)
+                return FeuilleAppelStatutJour.Absent;
+
+            if (presence.HeureArrivee > HeureRetardReference)
+                return FeuilleAppelStatutJour.Retard;
+
+            return FeuilleAppelStatutJour.Present;
         }
 
         // ═══════════════════════════════════════════════════════
@@ -607,24 +721,22 @@ namespace KelasiNaBiso.Services
             int idEcole, 
             DateTime? date, 
             DateTime? dateDebut, 
-            DateTime? dateFin)
+            DateTime? dateFin,
+            int? idAnneeScolaire = null)
         {
             var periodeDto = ResolvePeriode(date, dateDebut, dateFin, null);
-
-            // ✅ CACHE: Clé basée sur école + période
-            string cacheKey = $"dashboard_presence_{idEcole}_{periodeDto.DateDebut:yyyyMMdd}_{periodeDto.DateFin:yyyyMMdd}";
+            var idAnnee = await _scope.ResolveIdAnneeScolaireAsync(idEcole, idAnneeScolaire);
+            string cacheKey = $"dashboard_presence_{idEcole}_{idAnnee}_{periodeDto.DateDebut:yyyyMMdd}_{periodeDto.DateFin:yyyyMMdd}";
             
             return await _cacheService.GetOrCreateAsync(cacheKey, async () =>
             {
-                return await CalculerDashboardPresenceAsync(idEcole, periodeDto);
-            }, TimeSpan.FromMinutes(5)); // Cache de 5 minutes
+                return await CalculerDashboardPresenceAsync(idEcole, idAnnee, periodeDto);
+            }, TimeSpan.FromMinutes(5));
         }
 
-        /// <summary>
-        /// Calcule le dashboard de présence (méthode privée pour le cache)
-        /// </summary>
         private async Task<DashboardPresenceDto> CalculerDashboardPresenceAsync(
-            int idEcole, 
+            int idEcole,
+            int idAnneeScolaire,
             PeriodeDto periodeDto)
         {
             var ecole = await _context.Ecoles.FindAsync(idEcole);
@@ -632,15 +744,15 @@ namespace KelasiNaBiso.Services
                 throw new KeyNotFoundException($"École avec l'ID {idEcole} introuvable");
 
             // ÉLÈVES
-            var effectifEleves = await _context.Eleves
-                .Where(e => e.Classe!.Direction!.IdEcole == idEcole && e.Statut == true)
-                .CountAsync();
+            var elevesEcoleIds = await _inscriptionResolver
+                .FilterElevesInEcole(_context.Eleves, idEcole, idAnneeScolaire)
+                .Select(e => e.IdEleve)
+                .ToListAsync();
+            var effectifEleves = elevesEcoleIds.Count;
 
             var presencesEleves = await _context.Presences
                 .Include(p => p.Eleve)
-                    .ThenInclude(e => e.Classe)
-                .Where(p => p.IdEleve != null)
-                .Where(p => p.Eleve!.Classe!.Direction!.IdEcole == idEcole)
+                .Where(p => p.IdEleve != null && elevesEcoleIds.Contains(p.IdEleve.Value))
                 .Where(p => p.DateDuJour.Date >= periodeDto.DateDebut && p.DateDuJour.Date <= periodeDto.DateFin)
                 .Where(p => p.Statut == true)
                 .ToListAsync();
@@ -679,12 +791,30 @@ namespace KelasiNaBiso.Services
 
             // ✅ NOUVEAU: Identifier les classes problématiques (taux < 75%)
             var classesProblematiques = new List<ClasseProblematiqueDto>();
+            var inscriptionsActives = await _context.Inscriptions
+                .AsNoTracking()
+                .Include(i => i.Classe)
+                .Where(i => i.Statut == true && i.IdEcole == idEcole)
+                .Where(i => i.StatutInscription != null
+                    && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                        || i.StatutInscription == "Confirme"
+                        || i.StatutInscription.StartsWith("Confirm")))
+                .ToListAsync();
+
+            var inscriptionParEleve = inscriptionsActives
+                .GroupBy(i => i.IdEleve)
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(i => i.DateInscription).First());
+
             var classeStats = presencesEleves
-                .Where(p => p.Eleve != null && p.Eleve.Classe != null && p.Eleve.IdClasse > 0)
-                .GroupBy(p => new { p.Eleve!.IdClasse, p.Eleve.Classe!.NomClasse })
+                .Where(p => p.IdEleve.HasValue && inscriptionParEleve.ContainsKey(p.IdEleve.Value))
+                .GroupBy(p =>
+                {
+                    var ins = inscriptionParEleve[p.IdEleve!.Value];
+                    return new { ins.IdClasse, NomClasse = ins.Classe?.NomClasse };
+                })
                 .Select(g => new
                 {
-                    IdClasse = g.Key.IdClasse ?? 0,  // Convertir nullable en non-nullable
+                    IdClasse = g.Key.IdClasse,
                     g.Key.NomClasse,
                     Presents = g.Count(p => p.IsPresent == true),
                     Absents = g.Count(p => p.IsPresent == false),

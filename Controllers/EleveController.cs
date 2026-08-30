@@ -17,54 +17,104 @@ namespace KelasiNaBiso.Controllers
     {
         private readonly IEleveRepository _eleveRepository;
         private readonly IAuditService _auditService;
+        private readonly IInscriptionActiveResolver _inscriptionResolver;
 
-        public EleveController(IEleveRepository eleveRepository, IAuditService auditService)
+        public EleveController(
+            IEleveRepository eleveRepository,
+            IAuditService auditService,
+            IInscriptionActiveResolver inscriptionResolver)
         {
             _eleveRepository = eleveRepository;
             _auditService = auditService;
+            _inscriptionResolver = inscriptionResolver;
         }
 
-        // ✅ GET: api/Eleve/paged (NOUVELLE VERSION PAGINÉE - RECOMMANDÉE)
         /// <summary>
-        /// Récupère tous les élèves avec pagination offset-based (par pages)
+        /// Résout idEcole depuis la query ou le claim JWT. Super-Admin/IT-Support doivent préciser idEcole en query.
         /// </summary>
-        /// <param name="request">Paramètres de pagination (PageNumber, PageSize, SortBy, SearchTerm)</param>
-        /// <returns>Liste paginée des élèves avec métadonnées</returns>
+        private IActionResult? TryResolveListIdEcole(int? idEcoleQuery, out int idEcole) =>
+            EleveListScopeHelper.TryResolveListIdEcole(this, idEcoleQuery, out idEcole);
+
+        // ✅ GET: api/Eleve/paged?idEcole=&idAnneeScolaire=
+        /// <summary>
+        /// Récupère les élèves de l'école (année scolaire en cours par défaut) avec pagination offset-based.
+        /// </summary>
         [HttpGet("paged")]
-        [ProducesResponseType(typeof(PagedResult<V_Eleve>), 200)]
-        public async Task<ActionResult<PagedResult<V_Eleve>>> GetElevesPaged([FromQuery] PagedRequest request)
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<PagedResult<V_Eleve>>), 200)]
+        [ProducesResponseType(400)]
+        public async Task<IActionResult> GetElevesPaged(
+            [FromQuery] PagedRequest request,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var result = await _eleveRepository.GetAllPagedAsync(request);
-            return Ok(result);
+            var resolveError = TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                var result = await _eleveRepository.GetAllPagedAsync(resolvedEcole, request, idAnneeScolaire);
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // ✅ GET: api/Eleve/cursor-paged (PAGINATION CURSOR - MOBILE/SCROLL INFINI)
+        // ✅ GET: api/Eleve/cursor-paged?idEcole=&idAnneeScolaire=
         /// <summary>
-        /// Récupère tous les élèves avec pagination cursor-based (scroll infini)
-        /// Idéal pour apps mobiles et performances constantes
+        /// Récupère les élèves de l'école (année scolaire en cours par défaut) avec pagination cursor-based.
         /// </summary>
-        /// <param name="request">Paramètres de pagination (Cursor, Limit, SearchTerm)</param>
-        /// <returns>Liste paginée des élèves avec curseur suivant</returns>
         [HttpGet("cursor-paged")]
-        [ProducesResponseType(typeof(CursorPaginatedResult<V_Eleve>), 200)]
-        public async Task<ActionResult<CursorPaginatedResult<V_Eleve>>> GetElevesCursorPaged([FromQuery] CursorPaginationRequest request)
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<CursorPaginatedResult<V_Eleve>>), 200)]
+        [ProducesResponseType(400)]
+        public async Task<IActionResult> GetElevesCursorPaged(
+            [FromQuery] CursorPaginationRequest request,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var result = await _eleveRepository.GetAllCursorPagedAsync(request);
-            return Ok(result);
+            var resolveError = TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                var result = await _eleveRepository.GetAllCursorPagedAsync(resolvedEcole, request, idAnneeScolaire);
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // ⚠️ GET: api/Eleve (DEPRECATED - À ÉVITER, NON PAGINÉ)
+        // ⚠️ GET: api/Eleve?idEcole=&idAnneeScolaire= (DEPRECATED - À ÉVITER, NON PAGINÉ)
         /// <summary>
-        /// [DEPRECATED] Récupère TOUS les élèves sans pagination
-        /// ⚠️ ATTENTION: Peut causer des problèmes de performance avec beaucoup d'élèves
+        /// [DEPRECATED] Récupère les élèves de l'école pour l'année scolaire en cours (ou idAnneeScolaire).
         /// Utiliser plutôt GET /api/Eleve/paged
         /// </summary>
         [HttpGet]
         [Obsolete("Cette méthode n'est pas paginée et peut causer des problèmes de performance. Utilisez GET /api/Eleve/paged")]
-        public async Task<ActionResult<IEnumerable<V_Eleve>>> GetEleves()
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<IReadOnlyList<EleveParEcoleListItemDto>>), 200)]
+        [ProducesResponseType(400)]
+        public async Task<IActionResult> GetEleves(
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var eleves = await _eleveRepository.GetAllAsync();
-            return Ok(eleves);
+            var resolveError = TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                var result = await _eleveRepository.GetAllAsync(resolvedEcole, idAnneeScolaire);
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // GET: api/Eleve/5
@@ -96,7 +146,8 @@ namespace KelasiNaBiso.Controllers
                 return NotFound(new { message = $"Aucun élève trouvé avec le numéro de série '{serialNumber}'" });
             }
 
-            var deny = this.ForbidIfWrongSchool(eleve.Classe?.Direction?.IdEcole);
+            var idEcole = await _inscriptionResolver.GetEcoleCouranteAsync(eleve.IdEleve);
+            var deny = this.ForbidIfWrongSchool(idEcole);
             if (deny != null) return deny;
 
             return Ok(eleve);
@@ -114,25 +165,47 @@ namespace KelasiNaBiso.Controllers
             return Ok(eleve);
         }
 
-        // ✅ GET: api/Eleve/classe/5/paged (NOUVELLE VERSION PAGINÉE)
+        // ✅ GET: api/Eleve/classe/5/paged?idAnneeScolaire=
         /// <summary>
-        /// Récupère les élèves d'une classe avec pagination
+        /// Récupère les élèves d'une classe (année scolaire en cours par défaut) avec pagination
         /// </summary>
         [HttpGet("classe/{idClasse}/paged")]
-        [ProducesResponseType(typeof(PagedResult<Eleve>), 200)]
-        public async Task<ActionResult<PagedResult<Eleve>>> GetElevesByClassePaged(int idClasse, [FromQuery] PagedRequest request)
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<PagedResult<Eleve>>), 200)]
+        [ProducesResponseType(400)]
+        public async Task<ActionResult<ElevesAnneeScopedResult<PagedResult<Eleve>>>> GetElevesByClassePaged(
+            int idClasse,
+            [FromQuery] PagedRequest request,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var result = await _eleveRepository.GetByClassePagedAsync(idClasse, request);
-            return Ok(result);
+            try
+            {
+                var result = await _eleveRepository.GetByClassePagedAsync(idClasse, request, idAnneeScolaire);
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // ⚠️ GET: api/Eleve/classe/5 (DEPRECATED - NON PAGINÉ)
+        // ⚠️ GET: api/Eleve/classe/5?idAnneeScolaire= (DEPRECATED - NON PAGINÉ)
         [HttpGet("classe/{idClasse}")]
         [Obsolete("Utiliser GET /api/Eleve/classe/{idClasse}/paged pour pagination")]
-        public async Task<ActionResult<IEnumerable<Eleve>>> GetElevesByClasse(int idClasse)
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<IReadOnlyList<Eleve>>), 200)]
+        [ProducesResponseType(400)]
+        public async Task<ActionResult<ElevesAnneeScopedResult<IReadOnlyList<Eleve>>>> GetElevesByClasse(
+            int idClasse,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var eleves = await _eleveRepository.GetByClasseAsync(idClasse);
-            return Ok(eleves);
+            try
+            {
+                var result = await _eleveRepository.GetByClasseAsync(idClasse, idAnneeScolaire);
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // GET: api/Eleve/tuteur/5
@@ -143,44 +216,53 @@ namespace KelasiNaBiso.Controllers
             return Ok(eleves);
         }
 
-        // GET: api/Eleve/ecole/5?page=1&pageSize=15
+        // GET: api/Eleve/ecole/5?page=1&pageSize=15&idAnneeScolaire=12
         [HttpGet("ecole/{idEcole}")]
-        public async Task<ActionResult<IEnumerable<Eleve>>> GetElevesByEcole(
+        [ProducesResponseType(typeof(object), 200)]
+        [ProducesResponseType(400)]
+        public async Task<ActionResult> GetElevesByEcole(
             int idEcole,
             [FromQuery] int page = 1,
-            [FromQuery] int pageSize = 15)
+            [FromQuery] int pageSize = 15,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            // Validation des paramètres de pagination
             if (page < 1) page = 1;
             if (pageSize < 1) pageSize = 15;
-            if (pageSize > 100) pageSize = 100; // Limite max pour éviter surcharge
+            if (pageSize > 100) pageSize = 100;
 
-            var allEleves = await _eleveRepository.GetByEcoleAsync(idEcole);
-            
-            // Appliquer la pagination
-            var elevesPaginated = allEleves
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .ToList();
-
-            // Calculer les métadonnées de pagination
-            var totalCount = allEleves.Count();
-            var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
-
-            // Retourner avec les métadonnées
-            return Ok(new
+            try
             {
-                data = elevesPaginated,
-                pagination = new
+                var scoped = await _eleveRepository.GetByEcoleAsync(idEcole, idAnneeScolaire);
+                var allEleves = scoped.Data;
+
+                var elevesPaginated = allEleves
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .ToList();
+
+                var totalCount = allEleves.Count;
+                var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+
+                return Ok(new
                 {
-                    currentPage = page,
-                    pageSize = pageSize,
-                    totalCount = totalCount,
-                    totalPages = totalPages,
-                    hasNextPage = page < totalPages,
-                    hasPreviousPage = page > 1
-                }
-            });
+                    data = elevesPaginated,
+                    pagination = new
+                    {
+                        currentPage = page,
+                        pageSize = pageSize,
+                        totalCount = totalCount,
+                        totalPages = totalPages,
+                        hasNextPage = page < totalPages,
+                        hasPreviousPage = page > 1
+                    },
+                    idEcole = scoped.IdEcole,
+                    idAnneeScolaire = scoped.IdAnneeScolaire
+                });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // ✅ GET: api/Eleve/ecole/all
@@ -196,8 +278,9 @@ namespace KelasiNaBiso.Controllers
         [ProducesResponseType(typeof(IEnumerable<Eleve>), 200)]
         [ProducesResponseType(401)]
         [ProducesResponseType(500)]
-        public async Task<ActionResult<IEnumerable<Eleve>>> GetElevesByEcoleAllFromToken(
-            [FromQuery] bool? statut = true)
+        public async Task<ActionResult<IEnumerable<EleveParEcoleListItemDto>>> GetElevesByEcoleAllFromToken(
+            [FromQuery] bool? statut = true,
+            [FromQuery] int? idAnneeScolaire = null)
         {
             // Extraire l'ID de l'école depuis le token JWT
             var idEcole = this.GetCurrentUserSchoolId();
@@ -223,26 +306,31 @@ namespace KelasiNaBiso.Controllers
 
             try
             {
-                // Récupérer tous les élèves de l'école
-                var allEleves = await _eleveRepository.GetByEcoleAsync(idEcole.Value);
+                var scoped = await _eleveRepository.GetByEcoleAsync(idEcole.Value, idAnneeScolaire);
 
                 // Filtrer par statut si spécifié
+                IEnumerable<EleveParEcoleListItemDto> filtered = scoped.Data;
                 if (statut.HasValue)
                 {
-                    allEleves = allEleves.Where(e => e.Statut == statut.Value);
+                    filtered = scoped.Data.Where(e => e.Statut == statut.Value);
                 }
 
-                var elevesList = allEleves.ToList();
+                var elevesList = filtered.ToList();
 
                 // Retourner avec métadonnées pour information
                 return Ok(new
                 {
                     data = elevesList,
                     totalCount = elevesList.Count,
-                    idEcole = idEcole.Value,
+                    idEcole = scoped.IdEcole,
+                    idAnneeScolaire = scoped.IdAnneeScolaire,
                     statut = statut.HasValue ? (statut.Value ? "Actifs" : "Inactifs") : "Tous",
                     exportedAt = DateTime.Now
                 });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
             {
@@ -268,9 +356,10 @@ namespace KelasiNaBiso.Controllers
         [ProducesResponseType(400)]
         [ProducesResponseType(401)]
         [ProducesResponseType(403)]
-        public async Task<ActionResult<IEnumerable<Eleve>>> GetElevesByEcoleAll(
+        public async Task<ActionResult<IEnumerable<EleveParEcoleListItemDto>>> GetElevesByEcoleAll(
             int idEcole,
-            [FromQuery] bool? statut = true)
+            [FromQuery] bool? statut = true,
+            [FromQuery] int? idAnneeScolaire = null)
         {
             // Validation de l'ID école
             if (idEcole <= 0)
@@ -289,26 +378,29 @@ namespace KelasiNaBiso.Controllers
 
             try
             {
-                // Récupérer tous les élèves de l'école
-                var allEleves = await _eleveRepository.GetByEcoleAsync(idEcole);
+                var scoped = await _eleveRepository.GetByEcoleAsync(idEcole, idAnneeScolaire);
 
-                // Filtrer par statut si spécifié
+                IEnumerable<EleveParEcoleListItemDto> filtered = scoped.Data;
                 if (statut.HasValue)
                 {
-                    allEleves = allEleves.Where(e => e.Statut == statut.Value);
+                    filtered = scoped.Data.Where(e => e.Statut == statut.Value);
                 }
 
-                var elevesList = allEleves.ToList();
+                var elevesList = filtered.ToList();
 
-                // Retourner avec métadonnées pour information
                 return Ok(new
                 {
                     data = elevesList,
                     totalCount = elevesList.Count,
-                    idEcole = idEcole,
+                    idEcole = scoped.IdEcole,
+                    idAnneeScolaire = scoped.IdAnneeScolaire,
                     statut = statut.HasValue ? (statut.Value ? "Actifs" : "Inactifs") : "Tous",
                     exportedAt = DateTime.Now
                 });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
             {
@@ -319,24 +411,108 @@ namespace KelasiNaBiso.Controllers
             }
         }
 
-        // ✅ GET: api/Eleve/ecole/{idEcole}/nom-complet?nomComplet=...&PageNumber=1&PageSize=15
+        // GET: api/Eleve/reinscription?matricule=... | ?nomComplet=...&idEcole=&idAnneeScolaire=&idClasse=
+        /// <summary>
+        /// Recherche un élève pour pré-remplir le formulaire de réinscription (école JWT, année N-1 par défaut).
+        /// </summary>
+        [HttpGet("reinscription")]
+        [ProducesResponseType(typeof(EleveReinscriptionPrefillDto), 200)]
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<PagedResult<EleveReinscriptionPrefillDto>>), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(404)]
+        public async Task<IActionResult> GetReinscriptionPrefill(
+            [FromQuery] string? matricule,
+            [FromQuery] string? nomComplet,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null,
+            [FromQuery] int? idClasse = null,
+            [FromQuery] PagedRequest request = null!)
+        {
+            var resolveError = TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            var hasMatricule = !string.IsNullOrWhiteSpace(matricule);
+            var hasNomComplet = !string.IsNullOrWhiteSpace(nomComplet);
+
+            if (hasMatricule && hasNomComplet)
+            {
+                return BadRequest(new
+                {
+                    message = "Fournissez soit matricule, soit nomComplet, pas les deux."
+                });
+            }
+
+            if (!hasMatricule && !hasNomComplet)
+            {
+                return BadRequest(new
+                {
+                    message = "Le paramètre matricule ou nomComplet est requis."
+                });
+            }
+
+            try
+            {
+                if (hasMatricule)
+                {
+                    var result = await _eleveRepository.GetReinscriptionPrefillByMatriculeAsync(
+                        resolvedEcole,
+                        matricule!.Trim(),
+                        idAnneeScolaire,
+                        idClasse);
+
+                    if (result == null)
+                    {
+                        return NotFound(new
+                        {
+                            message = $"Aucun élève trouvé avec le matricule '{matricule}' pour cette école et l'année de référence."
+                        });
+                    }
+
+                    return Ok(result);
+                }
+
+                var paged = await _eleveRepository.SearchReinscriptionPrefillByNomCompletPagedAsync(
+                    resolvedEcole,
+                    nomComplet!.Trim(),
+                    request ?? new PagedRequest(),
+                    idAnneeScolaire,
+                    idClasse);
+
+                return Ok(paged);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        // ✅ GET: api/Eleve/ecole/{idEcole}/nom-complet?nomComplet=...&PageNumber=1&PageSize=15&idAnneeScolaire=
         /// <summary>
         /// Récupère les élèves d'une école filtrés par nom complet avec pagination
         /// </summary>
         [HttpGet("ecole/{idEcole}/nom-complet")]
-        [ProducesResponseType(typeof(PagedResult<Eleve>), 200)]
-        public async Task<ActionResult<PagedResult<Eleve>>> GetElevesByEcoleByNomComplet(
+        [ProducesResponseType(typeof(PagedResult<EleveParEcoleListItemDto>), 200)]
+        public async Task<ActionResult<PagedResult<EleveParEcoleListItemDto>>> GetElevesByEcoleByNomComplet(
             int idEcole,
             [FromQuery] string nomComplet,
-            [FromQuery] PagedRequest request)
+            [FromQuery] PagedRequest request,
+            [FromQuery] int? idAnneeScolaire = null)
         {
             if (string.IsNullOrWhiteSpace(nomComplet))
             {
                 return BadRequest(new { message = "Le paramètre nomComplet est requis" });
             }
 
-            var result = await _eleveRepository.GetByEcoleByNomCompletPagedAsync(idEcole, nomComplet, request);
-            return Ok(result);
+            try
+            {
+                var result = await _eleveRepository.GetByEcoleByNomCompletPagedAsync(idEcole, nomComplet, request, idAnneeScolaire);
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // GET: api/Eleve/statut/true
@@ -510,8 +686,7 @@ namespace KelasiNaBiso.Controllers
                 Genre = existingEleve.Genre,
                 PhotoUrl = existingEleve.PhotoUrl,
                 Commentaire = existingEleve.Commentaire,
-                IdTuteur = existingEleve.IdTuteur,
-                IdClasse = existingEleve.IdClasse
+                IdTuteur = existingEleve.IdTuteur
             };
 
             // Mettre à jour seulement les champs autorisés
@@ -536,7 +711,6 @@ namespace KelasiNaBiso.Controllers
             
             // Relations
             existingEleve.IdTuteur = dto.IdTuteur;
-            existingEleve.IdClasse = dto.IdClasse;
             
             // Recalculer NomComplet automatiquement (format standardisé : Nom Postnom Prenom)
             existingEleve.NomComplet = $"{dto.Nom} {dto.Postnom} {dto.Prenom}".Trim();
@@ -634,7 +808,8 @@ namespace KelasiNaBiso.Controllers
                     return NotFound(new { message = $"Élève avec l'ID {idEleve} non trouvé" });
                 }
 
-                var deny = this.ForbidIfWrongSchool(eleveAvant.Classe?.Direction?.IdEcole);
+                var idEcole = await _inscriptionResolver.GetEcoleCouranteAsync(eleveAvant.IdEleve);
+                var deny = this.ForbidIfWrongSchool(idEcole);
                 if (deny != null) return deny;
 
                 var success = await _eleveRepository.UpdateSerialNumberByIdAsync(idEleve, dto.SerialNumber);
@@ -682,7 +857,8 @@ namespace KelasiNaBiso.Controllers
                     return NotFound(new { message = $"Élève avec le matricule '{matricule}' non trouvé" });
                 }
 
-                var deny = this.ForbidIfWrongSchool(eleveAvant.Classe?.Direction?.IdEcole);
+                var idEcole = await _inscriptionResolver.GetEcoleCouranteAsync(eleveAvant.IdEleve);
+                var deny = this.ForbidIfWrongSchool(idEcole);
                 if (deny != null) return deny;
 
                 var success = await _eleveRepository.UpdateSerialNumberByMatriculeAsync(matricule, dto.SerialNumber);

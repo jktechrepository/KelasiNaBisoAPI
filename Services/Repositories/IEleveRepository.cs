@@ -1,19 +1,19 @@
 using KelasiNaBiso.Models;
+using KelasiNaBiso.Models.DTOs;
 using KelasiNaBiso.Models.DTOs.Pagination;
 
 namespace KelasiNaBiso.Services.Repositories
 {
     public interface IEleveRepository
     {
-        // ✅ MÉTHODES PAGINÉES (NOUVELLES)
-        Task<PagedResult<V_Eleve>> GetAllPagedAsync(PagedRequest request);
-        Task<CursorPaginatedResult<V_Eleve>> GetAllCursorPagedAsync(CursorPaginationRequest request);
-        Task<PagedResult<Eleve>> GetByClassePagedAsync(int idClasse, PagedRequest request);
+        Task<ElevesAnneeScopedResult<PagedResult<V_Eleve>>> GetAllPagedAsync(int idEcole, PagedRequest request, int? idAnneeScolaire = null);
+        Task<ElevesAnneeScopedResult<CursorPaginatedResult<V_Eleve>>> GetAllCursorPagedAsync(int idEcole, CursorPaginationRequest request, int? idAnneeScolaire = null);
+        Task<ElevesAnneeScopedResult<PagedResult<Eleve>>> GetByClassePagedAsync(int idClasse, PagedRequest request, int? idAnneeScolaire = null);
         Task<PagedResult<Eleve>> GetByTuteurPagedAsync(int idTuteur, PagedRequest request);
-        Task<PagedResult<Eleve>> GetByEcolePagedAsync(int idEcole, PagedRequest request);
-        Task<PagedResult<Eleve>> GetByEcoleByNomCompletPagedAsync(int idEcole, string nomComplet, PagedRequest request);
-        // Méthodes de base CRUD
-        Task<IEnumerable<V_Eleve>> GetAllAsync(); // ⚠️ DEPRECATED: Utiliser GetAllPagedAsync
+        Task<ElevesAnneeScopedResult<PagedResult<EleveParEcoleListItemDto>>> GetByEcolePagedAsync(int idEcole, PagedRequest request, int? idAnneeScolaire = null);
+        Task<ElevesAnneeScopedResult<PagedResult<EleveParEcoleListItemDto>>> GetByEcoleByNomCompletPagedAsync(int idEcole, string nomComplet, PagedRequest request, int? idAnneeScolaire = null);
+
+        Task<ElevesAnneeScopedResult<IReadOnlyList<EleveParEcoleListItemDto>>> GetAllAsync(int idEcole, int? idAnneeScolaire = null);
         Task<Eleve> GetByIdAsync(int id);
         Task<Eleve> GetByReferenceAsync(Guid reference);
         Task<Eleve> CreateAsync(Eleve eleve);
@@ -22,28 +22,36 @@ namespace KelasiNaBiso.Services.Repositories
         Task<bool> DeleteAsync(int id);
         Task<bool> ExistsAsync(int id);
         Task<bool> ExistsByReferenceAsync(Guid reference);
-        Task<bool> ExistsBySerialNumberAsync(string serialNumber); // ✅ UNICITÉ SERIAL NUMBER
+        Task<bool> ExistsBySerialNumberAsync(string serialNumber);
 
-        // Méthodes de recherche par critères (⚠️ DEPRECATED: Utiliser versions paginées)
-        Task<IEnumerable<Eleve>> GetByClasseAsync(int idClasse);
+        Task<ElevesAnneeScopedResult<IReadOnlyList<Eleve>>> GetByClasseAsync(int idClasse, int? idAnneeScolaire = null);
         Task<IEnumerable<Eleve>> GetByTuteurAsync(int idTuteur);
-        Task<IEnumerable<Eleve>> GetByEcoleAsync(int idEcole);
+        Task<ElevesAnneeScopedResult<IReadOnlyList<EleveParEcoleListItemDto>>> GetByEcoleAsync(int idEcole, int? idAnneeScolaire = null);
         Task<IEnumerable<Eleve>> GetByStatutAsync(bool statut);
 
-        // Méthodes pour récupérer les données associées
         Task<IEnumerable<Note>> GetNotesAsync(int idEleve);
         Task<IEnumerable<Inscription>> GetInscriptionsAsync(int idEleve);
         Task<IEnumerable<Paiement>> GetPaiementsAsync(int idEleve);
-      //  Task<IEnumerable<Presence>> GetPresencesAsync(int idEleve);
         Task<IEnumerable<Document>> GetDocumentsAsync(int idEleve);
-        
-        // ✅ SOFT DELETE
+
         Task<bool> ToggleStatutAsync(int id);
 
-        // ✅ MISE À JOUR DU SERIAL NUMBER
         Task<bool> UpdateSerialNumberByIdAsync(int idEleve, string serialNumber);
         Task<bool> UpdateSerialNumberByMatriculeAsync(string matricule, string serialNumber);
         Task<Eleve> GetByMatriculeAsync(string matricule);
         Task<Eleve> GetBySerialNumberAsync(string serialNumber);
+
+        Task<EleveReinscriptionPrefillDto?> GetReinscriptionPrefillByMatriculeAsync(
+            int idEcole,
+            string matricule,
+            int? idAnneeScolaire = null,
+            int? idClasse = null);
+
+        Task<ElevesAnneeScopedResult<PagedResult<EleveReinscriptionPrefillDto>>> SearchReinscriptionPrefillByNomCompletPagedAsync(
+            int idEcole,
+            string nomComplet,
+            PagedRequest request,
+            int? idAnneeScolaire = null,
+            int? idClasse = null);
     }
 }

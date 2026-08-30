@@ -1,18 +1,25 @@
 using KelasiNaBiso.Data;
 using KelasiNaBiso.Models;
+using KelasiNaBiso.Models.DTOs;
 using KelasiNaBiso.Services.Repositories;
 using Microsoft.EntityFrameworkCore;
-using System.Threading;
 
 namespace KelasiNaBiso.Services
 {
     public class TuteurService : ITuteurRepository
     {
         private readonly KelasiNaBisoDbContext _context;
+        private readonly IInscriptionActiveResolver _inscriptionResolver;
+        private readonly EleveAnneeScopeHelper _scope;
 
-        public TuteurService(KelasiNaBisoDbContext context)
+        public TuteurService(
+            KelasiNaBisoDbContext context,
+            IInscriptionActiveResolver inscriptionResolver,
+            EleveAnneeScopeHelper scope)
         {
             _context = context;
+            _inscriptionResolver = inscriptionResolver;
+            _scope = scope;
         }
 
         public async Task<IEnumerable<Tuteur>> GetAllAsync()
@@ -33,14 +40,17 @@ namespace KelasiNaBiso.Services
                 .FirstOrDefaultAsync(t => t.IdTuteur == id);
         }
 
-        public async Task<IEnumerable<Tuteur>> GetByEcoleAsync(int idEcole)
+        public async Task<ElevesAnneeScopedResult<IEnumerable<Tuteur>>> GetByEcoleAsync(
+            int idEcole,
+            int? idAnneeScolaire = null)
         {
-            return await _context.Tuteurs
-               // .Include(t => t.Ecole)
-              //  .Include(t => t.Eleves)
-                .Where(t => t.IdEcole == idEcole)
-                .Where(t => t.Statut == true) // ✅ Filtrer uniquement les tuteurs actifs
+            var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole, idAnneeScolaire);
+            var data = await _inscriptionResolver
+                .FilterTuteursInEcole(_context.Tuteurs.AsNoTracking(), ecole, annee)
+                .OrderBy(t => t.NomComplet)
                 .ToListAsync();
+
+            return EleveAnneeScopeHelper.Wrap<IEnumerable<Tuteur>>(data, ecole, annee);
         }
 
         public async Task<Tuteur> CreateAsync(Tuteur tuteur)
@@ -115,12 +125,20 @@ namespace KelasiNaBiso.Services
             return await _context.Tuteurs.AnyAsync(t => t.Email == email);
         }
 
-        public async Task<IEnumerable<Eleve>> GetElevesAsync(int idTuteur)
+        public async Task<ElevesAnneeScopedResult<IEnumerable<Eleve>>> GetElevesAsync(
+            int idTuteur,
+            int idEcole,
+            int? idAnneeScolaire = null)
         {
-            return await _context.Eleves
-                .Include(e => e.Classe)
+            var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole, idAnneeScolaire);
+            var data = await _inscriptionResolver
+                .FilterElevesInEcole(_context.Eleves.AsNoTracking(), ecole, annee)
                 .Where(e => e.IdTuteur == idTuteur)
+                .Include(e => e.Inscriptions).ThenInclude(i => i.Classe)
+                .OrderBy(e => e.NomComplet)
                 .ToListAsync();
+
+            return EleveAnneeScopeHelper.Wrap<IEnumerable<Eleve>>(data, ecole, annee);
         }
 
         // ✅ SOFT DELETE: Toggle le statut d'un tuteur (actif <-> inactif)
@@ -154,7 +172,7 @@ namespace KelasiNaBiso.Services
             utilisateur.PhotoUrl = tuteur.PhotoTuteurUrl;
             utilisateur.Genre = tuteur.Genre;
             utilisateur.Statut = tuteur.Statut ?? utilisateur.Statut;
-            utilisateur.IdEcole = tuteur.IdEcole;
+            // IdEcole utilisateur : ne plus dériver de Tuteur.IdEcole (parent multi-écoles)
         }
     }
 }

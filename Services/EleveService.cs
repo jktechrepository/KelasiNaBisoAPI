@@ -1,5 +1,6 @@
 using KelasiNaBiso.Data;
 using KelasiNaBiso.Models;
+using KelasiNaBiso.Models.DTOs;
 using KelasiNaBiso.Models.DTOs.Pagination;
 using KelasiNaBiso.Services.Repositories;
 using KelasiNaBiso.Extensions;
@@ -12,221 +13,287 @@ namespace KelasiNaBiso.Services
     {
         private readonly KelasiNaBisoDbContext _context;
         private readonly IInscriptionRepository _inscriptionRepository;
+        private readonly IInscriptionActiveResolver _inscriptionResolver;
+        private readonly EleveAnneeScopeHelper _scope;
         private readonly ILogger<EleveService> _logger;
 
         public EleveService(
             KelasiNaBisoDbContext context,
             IInscriptionRepository inscriptionRepository,
+            IInscriptionActiveResolver inscriptionResolver,
+            EleveAnneeScopeHelper scope,
             ILogger<EleveService> logger)
         {
             _context = context;
             _inscriptionRepository = inscriptionRepository;
+            _inscriptionResolver = inscriptionResolver;
+            _scope = scope;
             _logger = logger;
         }
 
-        // ✅ NOUVELLES MÉTHODES PAGINÉES
-        public async Task<PagedResult<V_Eleve>> GetAllPagedAsync(PagedRequest request)
-        {
-            var query = _context.V_Eleves.AsQueryable();
+        private static ElevesAnneeScopedResult<T> Scoped<T>(T data, int idEcole, int idAnneeScolaire) =>
+            EleveAnneeScopeHelper.Wrap(data, idEcole, idAnneeScolaire);
 
-            // Appliquer la recherche si présente
-            if (!string.IsNullOrWhiteSpace(request.SearchTerm))
+        private async Task<List<EleveParEcoleListItemDto>> MapElevesParEcoleAsync(
+            IQueryable<Eleve> elevesQuery,
+            int idEcole,
+            int idAnneeScolaire)
+        {
+            var eleves = await elevesQuery
+                .Include(e => e.Tuteur)
+                .OrderBy(e => e.NomComplet)
+                .ToListAsync();
+
+            if (eleves.Count == 0)
+                return new List<EleveParEcoleListItemDto>();
+
+            var eleveIds = eleves.Select(e => e.IdEleve).ToList();
+            var inscriptions = await _context.Inscriptions
+                .AsNoTracking()
+                .Include(i => i.Classe)
+                .Include(i => i.AnneeScolaire)
+                .Where(i => eleveIds.Contains(i.IdEleve)
+                    && i.IdEcole == idEcole
+                    && i.IdAnneeScolaire == idAnneeScolaire
+                    && i.Statut == true
+                    && i.StatutInscription != null
+                    && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                        || i.StatutInscription == "Confirme"
+                        || i.StatutInscription.StartsWith("Confirm")))
+                .ToListAsync();
+
+            var inscriptionByEleve = inscriptions
+                .GroupBy(i => i.IdEleve)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderByDescending(i => i.DateInscription).First());
+
+            return eleves.Select(e =>
             {
-                var searchLower = request.SearchTerm.ToLower();
+                inscriptionByEleve.TryGetValue(e.IdEleve, out var ins);
+                return new EleveParEcoleListItemDto
+                {
+                    IdEleve = e.IdEleve,
+                    ReferenceEleve = e.ReferenceEleve,
+                    Matricule = e.Matricule,
+                    Nom = e.Nom,
+                    Postnom = e.Postnom,
+                    Prenom = e.Prenom,
+                    NomComplet = e.NomComplet,
+                    Genre = e.Genre,
+                    DateNaissance = e.DateNaissance,
+                    PhotoUrl = e.PhotoUrl,
+                    Statut = e.Statut,
+                    IdTuteur = e.IdTuteur,
+                    NomCompletTuteur = e.Tuteur?.NomComplet,
+                    TelephoneTuteur = e.Tuteur?.Telephone,
+                    IdInscription = ins?.IdInscription,
+                    IdClasse = ins?.IdClasse,
+                    NomClasse = ins?.Classe?.NomClasse,
+                    IdAnneeScolaire = ins?.IdAnneeScolaire,
+                    LibelleAnneeScolaire = ins?.AnneeScolaire?.LibelleAnneeScolaire,
+                    IdEcole = ins?.IdEcole ?? idEcole
+                };
+            }).ToList();
+        }
+
+        private IQueryable<V_Eleve> BuildVElevesQueryForEcoleAnnee(
+            int idEcole,
+            int idAnneeScolaire,
+            bool includeInactive,
+            string? searchTerm)
+        {
+            var elevesIds = _inscriptionResolver
+                .FilterElevesInEcole(_context.Eleves, idEcole, idAnneeScolaire)
+                .Select(e => e.IdEleve);
+
+            var query = _context.V_Eleves.Where(v => elevesIds.Contains(v.IdEleve));
+
+            if (!includeInactive)
+                query = query.Where(e => e.Statut == true);
+
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                var searchLower = searchTerm.ToLower();
                 query = query.Where(e =>
                     (e.NomComplet != null && e.NomComplet.ToLower().Contains(searchLower)) ||
-                    (e.Matricule != null && e.Matricule.ToLower().Contains(searchLower))
-                );
+                    (e.Matricule != null && e.Matricule.ToLower().Contains(searchLower)));
             }
 
-            // Filtrer par statut
-            if (!request.IncludeInactive)
-            {
-                query = query.Where(e => e.Statut == true);
-            }
+            return query;
+        }
 
-            // Appliquer le tri
+        // ✅ NOUVELLES MÉTHODES PAGINÉES
+        public async Task<ElevesAnneeScopedResult<PagedResult<V_Eleve>>> GetAllPagedAsync(
+            int idEcole, PagedRequest request, int? idAnneeScolaire = null)
+        {
+            var resolvedAnnee = await _scope.ResolveIdAnneeScolaireAsync(idEcole, idAnneeScolaire);
+            var query = BuildVElevesQueryForEcoleAnnee(
+                idEcole, resolvedAnnee, request.IncludeInactive, request.SearchTerm);
+
             if (!string.IsNullOrWhiteSpace(request.SortBy))
-            {
                 query = query.ApplySort(request.SortBy, request.SortDescending);
-            }
             else
             {
-                // Tri par défaut : NomComplet
                 query = request.SortDescending
                     ? query.OrderByDescending(e => e.NomComplet)
                     : query.OrderBy(e => e.NomComplet);
             }
 
-            return await query.ToPagedAsync(request);
+            var page = await query.ToPagedAsync(request);
+            return Scoped(page, idEcole, resolvedAnnee);
         }
 
-        public async Task<CursorPaginatedResult<V_Eleve>> GetAllCursorPagedAsync(CursorPaginationRequest request)
+        public async Task<ElevesAnneeScopedResult<CursorPaginatedResult<V_Eleve>>> GetAllCursorPagedAsync(
+            int idEcole, CursorPaginationRequest request, int? idAnneeScolaire = null)
         {
-            var query = _context.V_Eleves.AsQueryable();
+            var resolvedAnnee = await _scope.ResolveIdAnneeScolaireAsync(idEcole, idAnneeScolaire);
+            var query = BuildVElevesQueryForEcoleAnnee(
+                idEcole, resolvedAnnee, request.IncludeInactive, request.SearchTerm);
 
-            // Appliquer la recherche si présente
+            var page = await query.ToCursorPagedAsync(request, e => e.IdEleve);
+            return Scoped(page, idEcole, resolvedAnnee);
+        }
+
+        public async Task<ElevesAnneeScopedResult<PagedResult<Eleve>>> GetByClassePagedAsync(
+            int idClasse, PagedRequest request, int? idAnneeScolaire = null)
+        {
+            var idEcole = await _scope.ResolveIdEcoleForClasseAsync(idClasse);
+            var resolvedAnnee = await _scope.ResolveIdAnneeScolaireAsync(idEcole, idAnneeScolaire);
+
+            var query = _inscriptionResolver.FilterElevesInClasse(
+                _context.Eleves.Include(e => e.Tuteur),
+                idClasse,
+                resolvedAnnee);
+
+            if (!request.IncludeInactive)
+                query = query.Where(e => e.Statut == true);
+
             if (!string.IsNullOrWhiteSpace(request.SearchTerm))
             {
                 var searchLower = request.SearchTerm.ToLower();
                 query = query.Where(e =>
                     (e.NomComplet != null && e.NomComplet.ToLower().Contains(searchLower)) ||
-                    (e.Matricule != null && e.Matricule.ToLower().Contains(searchLower))
-                );
+                    (e.Matricule != null && e.Matricule.ToLower().Contains(searchLower)));
             }
 
-            // Filtrer par statut
-            if (!request.IncludeInactive)
-            {
-                query = query.Where(e => e.Statut == true);
-            }
-
-            // Utiliser IdEleve comme curseur
-            return await query.ToCursorPagedAsync(request, e => e.IdEleve);
+            var page = await query.ToPagedAsync(request, e => e.NomComplet);
+            return Scoped(page, idEcole, resolvedAnnee);
         }
 
-        public async Task<PagedResult<Eleve>> GetByClassePagedAsync(int idClasse, PagedRequest request)
+        public async Task<ElevesAnneeScopedResult<PagedResult<EleveParEcoleListItemDto>>> GetByEcoleByNomCompletPagedAsync(
+            int idEcole, string nomComplet, PagedRequest request, int? idAnneeScolaire = null)
         {
-            var query = _context.Eleves
-                .Include(e => e.Classe)
-                .Include(e => e.Tuteur)
-                .Where(e => e.IdClasse == idClasse);
+            var resolvedAnnee = await _scope.ResolveIdAnneeScolaireAsync(idEcole, idAnneeScolaire);
+            var query = _inscriptionResolver.FilterElevesInEcole(
+                _context.Eleves.Include(e => e.Tuteur),
+                idEcole,
+                resolvedAnnee);
 
-            // Filtrer par statut
-            if (!request.IncludeInactive)
-            {
-                query = query.Where(e => e.Statut == true);
-            }
-
-            // Appliquer la recherche
-            if (!string.IsNullOrWhiteSpace(request.SearchTerm))
-            {
-                var searchLower = request.SearchTerm.ToLower();
-                query = query.Where(e =>
-                    (e.NomComplet != null && e.NomComplet.ToLower().Contains(searchLower)) ||
-                    (e.Matricule != null && e.Matricule.ToLower().Contains(searchLower))
-                );
-            }
-
-            return await query.ToPagedAsync(request, e => e.NomComplet);
-        }
-
-        public async Task<PagedResult<Eleve>> GetByEcoleByNomCompletPagedAsync(int idEcole, string nomComplet, PagedRequest request)
-        {
-            var query = _context.Eleves
-                .Include(e => e.Classe)
-                    .ThenInclude(c => c.Direction)
-                .Include(e => e.Tuteur)
-                .Where(e => e.Classe.Direction.IdEcole == idEcole);
-
-            // Filtrer par nom complet si fourni
             if (!string.IsNullOrWhiteSpace(nomComplet))
             {
                 var nomCompletLower = nomComplet.ToLower();
-                query = query.Where(e => 
-                    e.NomComplet != null && e.NomComplet.ToLower().Contains(nomCompletLower)
-                );
+                query = query.Where(e =>
+                    e.NomComplet != null && e.NomComplet.ToLower().Contains(nomCompletLower));
             }
 
-            // Filtrer par statut
             if (!request.IncludeInactive)
-            {
                 query = query.Where(e => e.Statut == true);
-            }
 
-            // Appliquer la recherche supplémentaire si présente
             if (!string.IsNullOrWhiteSpace(request.SearchTerm))
             {
                 var searchLower = request.SearchTerm.ToLower();
                 query = query.Where(e =>
                     (e.NomComplet != null && e.NomComplet.ToLower().Contains(searchLower)) ||
-                    (e.Matricule != null && e.Matricule.ToLower().Contains(searchLower))
-                );
+                    (e.Matricule != null && e.Matricule.ToLower().Contains(searchLower)));
             }
 
-            // Appliquer le tri
-            if (!string.IsNullOrWhiteSpace(request.SortBy))
-            {
-                query = query.ApplySort(request.SortBy, request.SortDescending);
-            }
-            else
-            {
-                // Tri par défaut : NomComplet
-                query = request.SortDescending
-                    ? query.OrderByDescending(e => e.NomComplet)
-                    : query.OrderBy(e => e.NomComplet);
-            }
+            var all = await MapElevesParEcoleAsync(query, idEcole, resolvedAnnee);
+            var total = all.Count;
+            var pageNumber = Math.Max(1, request.PageNumber);
+            var size = Math.Clamp(request.PageSize, 1, 100);
+            var items = all.Skip((pageNumber - 1) * size).Take(size).ToList();
 
-            return await query.ToPagedAsync(request);
+            var page = new PagedResult<EleveParEcoleListItemDto>
+            {
+                Data = items,
+                PageNumber = pageNumber,
+                PageSize = size,
+                TotalRecords = total,
+                TotalPages = (int)Math.Ceiling(total / (double)size)
+            };
+            return Scoped(page, idEcole, resolvedAnnee);
         }
 
         public async Task<PagedResult<Eleve>> GetByTuteurPagedAsync(int idTuteur, PagedRequest request)
         {
             var query = _context.Eleves
-                .Include(e => e.Classe)
                 .Include(e => e.Tuteur)
                 .Where(e => e.IdTuteur == idTuteur);
 
-            // Filtrer par statut
             if (!request.IncludeInactive)
-            {
                 query = query.Where(e => e.Statut == true);
-            }
 
             return await query.ToPagedAsync(request, e => e.NomComplet);
         }
 
-        public async Task<PagedResult<Eleve>> GetByEcolePagedAsync(int idEcole, PagedRequest request)
+        public async Task<ElevesAnneeScopedResult<PagedResult<EleveParEcoleListItemDto>>> GetByEcolePagedAsync(
+            int idEcole, PagedRequest request, int? idAnneeScolaire = null)
         {
-            var query = _context.Eleves
-                .Include(e => e.Classe)
-                    .ThenInclude(c => c.Direction)
-                .Include(e => e.Tuteur)
-                .Where(e => e.Classe.Direction.IdEcole == idEcole);
+            var resolvedAnnee = await _scope.ResolveIdAnneeScolaireAsync(idEcole, idAnneeScolaire);
+            var query = _inscriptionResolver.FilterElevesInEcole(
+                _context.Eleves.Include(e => e.Tuteur),
+                idEcole,
+                resolvedAnnee);
 
-            // Filtrer par statut
             if (!request.IncludeInactive)
-            {
                 query = query.Where(e => e.Statut == true);
-            }
 
-            // Appliquer la recherche
             if (!string.IsNullOrWhiteSpace(request.SearchTerm))
             {
                 var searchLower = request.SearchTerm.ToLower();
                 query = query.Where(e =>
                     (e.NomComplet != null && e.NomComplet.ToLower().Contains(searchLower)) ||
-                    (e.Matricule != null && e.Matricule.ToLower().Contains(searchLower))
-                );
+                    (e.Matricule != null && e.Matricule.ToLower().Contains(searchLower)));
             }
 
-            return await query.ToPagedAsync(request, e => e.NomComplet);
+            var all = await MapElevesParEcoleAsync(query, idEcole, resolvedAnnee);
+            var total = all.Count;
+            var pageNumber = Math.Max(1, request.PageNumber);
+            var size = Math.Clamp(request.PageSize, 1, 100);
+            var items = all.Skip((pageNumber - 1) * size).Take(size).ToList();
+
+            var page = new PagedResult<EleveParEcoleListItemDto>
+            {
+                Data = items,
+                PageNumber = pageNumber,
+                PageSize = size,
+                TotalRecords = total,
+                TotalPages = (int)Math.Ceiling(total / (double)size)
+            };
+            return Scoped(page, idEcole, resolvedAnnee);
         }
 
         // ⚠️ DEPRECATED: Méthodes de base CRUD (conserver pour rétrocompatibilité)
-        public async Task<IEnumerable<V_Eleve>> GetAllAsync()
+        public async Task<ElevesAnneeScopedResult<IReadOnlyList<EleveParEcoleListItemDto>>> GetAllAsync(
+            int idEcole, int? idAnneeScolaire = null)
         {
-            return await _context.V_Eleves
-                .OrderBy(e => e.NomComplet)
-                .ToListAsync();
+            return await GetByEcoleAsync(idEcole, idAnneeScolaire);
         }
 
         public async Task<Eleve> GetByIdAsync(int id)
         {
             return await _context.Eleves
-                .Include(e => e.Classe)
-                    .ThenInclude(c => c!.Direction)
                 .Include(e => e.Tuteur)
-                .Where(e => e.Statut == true) // ✅ Filtrer uniquement les élèves actifs
+                .Where(e => e.Statut == true)
                 .FirstOrDefaultAsync(e => e.IdEleve == id);
         }
 
         public async Task<Eleve> GetByReferenceAsync(Guid reference)
         {
             return await _context.Eleves
-                .Include(e => e.Classe)
                 .Include(e => e.Tuteur)
-                .Where(e => e.Statut == true) // ✅ Filtrer uniquement les élèves actifs
+                .Where(e => e.Statut == true)
                 .FirstOrDefaultAsync(e => e.ReferenceEleve == reference);
         }
 
@@ -360,41 +427,45 @@ namespace KelasiNaBiso.Services
         }
 
         // Méthodes de recherche par critères
-        public async Task<IEnumerable<Eleve>> GetByClasseAsync(int idClasse)
+        public async Task<ElevesAnneeScopedResult<IReadOnlyList<Eleve>>> GetByClasseAsync(
+            int idClasse, int? idAnneeScolaire = null)
         {
-            return await _context.Eleves
-                .Include(e => e.Tuteur)
-                .Where(e => e.IdClasse == idClasse)
-                .Where(e => e.Statut == true) // ✅ Filtrer uniquement les élèves actifs
+            var idEcole = await _scope.ResolveIdEcoleForClasseAsync(idClasse);
+            var resolvedAnnee = await _scope.ResolveIdAnneeScolaireAsync(idEcole, idAnneeScolaire);
+
+            var eleves = await _inscriptionResolver
+                .FilterElevesInClasse(_context.Eleves.Include(e => e.Tuteur), idClasse, resolvedAnnee)
                 .OrderBy(e => e.NomComplet)
                 .ToListAsync();
+
+            return Scoped((IReadOnlyList<Eleve>)eleves, idEcole, resolvedAnnee);
         }
 
         public async Task<IEnumerable<Eleve>> GetByTuteurAsync(int idTuteur)
         {
             return await _context.Eleves
-                .Include(e => e.Classe)
+                .Include(e => e.Tuteur)
                 .Where(e => e.IdTuteur == idTuteur)
-                .Where(e => e.Statut == true) // ✅ Filtrer uniquement les élèves actifs
+                .Where(e => e.Statut == true)
                 .OrderBy(e => e.NomComplet)
                 .ToListAsync();
         }
 
-        public async Task<IEnumerable<Eleve>> GetByEcoleAsync(int idEcole)
+        public async Task<ElevesAnneeScopedResult<IReadOnlyList<EleveParEcoleListItemDto>>> GetByEcoleAsync(
+            int idEcole, int? idAnneeScolaire = null)
         {
-            return await _context.Eleves
-                .Include(e => e.Classe)
-                .Include(e => e.Tuteur)
-                .Where(e => e.Classe.Direction.Ecole.IdEcole == idEcole)
-                .Where(e => e.Statut == true) // ✅ Filtrer uniquement les élèves actifs
-                .OrderBy(e => e.NomComplet)
-                .ToListAsync();
+            var resolvedAnnee = await _scope.ResolveIdAnneeScolaireAsync(idEcole, idAnneeScolaire);
+            var query = _inscriptionResolver.FilterElevesInEcole(
+                _context.Eleves.Include(e => e.Tuteur),
+                idEcole,
+                resolvedAnnee);
+            var eleves = await MapElevesParEcoleAsync(query, idEcole, resolvedAnnee);
+            return Scoped((IReadOnlyList<EleveParEcoleListItemDto>)eleves, idEcole, resolvedAnnee);
         }
 
         public async Task<IEnumerable<Eleve>> GetByStatutAsync(bool statut)
         {
             return await _context.Eleves
-                .Include(e => e.Classe)
                 .Include(e => e.Tuteur)
                 .Where(e => e.Statut == statut)
                 .OrderBy(e => e.NomComplet)
@@ -503,20 +574,15 @@ namespace KelasiNaBiso.Services
         public async Task<Eleve> GetByMatriculeAsync(string matricule)
         {
             return await _context.Eleves
-                .Include(e => e.Classe)
-                    .ThenInclude(c => c!.Direction)
                 .Include(e => e.Tuteur)
                 .FirstOrDefaultAsync(e => e.Matricule == matricule);
         }
 
-        // ✅ RÉCUPÉRATION PAR SERIAL NUMBER: Récupérer un élève par son numéro de série
         public async Task<Eleve> GetBySerialNumberAsync(string serialNumber)
         {
             return await _context.Eleves
-                .Include(e => e.Classe)
-                    .ThenInclude(c => c!.Direction)
                 .Include(e => e.Tuteur)
-                .Where(e => e.Statut == true) // ✅ Filtrer uniquement les élèves actifs
+                .Where(e => e.Statut == true)
                 .FirstOrDefaultAsync(e => e.SerialNumber == serialNumber);
         }
 
@@ -576,6 +642,188 @@ namespace KelasiNaBiso.Services
             eleve.SerialNumber = serialNumber;
             await _context.SaveChangesAsync();
             return true;
+        }
+
+        public async Task<EleveReinscriptionPrefillDto?> GetReinscriptionPrefillByMatriculeAsync(
+            int idEcole,
+            string matricule,
+            int? idAnneeScolaire = null,
+            int? idClasse = null)
+        {
+            if (string.IsNullOrWhiteSpace(matricule))
+                return null;
+
+            var resolvedAnnee = await _scope.ResolveIdAnneeScolaireReferenceForReinscriptionAsync(idEcole, idAnneeScolaire);
+            var query = BuildReinscriptionElevesQuery(idEcole, resolvedAnnee, idClasse);
+
+            var eleve = await query
+                .FirstOrDefaultAsync(e => e.Matricule == matricule);
+
+            if (eleve == null)
+                return null;
+
+            var mapped = await MapReinscriptionPrefillAsync(new List<Eleve> { eleve }, idEcole, resolvedAnnee);
+            return mapped.FirstOrDefault();
+        }
+
+        public async Task<ElevesAnneeScopedResult<PagedResult<EleveReinscriptionPrefillDto>>> SearchReinscriptionPrefillByNomCompletPagedAsync(
+            int idEcole,
+            string nomComplet,
+            PagedRequest request,
+            int? idAnneeScolaire = null,
+            int? idClasse = null)
+        {
+            var resolvedAnnee = await _scope.ResolveIdAnneeScolaireReferenceForReinscriptionAsync(idEcole, idAnneeScolaire);
+            var query = BuildReinscriptionElevesQuery(idEcole, resolvedAnnee, idClasse);
+
+            var nomCompletLower = nomComplet.ToLower();
+            query = query.Where(e =>
+                e.NomComplet != null && e.NomComplet.ToLower().Contains(nomCompletLower));
+
+            if (!request.IncludeInactive)
+                query = query.Where(e => e.Statut == true);
+
+            if (!string.IsNullOrWhiteSpace(request.SearchTerm))
+            {
+                var searchLower = request.SearchTerm.ToLower();
+                query = query.Where(e =>
+                    (e.NomComplet != null && e.NomComplet.ToLower().Contains(searchLower)) ||
+                    (e.Matricule != null && e.Matricule.ToLower().Contains(searchLower)));
+            }
+
+            var allEleves = await query.OrderBy(e => e.NomComplet).ToListAsync();
+            var allMapped = await MapReinscriptionPrefillAsync(allEleves, idEcole, resolvedAnnee);
+
+            var total = allMapped.Count;
+            var pageNumber = Math.Max(1, request.PageNumber);
+            var size = Math.Clamp(request.PageSize, 1, 100);
+            var items = allMapped.Skip((pageNumber - 1) * size).Take(size).ToList();
+
+            var page = new PagedResult<EleveReinscriptionPrefillDto>
+            {
+                Data = items,
+                PageNumber = pageNumber,
+                PageSize = size,
+                TotalRecords = total,
+                TotalPages = (int)Math.Ceiling(total / (double)size)
+            };
+
+            return Scoped(page, idEcole, resolvedAnnee);
+        }
+
+        private IQueryable<Eleve> BuildReinscriptionElevesQuery(
+            int idEcole,
+            int idAnneeScolaire,
+            int? idClasse)
+        {
+            var baseQuery = _context.Eleves.Include(e => e.Tuteur);
+
+            if (idClasse.HasValue && idClasse.Value > 0)
+            {
+                return _inscriptionResolver.FilterElevesInClasse(baseQuery, idClasse.Value, idAnneeScolaire);
+            }
+
+            return _inscriptionResolver.FilterElevesInEcole(baseQuery, idEcole, idAnneeScolaire);
+        }
+
+        private async Task<List<EleveReinscriptionPrefillDto>> MapReinscriptionPrefillAsync(
+            List<Eleve> eleves,
+            int idEcole,
+            int idAnneeReference)
+        {
+            if (eleves.Count == 0)
+                return new List<EleveReinscriptionPrefillDto>();
+
+            var eleveIds = eleves.Select(e => e.IdEleve).ToList();
+
+            var refInscriptions = await _context.Inscriptions
+                .AsNoTracking()
+                .Include(i => i.Classe)
+                .Include(i => i.AnneeScolaire)
+                .Where(i => eleveIds.Contains(i.IdEleve)
+                    && i.IdEcole == idEcole
+                    && i.IdAnneeScolaire == idAnneeReference
+                    && i.Statut == true
+                    && i.StatutInscription != null
+                    && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                        || i.StatutInscription == "Confirme"
+                        || i.StatutInscription.StartsWith("Confirm")))
+                .ToListAsync();
+
+            var refByEleve = refInscriptions
+                .GroupBy(i => i.IdEleve)
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(i => i.DateInscription).First());
+
+            var refAnnee = await _context.AnneeScolaires
+                .AsNoTracking()
+                .FirstOrDefaultAsync(a => a.IdAnneeScolaire == idAnneeReference);
+
+            var idAnneeCourante = await _scope.TryGetIdAnneeCouranteAsync(idEcole);
+            Dictionary<int, Inscription> currentByEleve = new();
+
+            if (idAnneeCourante.HasValue)
+            {
+                var currentInscriptions = await _context.Inscriptions
+                    .AsNoTracking()
+                    .Where(i => eleveIds.Contains(i.IdEleve)
+                        && i.IdEcole == idEcole
+                        && i.IdAnneeScolaire == idAnneeCourante.Value
+                        && i.Statut == true
+                        && i.StatutInscription != null
+                        && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                            || i.StatutInscription == "Confirme"
+                            || i.StatutInscription.StartsWith("Confirm")))
+                    .ToListAsync();
+
+                currentByEleve = currentInscriptions
+                    .GroupBy(i => i.IdEleve)
+                    .ToDictionary(g => g.Key, g => g.OrderByDescending(i => i.DateInscription).First());
+            }
+
+            return eleves.Select(e =>
+            {
+                refByEleve.TryGetValue(e.IdEleve, out var refIns);
+                currentByEleve.TryGetValue(e.IdEleve, out var currentIns);
+
+                return new EleveReinscriptionPrefillDto
+                {
+                    Type = "Réinscription",
+                    IdEleveExistant = e.IdEleve,
+                    IdTuteurExistant = e.IdTuteur,
+                    IdEcole = idEcole,
+                    NomEleve = e.Nom,
+                    PostnomEleve = e.Postnom,
+                    PrenomEleve = e.Prenom,
+                    PhotoEleveUrl = e.PhotoUrl,
+                    MatriculeEleve = e.Matricule,
+                    GenreEleve = e.Genre,
+                    DateNaissanceEleve = e.DateNaissance,
+                    LieuNaissanceEleve = e.LieuNaissance,
+                    NationaliteEleve = e.Nationalite,
+                    ProvinceEleve = e.Province,
+                    VilleEleve = e.Ville,
+                    CommuneEleve = e.Commune,
+                    QuartierEleve = e.Quartier,
+                    AvenueEleve = e.Avenue,
+                    NumeroEleve = e.Numero,
+                    CommentaireEleve = e.Commentaire,
+                    NomCompletTuteur = e.Tuteur?.NomComplet,
+                    GenreTuteur = e.Tuteur?.Genre,
+                    EmailTuteur = e.Tuteur?.Email,
+                    TelephoneTuteur = e.Tuteur?.Telephone,
+                    NomCompletRepresentant = e.Tuteur?.NomCompletRepresentant,
+                    TelephoneRepresentant = e.Tuteur?.TelephoneRepresentant,
+                    PhotoTuteurUrl = e.Tuteur?.PhotoTuteurUrl,
+                    PieceIdentiteTuteur = e.Tuteur?.PieceIdentiteTuteur,
+                    IdAnneeScolaireReference = idAnneeReference,
+                    LibelleAnneeScolaireReference = refAnnee?.LibelleAnneeScolaire ?? refIns?.AnneeScolaire?.LibelleAnneeScolaire,
+                    IdInscriptionReference = refIns?.IdInscription,
+                    IdClassePrecedente = refIns?.IdClasse,
+                    NomClassePrecedente = refIns?.Classe?.NomClasse,
+                    DejaInscritAnneeCourante = currentIns != null,
+                    IdInscriptionAnneeCourante = currentIns?.IdInscription
+                };
+            }).ToList();
         }
     }
 }

@@ -1,4 +1,5 @@
 using KelasiNaBiso.Models;
+using KelasiNaBiso.Models.DTOs;
 using KelasiNaBiso.Models.DTOs.DevoirADomicile;
 using KelasiNaBiso.Models.DTOs.Pagination;
 using KelasiNaBiso.Models.Enums;
@@ -32,6 +33,8 @@ namespace KelasiNaBiso.Controllers
         private readonly ISmsNotificationService _smsService;
         private readonly IEmailService _emailService;
         private readonly IServiceScopeFactory _serviceScopeFactory;
+        private readonly IInscriptionActiveResolver _inscriptionResolver;
+        private readonly EleveAnneeScopeHelper _scope;
 
         public DevoirADomicileController(
             IDevoirADomicileRepository devoirRepository,
@@ -45,7 +48,9 @@ namespace KelasiNaBiso.Controllers
             ILogger<DevoirADomicileController> logger,
             ISmsNotificationService smsService,
             IEmailService emailService,
-            IServiceScopeFactory serviceScopeFactory)
+            IServiceScopeFactory serviceScopeFactory,
+            IInscriptionActiveResolver inscriptionResolver,
+            EleveAnneeScopeHelper scope)
         {
             _devoirRepository = devoirRepository;
             _fileStorageService = fileStorageService;
@@ -59,6 +64,8 @@ namespace KelasiNaBiso.Controllers
             _smsService = smsService;
             _emailService = emailService;
             _serviceScopeFactory = serviceScopeFactory;
+            _inscriptionResolver = inscriptionResolver;
+            _scope = scope;
         }
 
         /// <summary>
@@ -150,6 +157,9 @@ namespace KelasiNaBiso.Controllers
                     return BadRequest(new { message = "La classe n'a pas de direction associée" });
                 }
 
+                var idEcole = classe.Direction.IdEcole!.Value;
+                var idAnnee = await _scope.ResolveIdAnneeScolaireAsync(idEcole, dto.IdAnneeScolaire);
+
                 // 6. Uploader le fichier si fourni
                 string? nomFichier = null;
                 string? cheminFichier = null;
@@ -185,10 +195,11 @@ namespace KelasiNaBiso.Controllers
                     CheminFichier = cheminFichier,
                     TailleFichier = tailleFichier,
                     TypeMIME = typeMIME,
-                    IdEcole = classe.Direction.IdEcole.Value,
+                    IdEcole = idEcole,
                     IdDirection = classe.Direction.IdDirection,
                     IdAgent = idAgent.Value,
                     IdClasse = dto.IdClasse,
+                    IdAnneeScolaire = idAnnee,
                     IdCours = dto.IdCours,
                     CoefficientDevoir = dto.CoefficientDevoir,
                     DateLimite = dto.DateLimite
@@ -241,12 +252,14 @@ namespace KelasiNaBiso.Controllers
                             // Récupérer les services depuis le nouveau scope
                             var scopedContext = scope.ServiceProvider.GetRequiredService<KelasiNaBiso.Data.KelasiNaBisoDbContext>();
                             var scopedHubContext = scope.ServiceProvider.GetRequiredService<IHubContext<DevoirADomicileHub>>();
+                            var scopedResolver = scope.ServiceProvider.GetRequiredService<IInscriptionActiveResolver>();
                             
                             await EnvoyerNotificationSignalRAsync(
                                 devoirCree, 
                                 classe, 
                                 scopedContext, 
-                                scopedHubContext);
+                                scopedHubContext,
+                                scopedResolver);
                         }
                         catch (Exception ex)
                         {
@@ -270,6 +283,7 @@ namespace KelasiNaBiso.Controllers
                             var scopedFirebaseService = scope.ServiceProvider.GetRequiredService<IFirebaseNotificationService>();
                             var scopedSmsService = scope.ServiceProvider.GetRequiredService<ISmsNotificationService>();
                             var scopedEmailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
+                            var scopedResolver = scope.ServiceProvider.GetRequiredService<IInscriptionActiveResolver>();
                             
                             await EnvoyerNotificationsDevoirAuxParentsAsync(
                                 devoirCree, 
@@ -277,7 +291,8 @@ namespace KelasiNaBiso.Controllers
                                 scopedContext, 
                                 scopedFirebaseService, 
                                 scopedSmsService, 
-                                scopedEmailService);
+                                scopedEmailService,
+                                scopedResolver);
                             
                             _logger.LogInformation($"✅ Envoi des notifications terminé pour devoir {devoirCree.IdDevoirADomicile}");
                         }
@@ -292,6 +307,10 @@ namespace KelasiNaBiso.Controllers
                 var devoirDto = await MapToDtoAsync(devoirCree);
                 return CreatedAtAction(nameof(GetDevoir), new { id = devoirCree.IdDevoirADomicile }, devoirDto);
             }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Erreur lors de la publication du devoir");
@@ -301,75 +320,68 @@ namespace KelasiNaBiso.Controllers
 
         /// <summary>
         /// Voir mes devoirs publiés (Enseignant) ou tous les devoirs de l'école (Admin/Directeur/Super-Admin)
-        /// Retourne un résultat paginé avec métadonnées (total, page, etc.)
-        /// Filtres optionnels : idEcole (Super-Admin uniquement), idClasse (tous les rôles)
+        /// Retourne un résultat paginé scopé à l'année scolaire (défaut : année courante).
+        /// Filtres optionnels : idEcole (Super-Admin uniquement), idClasse, idAnneeScolaire
         /// </summary>
         [HttpGet("mes-devoirs")]
         [Authorize(Roles = $"{UserRoles.ENSEIGNANT},{UserRoles.DIRECTEUR},{UserRoles.ADMIN},{UserRoles.SUPER_ADMIN}")]
-        [ProducesResponseType(typeof(PagedResult<DevoirADomicileDto>), 200)]
-        public async Task<ActionResult<PagedResult<DevoirADomicileDto>>> MesDevoirs(
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<PagedResult<DevoirADomicileDto>>), 200)]
+        public async Task<ActionResult<ElevesAnneeScopedResult<PagedResult<DevoirADomicileDto>>>> MesDevoirs(
             [FromQuery] PagedRequest? request,
             [FromQuery] int? idEcole = null,
-            [FromQuery] int? idClasse = null)
+            [FromQuery] int? idClasse = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
             try
             {
                 var role = _currentUserService.UserRole;
-                var idUtilisateur = _currentUserService.UserId;
                 var idEcoleUtilisateur = _currentUserService.EcoleId;
-
-                // Créer un PagedRequest par défaut si null (pagination par défaut)
                 var pagedRequest = request ?? new PagedRequest { PageNumber = 1, PageSize = 15 };
+                var (resolvedEcole, resolvedAnnee) = await ResolveMesDevoirsScopeAsync(
+                    role, idEcole, idEcoleUtilisateur, idAnneeScolaire);
 
                 PagedResult<DevoirADomicile> pagedResult;
 
-                // Super-Admin : Voir tous les devoirs de toutes les écoles (avec filtres optionnels)
                 if (role == UserRoles.SUPER_ADMIN)
                 {
-                    // Super-Admin peut filtrer par école et/ou classe
-                    pagedResult = await _devoirRepository.GetAllPagedAsync(pagedRequest, idEcole, idClasse);
+                    pagedResult = await _devoirRepository.GetAllPagedAsync(
+                        pagedRequest, resolvedAnnee, resolvedEcole > 0 ? resolvedEcole : idEcole, idClasse);
                 }
-                // Admin ou Directeur : Voir tous les devoirs de leur école (avec filtre classe optionnel)
                 else if (role == UserRoles.ADMIN || role == UserRoles.DIRECTEUR)
                 {
                     if (idEcoleUtilisateur == 0)
-                    {
                         return Forbid("Vous devez être associé à une école pour voir les devoirs");
-                    }
 
-                    // Admin/Directeur ne peut pas filtrer par école (utilise toujours leur école)
-                    // Mais peut filtrer par classe
-                    pagedResult = await _devoirRepository.GetByEcolePagedAsync(idEcoleUtilisateur, pagedRequest, idClasse);
+                    pagedResult = await _devoirRepository.GetByEcolePagedAsync(
+                        idEcoleUtilisateur, pagedRequest, resolvedAnnee, idClasse);
+                    resolvedEcole = idEcoleUtilisateur;
                 }
-                // Enseignant : Voir uniquement ses propres devoirs (avec filtre classe optionnel)
                 else
                 {
                     var idAgent = _currentUserService.AgentId;
                     if (!idAgent.HasValue)
-                    {
                         return Forbid("Vous devez être un agent pour voir vos devoirs");
-                    }
 
-                    // Enseignant peut filtrer par classe
-                    pagedResult = await _devoirRepository.GetByAgentPagedAsync(idAgent.Value, pagedRequest, idClasse);
+                    pagedResult = await _devoirRepository.GetByAgentPagedAsync(
+                        idAgent.Value, pagedRequest, resolvedAnnee, idClasse);
+                    resolvedEcole = idEcoleUtilisateur;
                 }
 
-                // Convertir les DevoirADomicile en DTOs
                 var devoirsDto = new List<DevoirADomicileDto>();
                 foreach (var devoir in pagedResult.Data)
-                {
                     devoirsDto.Add(await MapToDtoAsync(devoir));
-                }
 
-                // Retourner un PagedResult avec les DTOs et les métadonnées de pagination
                 var result = new PagedResult<DevoirADomicileDto>(
                     devoirsDto,
                     pagedResult.TotalRecords,
                     pagedResult.PageNumber,
-                    pagedResult.PageSize
-                );
+                    pagedResult.PageSize);
 
-                return Ok(result);
+                return Ok(EleveAnneeScopeHelper.Wrap(result, resolvedEcole, resolvedAnnee));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
             {
@@ -383,38 +395,41 @@ namespace KelasiNaBiso.Controllers
         /// </summary>
         [HttpGet("classe/{idClasse}")]
         [Authorize(Roles = $"{UserRoles.PARENT},{UserRoles.ELEVE},{UserRoles.ENSEIGNANT},{UserRoles.DIRECTEUR},{UserRoles.ADMIN},{UserRoles.SUPER_ADMIN}")]
-        [ProducesResponseType(typeof(IEnumerable<DevoirADomicileDto>), 200)]
-        public async Task<ActionResult<IEnumerable<DevoirADomicileDto>>> GetDevoirsByClasse(int idClasse, [FromQuery] PagedRequest? request)
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<IEnumerable<DevoirADomicileDto>>), 200)]
+        public async Task<ActionResult<ElevesAnneeScopedResult<IEnumerable<DevoirADomicileDto>>>> GetDevoirsByClasse(
+            int idClasse,
+            [FromQuery] PagedRequest? request,
+            [FromQuery] int? idAnneeScolaire = null)
         {
             try
             {
                 var idUtilisateur = _currentUserService.UserId;
-
-                // Vérifier que l'utilisateur a accès à cette classe
                 var aAcces = await _devoirRepository.UserPeutAccederAClasseAsync(idUtilisateur, idClasse);
                 if (!aAcces)
-                {
                     return Forbid("Vous n'avez pas accès à cette classe");
-                }
+
+                var (idEcole, idAnnee) = await _scope.ResolveClasseAnneeAsync(idClasse, idAnneeScolaire);
 
                 IEnumerable<DevoirADomicile> devoirs;
                 if (request != null)
                 {
-                    var pagedResult = await _devoirRepository.GetByClassePagedAsync(idClasse, request);
+                    var pagedResult = await _devoirRepository.GetByClassePagedAsync(idClasse, request, idAnnee);
                     devoirs = pagedResult.Data;
                 }
                 else
                 {
-                    devoirs = await _devoirRepository.GetByClasseAsync(idClasse);
+                    devoirs = await _devoirRepository.GetByClasseAsync(idClasse, idAnnee);
                 }
 
                 var devoirsDto = new List<DevoirADomicileDto>();
                 foreach (var devoir in devoirs)
-                {
                     devoirsDto.Add(await MapToDtoAsync(devoir));
-                }
 
-                return Ok(devoirsDto);
+                return Ok(EleveAnneeScopeHelper.Wrap(devoirsDto, idEcole, idAnnee));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
             {
@@ -625,13 +640,15 @@ namespace KelasiNaBiso.Controllers
             DevoirADomicile devoir,
             Classe classe,
             KelasiNaBiso.Data.KelasiNaBisoDbContext? context = null,
-            IHubContext<DevoirADomicileHub>? hubContext = null)
+            IHubContext<DevoirADomicileHub>? hubContext = null,
+            IInscriptionActiveResolver? inscriptionResolver = null)
         {
             try
             {
                 // Utiliser le contexte et hub fournis ou ceux du contrôleur
                 var dbContext = context ?? _context;
                 var hubContextToUse = hubContext ?? _hubContext;
+                var resolver = inscriptionResolver ?? _inscriptionResolver;
                 
                 // 1. Récupérer les informations complémentaires
                 var agent = await dbContext.Agents.FindAsync(devoir.IdAgent);
@@ -702,24 +719,17 @@ namespace KelasiNaBiso.Controllers
                     .SendAsync("NouveauDevoir", devoirData));
 
                 // 5. Notifications personnalisées aux parents (si disponibles)
-                var parents = await dbContext.Utilisateurs
-                    .Where(u => u.IdTuteur != null 
-                        && u.Statut == true
-                        && dbContext.Eleves.Any(e => 
-                            e.IdTuteur == u.IdTuteur 
-                            && e.IdClasse == devoir.IdClasse 
-                            && e.Statut == true))
+                var parents = await resolver
+                    .FilterUtilisateursParentsInClasse(dbContext.Utilisateurs, devoir.IdClasse)
                     .Select(u => new
                     {
                         u.IdUtilisateur,
-                        Enfants = dbContext.Eleves
-                            .Where(e => e.IdTuteur == u.IdTuteur 
-                                && e.IdClasse == devoir.IdClasse 
-                                && e.Statut == true)
+                        Enfants = resolver
+                            .FilterElevesInClasse(dbContext.Eleves, devoir.IdClasse, null)
+                            .Where(e => e.IdTuteur == u.IdTuteur)
                             .Select(e => e.NomComplet)
                             .ToList()
                     })
-                    .Distinct()
                     .ToListAsync();
 
                 foreach (var parent in parents)
@@ -757,7 +767,8 @@ namespace KelasiNaBiso.Controllers
             KelasiNaBiso.Data.KelasiNaBisoDbContext? context = null,
             IFirebaseNotificationService? firebaseService = null,
             ISmsNotificationService? smsService = null,
-            IEmailService? emailService = null)
+            IEmailService? emailService = null,
+            IInscriptionActiveResolver? inscriptionResolver = null)
         {
             try
             {
@@ -766,19 +777,15 @@ namespace KelasiNaBiso.Controllers
                 var firebaseServiceToUse = firebaseService ?? _firebaseNotificationService;
                 var smsServiceToUse = smsService ?? _smsService;
                 var emailServiceToUse = emailService ?? _emailService;
+                var resolver = inscriptionResolver ?? _inscriptionResolver;
                 
                 _logger.LogInformation($"🔍 Recherche des parents pour devoir {devoir.IdDevoirADomicile}, classe {classe.IdClasse}");
                 
                 // 1. Récupérer tous les parents de la classe (sans doublons)
                 // Note: On ne peut pas utiliser Distinct() sur une projection avec collection
                 // On récupère d'abord les IDs uniques, puis on charge les données
-                var parentIds = await dbContext.Utilisateurs
-                    .Where(u => u.IdTuteur != null 
-                        && u.Statut == true
-                        && dbContext.Eleves.Any(e => 
-                            e.IdTuteur == u.IdTuteur 
-                            && e.IdClasse == classe.IdClasse 
-                            && e.Statut == true))
+                var parentIds = await resolver
+                    .FilterUtilisateursParentsInClasse(dbContext.Utilisateurs, classe.IdClasse)
                     .Select(u => u.IdUtilisateur)
                     .Distinct()
                     .ToListAsync();
@@ -792,10 +799,9 @@ namespace KelasiNaBiso.Controllers
                     
                     if (utilisateur != null)
                     {
-                        var enfants = await dbContext.Eleves
-                            .Where(e => e.IdTuteur == utilisateur.IdTuteur 
-                                && e.IdClasse == classe.IdClasse 
-                                && e.Statut == true)
+                        var enfants = await resolver
+                            .FilterElevesInClasse(dbContext.Eleves, classe.IdClasse, null)
+                            .Where(e => e.IdTuteur == utilisateur.IdTuteur)
                             .Select(e => e.NomComplet)
                             .ToListAsync();
 
@@ -1040,6 +1046,8 @@ Votre enfant {(parent.Enfants.Count == 1 ? nomsEnfants : "vos enfants")} a un no
                 NomAgent = agent != null ? $"{agent.Nom} {agent.Postnom} {agent.Prenom}".Trim() : null,
                 IdClasse = devoir.IdClasse,
                 NomClasse = classe?.NomClasse,
+                IdAnneeScolaire = devoir.IdAnneeScolaire,
+                LibelleAnneeScolaire = (await _context.AnneeScolaires.FindAsync(devoir.IdAnneeScolaire))?.LibelleAnneeScolaire,
                 IdCours = devoir.IdCours,
                 NomCours = cours?.NomCours,
                 DatePublication = devoir.DatePublication,
@@ -1047,6 +1055,37 @@ Votre enfant {(parent.Enfants.Count == 1 ? nomsEnfants : "vos enfants")} a un no
                 NombreTelechargements = devoir.NombreTelechargements,
                 Statut = devoir.Statut
             };
+        }
+
+        private async Task<(int IdEcole, int IdAnneeScolaire)> ResolveMesDevoirsScopeAsync(
+            string role,
+            int? idEcole,
+            int idEcoleUtilisateur,
+            int? idAnneeScolaire)
+        {
+            if (role == UserRoles.SUPER_ADMIN)
+            {
+                if (idEcole.HasValue && idEcole.Value > 0)
+                {
+                    var annee = await _scope.ResolveIdAnneeScolaireAsync(idEcole.Value, idAnneeScolaire);
+                    return (idEcole.Value, annee);
+                }
+
+                if (idAnneeScolaire.HasValue && idAnneeScolaire.Value > 0)
+                    return (0, idAnneeScolaire.Value);
+
+                throw new InvalidOperationException(
+                    "Précisez idEcole ou idAnneeScolaire pour filtrer les devoirs.");
+            }
+
+            if (idEcoleUtilisateur <= 0)
+            {
+                throw new InvalidOperationException(
+                    "Aucune école associée à l'utilisateur pour résoudre l'année scolaire.");
+            }
+
+            var resolvedAnnee = await _scope.ResolveIdAnneeScolaireAsync(idEcoleUtilisateur, idAnneeScolaire);
+            return (idEcoleUtilisateur, resolvedAnnee);
         }
     }
 }

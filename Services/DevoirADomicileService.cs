@@ -16,15 +16,18 @@ namespace KelasiNaBiso.Services
         private readonly KelasiNaBisoDbContext _context;
         private readonly ICurrentUserService _currentUserService;
         private readonly ILogger<DevoirADomicileService> _logger;
+        private readonly IInscriptionActiveResolver _inscriptionResolver;
 
         public DevoirADomicileService(
             KelasiNaBisoDbContext context,
             ICurrentUserService currentUserService,
-            ILogger<DevoirADomicileService> logger)
+            ILogger<DevoirADomicileService> logger,
+            IInscriptionActiveResolver inscriptionResolver)
         {
             _context = context;
             _currentUserService = currentUserService;
             _logger = logger;
+            _inscriptionResolver = inscriptionResolver;
         }
 
         // ═══════════════════════════════════════════════════════════════════
@@ -111,13 +114,13 @@ namespace KelasiNaBiso.Services
                 .ToListAsync();
         }
 
-        public async Task<IEnumerable<DevoirADomicile>> GetByClasseAsync(int idClasse)
+        public async Task<IEnumerable<DevoirADomicile>> GetByClasseAsync(int idClasse, int idAnneeScolaire)
         {
             return await _context.DevoirsADomicile
                 .Include(d => d.Agent)
                 .Include(d => d.Classe)
                 .Include(d => d.Cours)
-                .Where(d => d.IdClasse == idClasse && d.Statut == true)
+                .Where(d => d.IdClasse == idClasse && d.IdAnneeScolaire == idAnneeScolaire && d.Statut == true)
                 .OrderByDescending(d => d.DatePublication)
                 .ToListAsync();
         }
@@ -176,14 +179,19 @@ namespace KelasiNaBiso.Services
         // PAGINATION
         // ═══════════════════════════════════════════════════════════════════
 
-        public async Task<PagedResult<DevoirADomicile>> GetAllPagedAsync(PagedRequest request, int? idEcole = null, int? idClasse = null)
+        public async Task<PagedResult<DevoirADomicile>> GetAllPagedAsync(
+            PagedRequest request,
+            int idAnneeScolaire,
+            int? idEcole = null,
+            int? idClasse = null)
         {
             IQueryable<DevoirADomicile> query = _context.DevoirsADomicile
                 .Include(d => d.Ecole)
                 .Include(d => d.Direction)
                 .Include(d => d.Agent)
                 .Include(d => d.Classe)
-                .Include(d => d.Cours);
+                .Include(d => d.Cours)
+                .Where(d => d.IdAnneeScolaire == idAnneeScolaire);
 
             // Filtrer par école si spécifié
             if (idEcole.HasValue && idEcole.Value > 0)
@@ -230,13 +238,13 @@ namespace KelasiNaBiso.Services
             return await query.ToPagedAsync(request);
         }
 
-        public async Task<PagedResult<DevoirADomicile>> GetByClassePagedAsync(int idClasse, PagedRequest request)
+        public async Task<PagedResult<DevoirADomicile>> GetByClassePagedAsync(int idClasse, PagedRequest request, int idAnneeScolaire)
         {
             var query = _context.DevoirsADomicile
                 .Include(d => d.Agent)
                 .Include(d => d.Classe)
                 .Include(d => d.Cours)
-                .Where(d => d.IdClasse == idClasse);
+                .Where(d => d.IdClasse == idClasse && d.IdAnneeScolaire == idAnneeScolaire);
 
             // Filtrer par statut
             if (!request.IncludeInactive)
@@ -269,12 +277,16 @@ namespace KelasiNaBiso.Services
             return await query.ToPagedAsync(request);
         }
 
-        public async Task<PagedResult<DevoirADomicile>> GetByAgentPagedAsync(int idAgent, PagedRequest request, int? idClasse = null)
+        public async Task<PagedResult<DevoirADomicile>> GetByAgentPagedAsync(
+            int idAgent,
+            PagedRequest request,
+            int idAnneeScolaire,
+            int? idClasse = null)
         {
             var query = _context.DevoirsADomicile
                 .Include(d => d.Classe)
                 .Include(d => d.Cours)
-                .Where(d => d.IdAgent == idAgent);
+                .Where(d => d.IdAgent == idAgent && d.IdAnneeScolaire == idAnneeScolaire);
 
             // Filtrer par classe si spécifié
             if (idClasse.HasValue && idClasse.Value > 0)
@@ -310,12 +322,16 @@ namespace KelasiNaBiso.Services
             return await query.ToPagedAsync(request);
         }
 
-        public async Task<PagedResult<DevoirADomicile>> GetByEcolePagedAsync(int idEcole, PagedRequest request, int? idClasse = null)
+        public async Task<PagedResult<DevoirADomicile>> GetByEcolePagedAsync(
+            int idEcole,
+            PagedRequest request,
+            int idAnneeScolaire,
+            int? idClasse = null)
         {
             var query = _context.DevoirsADomicile
                 .Include(d => d.Agent)
                 .Include(d => d.Classe)
-                .Where(d => d.IdEcole == idEcole);
+                .Where(d => d.IdEcole == idEcole && d.IdAnneeScolaire == idAnneeScolaire);
 
             // Filtrer par classe si spécifié
             if (idClasse.HasValue && idClasse.Value > 0)
@@ -527,10 +543,9 @@ namespace KelasiNaBiso.Services
             // Parent : Vérifier si un enfant est dans la classe
             if (role == UserRoles.PARENT && utilisateur.IdTuteur.HasValue)
             {
-                var eleveDansClasse = await _context.Eleves
-                    .AnyAsync(e => e.IdTuteur == utilisateur.IdTuteur.Value 
-                        && e.IdClasse == idClasse 
-                        && e.Statut == true);
+                var eleveDansClasse = await _inscriptionResolver
+                    .FilterElevesInClasse(_context.Eleves, idClasse)
+                    .AnyAsync(e => e.IdTuteur == utilisateur.IdTuteur.Value);
 
                 if (eleveDansClasse)
                 {
@@ -547,10 +562,9 @@ namespace KelasiNaBiso.Services
                 // Chercher un élève lié au tuteur de l'utilisateur
                 if (utilisateur.IdTuteur.HasValue)
                 {
-                    var eleve = await _context.Eleves
-                        .FirstOrDefaultAsync(e => e.IdTuteur == utilisateur.IdTuteur.Value && 
-                                                   e.IdClasse == idClasse && 
-                                                   e.Statut == true);
+                    var eleve = await _inscriptionResolver
+                        .FilterElevesInClasse(_context.Eleves, idClasse)
+                        .FirstOrDefaultAsync(e => e.IdTuteur == utilisateur.IdTuteur.Value);
                     if (eleve != null)
                     {
                         _logger.LogInformation($"Élève {idUtilisateur} est dans la classe {idClasse}");

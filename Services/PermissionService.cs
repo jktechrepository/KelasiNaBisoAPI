@@ -79,9 +79,16 @@ namespace KelasiNaBiso.Services
                     return false;
                 }
 
+                // Super-Admin : accès total (sauf DENIED personnalisé déjà traité ci-dessus)
+                if (userRoles.Any(ur => ur.Role?.Nom == "Super-Admin"))
+                {
+                    _logger.LogInformation($"🔓 Super-Admin {userId} : permission '{permissionName}' accordée");
+                    return true;
+                }
+
                 var hasPermission = userRoles
-                    .SelectMany(ur => ur.Role.RolePermissions)
-                    .Any(rp => rp.Permission.Nom == permissionName && rp.Permission.Statut == true);
+                    .SelectMany(ur => ur.Role.RolePermissions ?? Enumerable.Empty<RolePermission>())
+                    .Any(rp => rp.Permission != null && rp.Permission.Nom == permissionName && rp.Permission.Statut == true);
 
                 var rolesNames = string.Join(", ", userRoles.Select(ur => ur.Role.Nom));
                 _logger.LogInformation($"🔐 Permission '{permissionName}' via rôles [{rolesNames}] pour utilisateur {userId}: {(hasPermission ? "✅ ACCORDÉE" : "❌ REFUSÉE")}");

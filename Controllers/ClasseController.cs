@@ -45,6 +45,7 @@ namespace KelasiNaBiso.Controllers
         /// </summary>
         [HttpGet]
         [Obsolete("Cette méthode n'est pas paginée et peut causer des problèmes de performance. Utilisez GET /api/Classe/paged")]
+        [RequireGlobalAccess]
         public async Task<ActionResult<IEnumerable<Classe>>> GetClasses()
         {
             var classes = await _classeRepository.GetAllAsync();
@@ -143,12 +144,19 @@ namespace KelasiNaBiso.Controllers
         //    return Ok(classes);
         //}
 
-        // GET: api/Classe/5/eleves
+        // GET: api/Classe/5/eleves?idAnneeScolaire=
         [HttpGet("{id}/eleves")]
-        public async Task<ActionResult<IEnumerable<Eleve>>> GetClasseEleves(int id)
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<IEnumerable<Eleve>>), 200)]
+        public async Task<IActionResult> GetClasseEleves(int id, [FromQuery] int? idAnneeScolaire = null)
         {
-            var eleves = await _classeRepository.GetElevesAsync(id);
-            return Ok(eleves);
+            try
+            {
+                return Ok(await _classeRepository.GetElevesAsync(id, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // GET: api/Classe/5/cours
@@ -159,12 +167,19 @@ namespace KelasiNaBiso.Controllers
             return Ok(cours);
         }
 
-        // GET: api/Classe/5/inscriptions
+        // GET: api/Classe/5/inscriptions?idAnneeScolaire=
         [HttpGet("{id}/inscriptions")]
-        public async Task<ActionResult<IEnumerable<Inscription>>> GetClasseInscriptions(int id)
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<IEnumerable<Inscription>>), 200)]
+        public async Task<IActionResult> GetClasseInscriptions(int id, [FromQuery] int? idAnneeScolaire = null)
         {
-            var inscriptions = await _classeRepository.GetInscriptionsAsync(id);
-            return Ok(inscriptions);
+            try
+            {
+                return Ok(await _classeRepository.GetInscriptionsAsync(id, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         //// GET: api/Classe/5/frais

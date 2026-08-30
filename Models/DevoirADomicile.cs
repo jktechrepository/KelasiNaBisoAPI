@@ -47,6 +47,9 @@ namespace KelasiNaBiso.Models
         
         [Required]
         public int IdClasse { get; set; } // Classe concernée
+
+        [Required]
+        public int IdAnneeScolaire { get; set; }
         
         public int? IdCours { get; set; } // Optionnel : cours spécifique
         
@@ -86,6 +89,10 @@ namespace KelasiNaBiso.Models
         [JsonIgnore]
         [ValidateNever]
         public Classe Classe { get; set; }
+
+        [JsonIgnore]
+        [ValidateNever]
+        public AnneeScolaire? AnneeScolaire { get; set; }
         
         [JsonIgnore]
         [ValidateNever]

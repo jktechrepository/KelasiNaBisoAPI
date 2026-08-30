@@ -91,15 +91,62 @@ namespace KelasiNaBiso.Services
                 .ToListAsync();
         }
 
+        /// <summary>
+        /// Année scolaire courante pour une école.
+        /// 1) Période de cours : DateDebut &lt;= now &lt;= DateFin.
+        /// 2) Vacances (gap entre fin année A et début année B) : retourne l'année B à venir.
+        /// </summary>
         public async Task<AnneeScolaire> GetAnneeCouranteAsync(int idEcole)
         {
             var now = DateTime.Now;
-            return await _context.AnneeScolaires
-               // .Include(a => a.Ecole)
-               // .Include(a => a.Inscriptions)
-               // .Include(a => a.Notes)
-               // .Include(a => a.Notifications)
-                .Where(a => a.IdEcole == idEcole && a.DateDebut <= now && a.DateFin >= now && a.Statut == true) // ✅ Filtrer actifs
+            var actives = _context.AnneeScolaires
+                .Where(a => a.IdEcole == idEcole && a.Statut == true);
+
+            var enSession = await actives
+                .Where(a => a.DateDebut <= now && a.DateFin >= now)
+                .FirstOrDefaultAsync();
+
+            if (enSession != null)
+                return enSession;
+
+            var anneePrecedenteTerminee = await actives
+                .Where(a => a.DateFin < now)
+                .OrderByDescending(a => a.DateFin)
+                .FirstOrDefaultAsync();
+
+            if (anneePrecedenteTerminee == null)
+                return null;
+
+            var prochaineAnnee = await actives
+                .Where(a => a.DateDebut > now)
+                .OrderBy(a => a.DateDebut)
+                .FirstOrDefaultAsync();
+
+            return prochaineAnnee;
+        }
+
+        /// <summary>
+        /// Année scolaire précédente pour une école (N-1 par rapport à l'année courante).
+        /// </summary>
+        public async Task<AnneeScolaire?> GetAnneePrecedenteAsync(int idEcole)
+        {
+            var actives = _context.AnneeScolaires
+                .Where(a => a.IdEcole == idEcole && a.Statut == true);
+
+            var courante = await GetAnneeCouranteAsync(idEcole);
+
+            if (courante != null)
+            {
+                return await actives
+                    .Where(a => a.DateFin < courante.DateDebut)
+                    .OrderByDescending(a => a.DateFin)
+                    .FirstOrDefaultAsync();
+            }
+
+            var now = DateTime.Now;
+            return await actives
+                .Where(a => a.DateFin < now)
+                .OrderByDescending(a => a.DateFin)
                 .FirstOrDefaultAsync();
         }
 

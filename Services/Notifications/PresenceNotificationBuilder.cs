@@ -22,7 +22,12 @@ namespace KelasiNaBiso.Services.Notifications
             var eleve = context.Eleve;
             var tuteur = context.Tuteur;
             var ecole = context.Ecole;
-            var classe = eleve.Classe;
+            var classe = eleve.Inscriptions
+                .Where(i => i.Statut == true &&
+                    (i.StatutInscription == "Confirmé" || i.StatutInscription == "Confirme" || i.StatutInscription.StartsWith("Confirm")))
+                .OrderByDescending(i => i.DateInscription)
+                .Select(i => i.Classe)
+                .FirstOrDefault();
 
             var heureArrivee = presence.HeureArrivee.ToString(@"hh\:mm");
             var dateFormatee = presence.DateDuJour.ToString("dd/MM/yyyy");

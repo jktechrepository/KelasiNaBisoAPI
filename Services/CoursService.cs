@@ -8,10 +8,12 @@ namespace KelasiNaBiso.Services
     public class CoursService : ICoursRepository
     {
         private readonly KelasiNaBisoDbContext _context;
+        private readonly EleveAnneeScopeHelper _scope;
 
-        public CoursService(KelasiNaBisoDbContext context)
+        public CoursService(KelasiNaBisoDbContext context, EleveAnneeScopeHelper scope)
         {
             _context = context;
+            _scope = scope;
         }
         
 
@@ -105,24 +107,49 @@ namespace KelasiNaBiso.Services
 
         // ⚠️ DEPRECATED : Les notes sont maintenant liées à Evaluation, pas directement à Cours
         // Cette méthode fonctionne via Evaluation.IdCours
-        public async Task<IEnumerable<Note>> GetNotesAsync(int idCours)
+        public async Task<IEnumerable<Note>> GetNotesAsync(int idCours, int? idAnneeScolaire = null)
         {
+            var idEcole = await ResolveEcoleForCoursAsync(idCours);
+            var annee = await _scope.ResolveIdAnneeScolaireAsync(idEcole, idAnneeScolaire);
+
             return await _context.Notes
                 .Include(n => n.Evaluation)
-              //  .Include(n => n.Eleve)
-              //  .Include(n => n.Professeur)
-              //  .Include(n => n.AnneeScolaire)
                 .Where(n => n.Evaluation.IdCours == idCours)
-                .Where(n => n.Statut == true) // ✅ Filtrer uniquement les notes actives
+                .Where(n => n.IdAnneeScolaire == annee)
+                .Where(n => n.Statut == true)
                 .ToListAsync();
         }
 
-        public async Task<IEnumerable<Evaluation>> GetEvaluationsAsync(int idCours)
+        public async Task<IEnumerable<Evaluation>> GetEvaluationsAsync(int idCours, int? idAnneeScolaire = null)
         {
+            var idEcole = await ResolveEcoleForCoursAsync(idCours);
+            var annee = await _scope.ResolveIdAnneeScolaireAsync(idEcole, idAnneeScolaire);
+
             return await _context.Evaluations
-            //    .Include(e => e.Classe)
-                .Where(e => e.IdCours == idCours)
+                .Where(e => e.IdCours == idCours && e.Statut == true)
+                .Where(e => _context.Notes.Any(n =>
+                    n.IdEvaluation == e.IdEvaluation
+                    && n.IdAnneeScolaire == annee
+                    && n.Statut == true)
+                    || !_context.Notes.Any(n =>
+                        n.IdEvaluation == e.IdEvaluation && n.Statut == true))
                 .ToListAsync();
+        }
+
+        private async Task<int> ResolveEcoleForCoursAsync(int idCours)
+        {
+            var idEcole = await _context.Cours
+                .AsNoTracking()
+                .Where(c => c.IdCours == idCours)
+                .Select(c => c.Classe != null && c.Classe.Direction != null
+                    ? c.Classe.Direction.IdEcole
+                    : (int?)null)
+                .FirstOrDefaultAsync();
+
+            if (!idEcole.HasValue || idEcole.Value <= 0)
+                throw new InvalidOperationException($"Cours {idCours} introuvable ou non rattaché à une école.");
+
+            return idEcole.Value;
         }
 
         public async Task<IEnumerable<RessourcePedagogique>> GetRessourcesAsync(int idCours)

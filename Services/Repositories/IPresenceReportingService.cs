@@ -41,6 +41,15 @@ namespace KelasiNaBiso.Services.Repositories
             DateTime? dateFin, 
             string? periode, 
             bool includeDetails);
+
+        /// <summary>
+        /// Feuille d'appel nominative : liste des élèves de la classe pour une date,
+        /// avec statut Present / Absent / Retard.
+        /// </summary>
+        Task<FeuilleAppelClasseDto> GetFeuilleAppelAsync(
+            int idClasse,
+            DateTime date,
+            int? idAnneeScolaire = null);
         
         /// <summary>
         /// Obtient le reporting de présence pour une option (groupement de classes)
@@ -173,7 +182,8 @@ namespace KelasiNaBiso.Services.Repositories
             int idEcole, 
             DateTime? date, 
             DateTime? dateDebut, 
-            DateTime? dateFin);
+            DateTime? dateFin,
+            int? idAnneeScolaire = null);
         
         /// <summary>
         /// Obtient la structure hiérarchique complète avec taux de présence

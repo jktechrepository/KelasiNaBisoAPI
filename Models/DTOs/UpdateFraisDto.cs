@@ -25,6 +25,9 @@ namespace KelasiNaBiso.Models.DTOs
         
         [StringLength(500)]
         public string? Description { get; set; }
+
+        public int? IdAnneeScolaire { get; set; }
+
+        public int? IdClasse { get; set; }
     }
 }
-

@@ -22,7 +22,7 @@ namespace KelasiNaBiso.Models.DTOs
         
         [Required]
         [MaxLength(20)]
-        public string StatutInscription { get; set; } = "En attente";
+        public string StatutInscription { get; set; } = "Confirmé";
 
         // Données de l'élève
         [Required]

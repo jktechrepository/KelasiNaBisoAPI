@@ -275,7 +275,7 @@ namespace KelasiNaBiso.Services
                     IdClasse = idClasse, // Utiliser directement l'ID fourni par le frontend
                     IdAnneeScolaire = idAnneeScolaire, // Utiliser directement l'ID fourni par le frontend
                     DateInscription = raw.DateInscription ?? DateTime.Now,
-                    StatutInscription = "En attente", // Défini par défaut
+                    StatutInscription = "Confirmé", // Défini par défaut
                     NomEleve = raw.NomEleve,
                     PostnomEleve = raw.PostnomEleve,
                     PrenomEleve = raw.PrenomEleve,

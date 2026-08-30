@@ -20,6 +20,7 @@ namespace KelasiNaBiso.Controllers
 
         // GET: api/VuePaiementsFraisParEcole
         [HttpGet]
+        [RequireGlobalAccess]
         public async Task<ActionResult<IEnumerable<VuePaiementsFraisParEcoleDTO>>> GetAll()
         {
             var paiements = await _vuePaiementsRepository.GetAllAsync();

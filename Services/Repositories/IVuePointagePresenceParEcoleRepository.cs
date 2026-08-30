@@ -134,8 +134,5 @@ namespace KelasiNaBiso.Services.Repositories
         Task<object> GetRapportCompletEnfantAsync(string contactParent, DateTime dateDebut, DateTime dateFin);
         Task<object> GetRapportMensuelEnfantAsync(string contactParent, int mois, int annee);
         Task<object> GetRapportTrimestrielEnfantAsync(string contactParent, int trimestre, int annee);
-        
-        // Méthode temporaire pour recréer la vue
-        void RecreateView();
     }
 }

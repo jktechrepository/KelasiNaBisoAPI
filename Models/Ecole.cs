@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 
 namespace KelasiNaBiso.Models
@@ -55,9 +54,6 @@ namespace KelasiNaBiso.Models
         [JsonIgnore]
         [ValidateNever]
         public ICollection<AnneeScolaire> AnneeScolaires { get; set; }
-        [JsonIgnore]
-        [ValidateNever]
-        public ICollection<Tuteur> Tuteurs { get; set; }
         [JsonIgnore]
         [ValidateNever]
         public ICollection<Agent> Agents { get; set; }

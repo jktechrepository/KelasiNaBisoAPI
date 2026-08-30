@@ -1,5 +1,6 @@
 using KelasiNaBiso.Models;
 using KelasiNaBisoAPI.Services.Repositories;
+using KelasiNaBiso.Attributes;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 
@@ -28,6 +29,7 @@ namespace KelasiNaBisoAPI.Controllers
         /// Récupère toutes les notifications
         /// </summary>
         [HttpGet]
+        [RequireGlobalAccess]
         public async Task<ActionResult<IEnumerable<Notification>>> GetAll()
         {
             try

@@ -25,6 +25,9 @@ namespace KelasiNaBiso.Models.DTOs.DevoirADomicile
         
         public int IdClasse { get; set; }
         public string? NomClasse { get; set; } // Pour affichage
+
+        public int IdAnneeScolaire { get; set; }
+        public string? LibelleAnneeScolaire { get; set; }
         
         public int? IdCours { get; set; }
         public string? NomCours { get; set; } // Pour affichage

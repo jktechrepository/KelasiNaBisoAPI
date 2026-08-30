@@ -17,11 +17,13 @@ namespace KelasiNaBiso.Services
     {
         private readonly KelasiNaBisoDbContext _context;
         private readonly IEmailService _emailService;
+        private readonly IInscriptionActiveResolver _inscriptionResolver;
 
-        public EcoleService(KelasiNaBisoDbContext context, IEmailService emailService)
+        public EcoleService(KelasiNaBisoDbContext context, IEmailService emailService, IInscriptionActiveResolver inscriptionResolver)
         {
             _context = context;
             _emailService = emailService;
+            _inscriptionResolver = inscriptionResolver;
         }
 
         public async Task<IEnumerable<Ecole>> GetAllAsync()
@@ -171,9 +173,8 @@ namespace KelasiNaBiso.Services
 
         public async Task<IEnumerable<Tuteur>> GetTuteursAsync(int idEcole)
         {
-            return await _context.Tuteurs
-              //  .Include(t => t.Eleves)
-                .Where(t => t.IdEcole == idEcole)
+            return await _inscriptionResolver
+                .FilterTuteursInEcole(_context.Tuteurs, idEcole)
                 .ToListAsync();
         }
 

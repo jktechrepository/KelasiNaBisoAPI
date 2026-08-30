@@ -13,8 +13,8 @@ namespace KelasiNaBiso.Services.Repositories
         Task<Cours> UpdateAsync(Cours cours);
         Task<bool> DeleteAsync(int id);
         Task<bool> ExistsAsync(int id);
-        Task<IEnumerable<Note>> GetNotesAsync(int idCours);
-        Task<IEnumerable<Evaluation>> GetEvaluationsAsync(int idCours);
+        Task<IEnumerable<Note>> GetNotesAsync(int idCours, int? idAnneeScolaire = null);
+        Task<IEnumerable<Evaluation>> GetEvaluationsAsync(int idCours, int? idAnneeScolaire = null);
         Task<IEnumerable<RessourcePedagogique>> GetRessourcesAsync(int idCours);
         
         // ✅ SOFT DELETE

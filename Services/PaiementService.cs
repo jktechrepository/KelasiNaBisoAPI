@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using KelasiNaBiso.Data;
 using KelasiNaBiso.Models;
+using KelasiNaBiso.Models.DTOs;
 using KelasiNaBiso.Models.DTOs.Paiement;
 using KelasiNaBiso.Models.DTOs.Pagination;
 using KelasiNaBiso.Models.DTOs.Reporting;
@@ -22,6 +23,8 @@ namespace KelasiNaBiso.Services
         private readonly INotificationDispatcher _notificationDispatcher;
         private readonly INotificationJobQueue _notificationJobQueue;
         private readonly IDashboardHubService _dashboardHubService;
+        private readonly IInscriptionActiveResolver _inscriptionResolver;
+        private readonly EleveAnneeScopeHelper _scope;
 
         public PaiementService(
             KelasiNaBisoDbContext context,
@@ -29,7 +32,9 @@ namespace KelasiNaBiso.Services
             ICacheService cacheService,
             INotificationDispatcher notificationDispatcher,
             INotificationJobQueue notificationJobQueue,
-            IDashboardHubService dashboardHubService)
+            IDashboardHubService dashboardHubService,
+            IInscriptionActiveResolver inscriptionResolver,
+            EleveAnneeScopeHelper scope)
         {
             _context = context;
             _cacheService = cacheService;
@@ -37,149 +42,116 @@ namespace KelasiNaBiso.Services
             _notificationDispatcher = notificationDispatcher;
             _notificationJobQueue = notificationJobQueue;
             _dashboardHubService = dashboardHubService;
+            _inscriptionResolver = inscriptionResolver;
+            _scope = scope;
         }
 
-        // ✅ NOUVELLES MÉTHODES PAGINÉES
-        public async Task<PagedResult<Paiement>> GetAllPagedAsync(PagedRequest request)
+        private IQueryable<Paiement> ApplyAnneeEcoleFilter(
+            IQueryable<Paiement> query, int idEcole, int idAnneeScolaire)
         {
-            var query = _context.Paiements
-               // .Include(p => p.Eleve)
-               // .Include(p => p.Utilisateur)
-               // .Include(p => p.Frais)
-                .AsQueryable();
+            var eleveIds = _scope.GetEleveIdsInEcoleAnnee(idEcole, idAnneeScolaire);
+            return query.Where(p =>
+                p.IdEleve != null
+                && eleveIds.Contains(p.IdEleve.Value)
+                && _context.Frais.Any(f =>
+                    f.IdFrais == p.IdFrais && f.IdAnneeScolaire == idAnneeScolaire));
+        }
 
-            // Filtrer par statut
+        private IQueryable<Paiement> ApplyAnneeEleveFilter(
+            IQueryable<Paiement> query, int idEleve, int idAnneeScolaire)
+        {
+            return query.Where(p =>
+                p.IdEleve == idEleve
+                && _context.Frais.Any(f =>
+                    f.IdFrais == p.IdFrais && f.IdAnneeScolaire == idAnneeScolaire));
+        }
+
+        private static IQueryable<Paiement> ApplyListFilters(IQueryable<Paiement> query, PagedRequest request)
+        {
             if (!request.IncludeInactive)
-            {
                 query = query.Where(p => p.Statut == true);
-            }
 
-            // Appliquer la recherche
             if (!string.IsNullOrWhiteSpace(request.SearchTerm))
             {
                 var searchLower = request.SearchTerm.ToLower();
                 query = query.Where(p =>
                     (p.ReferenceTransaction != null && p.ReferenceTransaction.ToLower().Contains(searchLower)) ||
                     (p.ModePaiement != null && p.ModePaiement.ToLower().Contains(searchLower)) ||
-                    (p.Commentaire != null && p.Commentaire.ToLower().Contains(searchLower))
-                );
+                    (p.Commentaire != null && p.Commentaire.ToLower().Contains(searchLower)));
             }
 
-            // Appliquer le tri
             if (!string.IsNullOrWhiteSpace(request.SortBy))
-            {
                 query = query.ApplySort(request.SortBy, request.SortDescending);
-            }
             else
-            {
-                // Tri par défaut : DatePaiement DESC (plus récent en premier)
                 query = request.SortDescending
                     ? query.OrderBy(p => p.DatePaiement)
                     : query.OrderByDescending(p => p.DatePaiement);
-            }
 
-            return await query.ToPagedAsync(request);
+            return query;
         }
 
-        public async Task<CursorPaginatedResult<Paiement>> GetAllCursorPagedAsync(CursorPaginationRequest request)
+        public async Task<ElevesAnneeScopedResult<PagedResult<Paiement>>> GetAllPagedAsync(
+            int idEcole, PagedRequest request, int? idAnneeScolaire = null)
         {
-            var query = _context.Paiements
-              //  .Include(p => p.Eleve)
-               // .Include(p => p.Utilisateur)
-               // .Include(p => p.Frais)
-                .AsQueryable();
+            var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole, idAnneeScolaire);
+            var query = ApplyAnneeEcoleFilter(_context.Paiements.AsQueryable(), ecole, annee);
+            query = ApplyListFilters(query, request);
+            var paged = await query.ToPagedAsync(request);
+            return EleveAnneeScopeHelper.Wrap(paged, ecole, annee);
+        }
 
-            // Filtrer par statut
+        public async Task<ElevesAnneeScopedResult<CursorPaginatedResult<Paiement>>> GetAllCursorPagedAsync(
+            int idEcole, CursorPaginationRequest request, int? idAnneeScolaire = null)
+        {
+            var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole, idAnneeScolaire);
+            var query = ApplyAnneeEcoleFilter(_context.Paiements.AsQueryable(), ecole, annee);
+
             if (!request.IncludeInactive)
-            {
                 query = query.Where(p => p.Statut == true);
-            }
 
-            // Appliquer la recherche
             if (!string.IsNullOrWhiteSpace(request.SearchTerm))
             {
                 var searchLower = request.SearchTerm.ToLower();
                 query = query.Where(p =>
                     (p.ReferenceTransaction != null && p.ReferenceTransaction.ToLower().Contains(searchLower)) ||
-                    (p.ModePaiement != null && p.ModePaiement.ToLower().Contains(searchLower))
-                );
+                    (p.ModePaiement != null && p.ModePaiement.ToLower().Contains(searchLower)));
             }
 
-            // Utiliser IdPaiement comme curseur
-            return await query.ToCursorPagedAsync(request, p => p.IdPaiement);
+            var paged = await query.ToCursorPagedAsync(request, p => p.IdPaiement);
+            return EleveAnneeScopeHelper.Wrap(paged, ecole, annee);
         }
 
-        public async Task<PagedResult<Paiement>> GetByElevePagedAsync(int idEleve, PagedRequest request)
+        public async Task<ElevesAnneeScopedResult<PagedResult<Paiement>>> GetByElevePagedAsync(
+            int idEleve, PagedRequest request, int? idAnneeScolaire = null)
         {
-            var query = _context.Paiements
-               // .Include(p => p.Eleve)
-               // .Include(p => p.Frais)
-               // .Include(p => p.Utilisateur)
-                .Where(p => p.IdEleve == idEleve);
+            var idEcole = await _inscriptionResolver.GetEcoleCouranteAsync(idEleve, idAnneeScolaire);
+            if (!idEcole.HasValue)
+                idEcole = await _inscriptionResolver.GetEcoleCouranteAsync(idEleve, null);
+            if (!idEcole.HasValue)
+                throw new InvalidOperationException($"Élève {idEleve} introuvable ou sans inscription confirmée.");
 
-            // Filtrer par statut
+            var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole.Value, idAnneeScolaire);
+            var query = ApplyAnneeEleveFilter(_context.Paiements.AsQueryable(), idEleve, annee);
             if (!request.IncludeInactive)
-            {
                 query = query.Where(p => p.Statut == true);
-            }
 
-            return await query.ToPagedAsync(request, p => p.DatePaiement);
+            var paged = await query.ToPagedAsync(request, p => p.DatePaiement);
+            return EleveAnneeScopeHelper.Wrap(paged, ecole, annee);
         }
 
-        public async Task<PagedResult<Paiement>> GetByEcolePagedAsync(int idEcole, PagedRequest request)
+        public async Task<ElevesAnneeScopedResult<PagedResult<Paiement>>> GetByEcolePagedAsync(
+            int idEcole, PagedRequest request, int? idAnneeScolaire = null) =>
+            await GetAllPagedAsync(idEcole, request, idAnneeScolaire);
+
+        public async Task<ElevesAnneeScopedResult<PagedResult<Paiement>>> GetByDateRangePagedAsync(
+            int idEcole, DateTime dateDebut, DateTime dateFin, PagedRequest request, int? idAnneeScolaire = null)
         {
-            var query = _context.Paiements
-               // .Include(p => p.Eleve)
-                //    .ThenInclude(e => e.Classe)
-                //        .ThenInclude(c => c.Direction)
-               // .Include(p => p.Frais)
-               // .Include(p => p.Utilisateur)
-                .Where(p => p.Eleve.Classe.Direction.IdEcole == idEcole);
-
-            // Filtrer par statut
-            if (!request.IncludeInactive)
-            {
-                query = query.Where(p => p.Statut == true);
-            }
-
-            // Appliquer la recherche
-            if (!string.IsNullOrWhiteSpace(request.SearchTerm))
-            {
-                var searchLower = request.SearchTerm.ToLower();
-                query = query.Where(p =>
-                    (p.ReferenceTransaction != null && p.ReferenceTransaction.ToLower().Contains(searchLower)) ||
-                    (p.ModePaiement != null && p.ModePaiement.ToLower().Contains(searchLower))
-                );
-            }
-
-            return await query.ToPagedAsync(request, p => p.DatePaiement);
-        }
-
-        public async Task<PagedResult<Paiement>> GetByDateRangePagedAsync(DateTime dateDebut, DateTime dateFin, PagedRequest request)
-        {
-            var query = _context.Paiements
-                //.Include(p => p.Eleve)
-               // .Include(p => p.Frais)
-               // .Include(p => p.Utilisateur)
+            var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole, idAnneeScolaire);
+            var query = ApplyAnneeEcoleFilter(_context.Paiements.AsQueryable(), ecole, annee)
                 .Where(p => p.DatePaiement >= dateDebut && p.DatePaiement <= dateFin);
-
-            // Filtrer par statut
-            if (!request.IncludeInactive)
-            {
-                query = query.Where(p => p.Statut == true);
-            }
-
-            // Appliquer la recherche
-            if (!string.IsNullOrWhiteSpace(request.SearchTerm))
-            {
-                var searchLower = request.SearchTerm.ToLower();
-                query = query.Where(p =>
-                    (p.ReferenceTransaction != null && p.ReferenceTransaction.ToLower().Contains(searchLower)) ||
-                    (p.ModePaiement != null && p.ModePaiement.ToLower().Contains(searchLower))
-                );
-            }
-
-            return await query.ToPagedAsync(request, p => p.DatePaiement);
+            query = ApplyListFilters(query, request);
+            var paged = await query.ToPagedAsync(request, p => p.DatePaiement);
+            return EleveAnneeScopeHelper.Wrap(paged, ecole, annee);
         }
 
         public async Task<PagedResult<Paiement>> GetByModePaiementPagedAsync(string modePaiement, PagedRequest request)
@@ -217,15 +189,15 @@ namespace KelasiNaBiso.Services
         }
 
         // ⚠️ DEPRECATED: Anciennes méthodes (conserver pour rétrocompatibilité)
-        public async Task<IEnumerable<Paiement>> GetAllAsync()
+        public async Task<ElevesAnneeScopedResult<IEnumerable<Paiement>>> GetAllAsync(
+            int idEcole, int? idAnneeScolaire = null)
         {
-            return await _context.Paiements
-               // .Include(p => p.Eleve)
-              //  .Include(p => p.Utilisateur)
-              //  .Include(p => p.Frais)
-                .Where(p => p.Statut == true) // ✅ Filtrer uniquement les paiements actifs
+            var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole, idAnneeScolaire);
+            var data = await ApplyAnneeEcoleFilter(_context.Paiements.AsQueryable(), ecole, annee)
+                .Where(p => p.Statut == true)
                 .OrderByDescending(p => p.DatePaiement)
                 .ToListAsync();
+            return EleveAnneeScopeHelper.Wrap<IEnumerable<Paiement>>(data, ecole, annee);
         }
 
         public async Task<Paiement> GetByIdAsync(int id)
@@ -246,14 +218,20 @@ namespace KelasiNaBiso.Services
                 .FirstOrDefaultAsync(p => p.ReferencePaiemenet == reference);
         }
 
-        public async Task<IEnumerable<Paiement>> GetByEleveAsync(int idEleve)
+        public async Task<ElevesAnneeScopedResult<IEnumerable<Paiement>>> GetByEleveAsync(
+            int idEleve, int? idAnneeScolaire = null)
         {
-            return await _context.Paiements
-               // .Include(p => p.Utilisateur)
-              //  .Include(p => p.Frais)
-                .Where(p => p.IdEleve == idEleve)
+            var idEcole = await _inscriptionResolver.GetEcoleCouranteAsync(idEleve, idAnneeScolaire);
+            if (!idEcole.HasValue)
+                idEcole = await _inscriptionResolver.GetEcoleCouranteAsync(idEleve, null);
+            if (!idEcole.HasValue)
+                throw new InvalidOperationException($"Élève {idEleve} introuvable ou sans inscription confirmée.");
+
+            var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole.Value, idAnneeScolaire);
+            var data = await ApplyAnneeEleveFilter(_context.Paiements.AsQueryable(), idEleve, annee)
                 .OrderByDescending(p => p.DatePaiement)
                 .ToListAsync();
+            return EleveAnneeScopeHelper.Wrap<IEnumerable<Paiement>>(data, ecole, annee);
         }
 
         public async Task<IEnumerable<Paiement>> GetByUtilisateurAsync(int idUtilisateur)
@@ -276,16 +254,21 @@ namespace KelasiNaBiso.Services
                 .ToListAsync();
         }
 
-        public async Task<IEnumerable<Paiement>> GetByEcoleAsync(int idEcole)
+        public async Task<ElevesAnneeScopedResult<IEnumerable<Paiement>>> GetByEcoleAsync(
+            int idEcole, int? idAnneeScolaire = null)
         {
-            return await _context.Paiements
-                .Include(p => p.Eleve)
-                .Include(p => p.Utilisateur)
-                .Include(p => p.Frais)
-                .ThenInclude(f => f.Direction)
-                .Where(p => p.Frais.Direction.IdEcole == idEcole)
+            var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole, idAnneeScolaire);
+            var data = await ApplyAnneeEcoleFilter(
+                    _context.Paiements
+                        .Include(p => p.Eleve)
+                        .Include(p => p.Utilisateur)
+                        .Include(p => p.Frais)
+                        .ThenInclude(f => f.Direction)
+                        .AsQueryable(),
+                    ecole, annee)
                 .OrderByDescending(p => p.DatePaiement)
                 .ToListAsync();
+            return EleveAnneeScopeHelper.Wrap<IEnumerable<Paiement>>(data, ecole, annee);
         }
 
         public async Task<IEnumerable<Paiement>> GetByModePaiementAsync(string modePaiement)
@@ -574,37 +557,36 @@ namespace KelasiNaBiso.Services
             DateTime? date,
             DateTime? dateDebut,
             DateTime? dateFin,
-            string? periode)
+            string? periode,
+            int? idAnneeScolaire = null)
         {
             var periodeDto = ResolvePeriode(date, dateDebut, dateFin, periode);
-
-            // ✅ CACHE: Clé basée sur école + période
-            string cacheKey = $"dashboard_paiement_{idEcole}_{periodeDto.DateDebut:yyyyMMdd}_{periodeDto.DateFin:yyyyMMdd}";
+            var idAnnee = await _scope.ResolveIdAnneeScolaireAsync(idEcole, idAnneeScolaire);
+            string cacheKey = $"dashboard_paiement_{idEcole}_{idAnnee}_{periodeDto.DateDebut:yyyyMMdd}_{periodeDto.DateFin:yyyyMMdd}";
             
             return await _cacheService.GetOrCreateAsync(cacheKey, async () =>
             {
-                return await CalculerDashboardPaiementAsync(idEcole, periodeDto);
-            }, TimeSpan.FromMinutes(5)); // Cache de 5 minutes
+                return await CalculerDashboardPaiementAsync(idEcole, idAnnee, periodeDto);
+            }, TimeSpan.FromMinutes(5));
         }
 
-        /// <summary>
-        /// Calcule le dashboard de paiement (méthode privée pour le cache)
-        /// </summary>
         private async Task<DashboardPaiementDto> CalculerDashboardPaiementAsync(
             int idEcole,
+            int idAnneeScolaire,
             PeriodeDto periodeDto)
         {
             var ecole = await _context.Ecoles.FindAsync(idEcole);
             if (ecole == null)
                 throw new KeyNotFoundException($"École avec l'ID {idEcole} introuvable");
 
-            // Récupérer tous les paiements de l'école sur la période
-            var paiements = await _context.Paiements
-                .Include(p => p.Eleve)
-                .ThenInclude(e => e.Classe)
-                .ThenInclude(c => c.Direction)
-                .Include(p => p.Frais)
-                .Where(p => p.Eleve.Classe.Direction.IdEcole == idEcole)
+            var paiements = await ApplyAnneeEcoleFilter(
+                    _context.Paiements
+                        .Include(p => p.Eleve)
+                        .ThenInclude(e => e!.Inscriptions).ThenInclude(i => i.Classe)
+                        .ThenInclude(c => c.Direction)
+                        .Include(p => p.Frais)
+                        .AsQueryable(),
+                    idEcole, idAnneeScolaire)
                 .Where(p => p.DatePaiement >= periodeDto.DateDebut && p.DatePaiement <= periodeDto.DateFin)
                 .Where(p => p.Statut == true)
                 .ToListAsync();
@@ -612,19 +594,14 @@ namespace KelasiNaBiso.Services
             int nombrePaiements = paiements.Count;
             decimal montantTotal = (decimal)paiements.Sum(p => p.Montant);
 
-            // Récupérer tous les frais attendus pour cette école
             var fraisEcole = await _context.Frais
-                .Where(f => f.Direction.IdEcole == idEcole && f.Statut == true)
+                .Where(f => f.Direction.IdEcole == idEcole
+                    && f.IdAnneeScolaire == idAnneeScolaire
+                    && f.Statut == true)
                 .ToListAsync();
 
-            // ✅ CORRECTION : Vérifier null et utiliser CountAsync (plus performant)
-            // Note : Pour le dashboard paiement, on compte uniquement les élèves actifs
-            // car seuls les élèves actifs doivent payer (logique métier)
-            int nombreEleves = await _context.Eleves
-                .Where(e => e.Classe != null &&
-                           e.Classe.Direction != null &&
-                           e.Classe.Direction.IdEcole == idEcole &&
-                           e.Statut == true)
+            int nombreEleves = await _inscriptionResolver
+                .FilterElevesInEcole(_context.Eleves, idEcole, idAnneeScolaire)
                 .CountAsync();
             decimal montantAttendu = fraisEcole.Sum(f => (decimal)f.Montant) * nombreEleves;
 
@@ -716,27 +693,49 @@ namespace KelasiNaBiso.Services
             int idEleve,
             DateTime? dateDebut,
             DateTime? dateFin,
-            string? periode)
+            string? periode,
+            int? idAnneeScolaire = null)
         {
             var periodeDto = ResolvePeriode(null, dateDebut, dateFin, periode);
 
             var eleve = await _context.Eleves
-                .Include(e => e.Classe)
+                .Include(e => e.Inscriptions).ThenInclude(i => i.Classe)
                 .FirstOrDefaultAsync(e => e.IdEleve == idEleve);
 
             if (eleve == null)
                 throw new KeyNotFoundException($"Élève avec l'ID {idEleve} introuvable");
 
-            // Récupérer tous les frais attendus pour cet élève
-            var fraisAttendus = await _context.Frais
-                .Where(f => f.Direction.IdEcole == eleve.Classe.Direction.IdEcole)
-                .Where(f => f.Statut == true)
-                .ToListAsync();
+            var idEcole = await _inscriptionResolver.GetEcoleCouranteAsync(idEleve, idAnneeScolaire);
+            if (!idEcole.HasValue)
+                idEcole = await _inscriptionResolver.GetEcoleCouranteAsync(idEleve, null);
+            if (!idEcole.HasValue)
+                throw new InvalidOperationException($"Élève {idEleve} introuvable ou sans inscription confirmée.");
 
-            // Récupérer les paiements de l'élève sur la période
-            var paiements = await _context.Paiements
-                .Include(p => p.Frais)
-                .Where(p => p.IdEleve == idEleve)
+            var idAnnee = await _scope.ResolveIdAnneeScolaireAsync(idEcole.Value, idAnneeScolaire);
+            var inscriptionActive = await _inscriptionResolver.GetInscriptionActiveAsync(idEleve, idAnnee);
+            if (inscriptionActive == null)
+                throw new InvalidOperationException($"Aucune inscription active trouvée pour l'élève {idEleve}");
+
+            var idDirection = inscriptionActive.Classe?.IdDirection
+                ?? (await _context.Classes.AsNoTracking()
+                    .Where(c => c.IdClasse == inscriptionActive.IdClasse)
+                    .Select(c => c.IdDirection)
+                    .FirstOrDefaultAsync());
+
+            if (!idDirection.HasValue || idDirection.Value <= 0)
+                throw new InvalidOperationException($"Direction introuvable pour l'inscription de l'élève {idEleve}");
+
+            // Récupérer les frais attendus (direction + année + classe optionnelle)
+            var fraisAttendus = await FraisEligibility
+                .FilterForInscription(
+                    _context.Frais.AsNoTracking(),
+                    idDirection.Value,
+                    inscriptionActive.IdAnneeScolaire,
+                    inscriptionActive.IdClasse)
+                .ToListAsync();
+            var paiements = await ApplyAnneeEleveFilter(
+                    _context.Paiements.Include(p => p.Frais).AsQueryable(),
+                    idEleve, idAnnee)
                 .Where(p => p.DatePaiement >= periodeDto.DateDebut && p.DatePaiement <= periodeDto.DateFin)
                 .Where(p => p.Statut == true)
                 .ToListAsync();
@@ -793,7 +792,7 @@ namespace KelasiNaBiso.Services
                     IdEleve = eleve.IdEleve,
                     NomComplet = eleve.NomComplet ?? $"{eleve.Prenom} {eleve.Nom}",
                     Matricule = eleve.Matricule ?? "",
-                    Classe = eleve.Classe?.NomClasse ?? "",
+                    Classe = inscriptionActive?.Classe?.NomClasse ?? "",
                     PhotoUrl = eleve.PhotoUrl
                 },
                 Periode = periodeDto,
@@ -821,7 +820,8 @@ namespace KelasiNaBiso.Services
             DateTime? dateDebut,
             DateTime? dateFin,
             string? periode,
-            bool includeDetails)
+            bool includeDetails,
+            int? idAnneeScolaire = null)
         {
             var periodeDto = ResolvePeriode(date, dateDebut, dateFin, periode);
 
@@ -835,14 +835,18 @@ namespace KelasiNaBiso.Services
             if (classe == null)
                 throw new KeyNotFoundException($"Classe avec l'ID {idClasse} introuvable");
 
-            var elevesClasse = await _context.Eleves
-                .Where(e => e.IdClasse == idClasse && e.Statut == true)
-                .ToListAsync();
+            var (idEcole, idAnnee) = await _scope.ResolveClasseAnneeAsync(idClasse, idAnneeScolaire);
+            var idDirection = classe.IdDirection
+                ?? throw new InvalidOperationException($"Direction introuvable pour la classe {idClasse}");
+
+            var elevesClasseQuery = _inscriptionResolver.FilterElevesInClasse(_context.Eleves, idClasse, idAnnee);
+            var elevesClasse = await elevesClasseQuery.ToListAsync();
+            var eleveIds = elevesClasse.Select(e => e.IdEleve).ToList();
 
             int effectifTotal = elevesClasse.Count;
 
-            var fraisEcole = await _context.Frais
-                .Where(f => f.Direction.IdEcole == classe.Direction.IdEcole && f.Statut == true)
+            var fraisEcole = await FraisEligibility
+                .FilterForInscription(_context.Frais.AsNoTracking(), idDirection, idAnnee, idClasse)
                 .ToListAsync();
 
             decimal montantAttendu = fraisEcole.Sum(f => (decimal)f.Montant) * effectifTotal;
@@ -850,7 +854,7 @@ namespace KelasiNaBiso.Services
             var paiementsClasse = await _context.Paiements
                 .Include(p => p.Eleve)
                 .Include(p => p.Frais)
-                .Where(p => p.Eleve.IdClasse == idClasse)
+                .Where(p => p.IdEleve != null && eleveIds.Contains(p.IdEleve.Value))
                 .Where(p => p.DatePaiement >= periodeDto.DateDebut && p.DatePaiement <= periodeDto.DateFin)
                 .Where(p => p.Statut == true)
                 .ToListAsync();
@@ -984,16 +988,7 @@ namespace KelasiNaBiso.Services
                 // Récupérer l'idEcole depuis l'élève
                 if (paiement.IdEleve.HasValue)
                 {
-                    // Charger l'élève avec ses relations pour récupérer l'école
-                    var eleve = await _context.Eleves
-                        .Include(e => e.Classe)
-                            .ThenInclude(c => c.Direction)
-                        .FirstOrDefaultAsync(e => e.IdEleve == paiement.IdEleve.Value);
-
-                    if (eleve?.Classe?.Direction != null)
-                    {
-                        idEcole = eleve.Classe.Direction.IdEcole;
-                    }
+                    idEcole = await _inscriptionResolver.GetEcoleCouranteAsync(paiement.IdEleve.Value);
                 }
 
                 // Notifier la mise à jour du dashboard si on a trouvé l'école

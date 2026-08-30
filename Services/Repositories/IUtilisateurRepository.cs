@@ -7,6 +7,8 @@ namespace KelasiNaBiso.Services.Repositories
         Task<IEnumerable<V_Utilisateur>> GetAllAsync();
         Task<Utilisateur> GetByIdAsync(int id);
         Task<Utilisateur> GetByEmailAsync(string email);
+        /// <summary>Recherche par email sans filtre Statut (admin / reset).</summary>
+        Task<Utilisateur?> GetByEmailAnyStatusAsync(string email);
         Task<Utilisateur> GetByDefaultUsernameAsync(string defaultUsername);
         Task<V_Utilisateur> GetByReferenceAsync(Guid reference);
         Task<IEnumerable<V_Utilisateur>> GetByEcoleAsync(int idEcole);

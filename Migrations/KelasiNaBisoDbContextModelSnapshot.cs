@@ -3,6 +3,7 @@ using System;
 using KelasiNaBiso.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -16,7 +17,7 @@ namespace KelasiNaBiso.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "6.0.25")
+                .HasAnnotation("ProductVersion", "6.0.36")
                 .HasAnnotation("Relational:MaxIdentifierLength", 64);
 
             modelBuilder.Entity("KelasiNaBiso.Models.AffectationCours", b =>
@@ -24,6 +25,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdAffectationCours")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdAffectationCours"));
 
                     b.Property<string>("Commentaire")
                         .HasMaxLength(500)
@@ -66,6 +69,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdAgent")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdAgent"));
 
                     b.Property<string>("Avenue")
                         .HasColumnType("longtext");
@@ -164,6 +169,8 @@ namespace KelasiNaBiso.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdAnneeScolaire"));
+
                     b.Property<DateTime>("DateCreation")
                         .HasColumnType("datetime(6)");
 
@@ -196,6 +203,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<long>("IdAudit")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("IdAudit"));
 
                     b.Property<string>("Action")
                         .IsRequired()
@@ -293,6 +302,8 @@ namespace KelasiNaBiso.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
 
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("IdRecipient"));
+
                     b.Property<DateTime?>("DateEnvoi")
                         .HasColumnType("datetime(6)");
 
@@ -354,6 +365,8 @@ namespace KelasiNaBiso.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdClasse"));
+
                     b.Property<DateTime?>("DateCreation")
                         .HasColumnType("datetime(6)");
 
@@ -390,6 +403,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdCampaign")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdCampaign"));
 
                     b.Property<string>("ChannelsJson")
                         .IsRequired()
@@ -455,6 +470,8 @@ namespace KelasiNaBiso.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
 
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("IdHistory"));
+
                     b.Property<string>("Action")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -490,6 +507,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdSegment")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdSegment"));
 
                     b.Property<int>("CreatedBy")
                         .HasColumnType("int");
@@ -536,6 +555,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdTemplate")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdTemplate"));
 
                     b.Property<string>("ContenuMarkdown")
                         .IsRequired()
@@ -597,6 +618,8 @@ namespace KelasiNaBiso.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdCours"));
+
                     b.Property<DateTime?>("DateCreation")
                         .HasColumnType("datetime(6)");
 
@@ -624,170 +647,9 @@ namespace KelasiNaBiso.Migrations
                     b.ToTable("Cours");
                 });
 
-            modelBuilder.Entity("KelasiNaBiso.Models.DevoirADomicile", b =>
-                {
-                    b.Property<int>("IdDevoirADomicile")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    b.Property<string>("CheminFichier")
-                        .HasMaxLength(1000)
-                        .HasColumnType("varchar(1000)");
-
-                    b.Property<int>("CoefficientDevoir")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Contenu")
-                        .HasMaxLength(5000)
-                        .HasColumnType("varchar(5000)");
-
-                    b.Property<DateTime>("DateCreation")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime?>("DateLimite")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime?>("DateModification")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime>("DatePublication")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(1000)
-                        .HasColumnType("varchar(1000)");
-
-                    b.Property<int>("IdAgent")
-                        .HasColumnType("int");
-
-                    b.Property<int>("IdClasse")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("IdCours")
-                        .HasColumnType("int");
-
-                    b.Property<int>("IdDirection")
-                        .HasColumnType("int");
-
-                    b.Property<int>("IdEcole")
-                        .HasColumnType("int");
-
-                    b.Property<string>("NomFichier")
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
-
-                    b.Property<int>("NombreTelechargements")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("Statut")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<long?>("TailleFichier")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("Titre")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
-
-                    b.Property<string>("TypeMIME")
-                        .HasMaxLength(100)
-                        .HasColumnType("varchar(100)");
-
-                    b.HasKey("IdDevoirADomicile");
-
-                    b.HasIndex("DatePublication")
-                        .HasDatabaseName("IX_DevoirADomicile_DatePublication");
-
-                    b.HasIndex("IdAgent")
-                        .HasDatabaseName("IX_DevoirADomicile_IdAgent");
-
-                    b.HasIndex("IdClasse")
-                        .HasDatabaseName("IX_DevoirADomicile_IdClasse");
-
-                    b.HasIndex("IdCours");
-
-                    b.HasIndex("IdDirection")
-                        .HasDatabaseName("IX_DevoirADomicile_IdDirection");
-
-                    b.HasIndex("IdEcole")
-                        .HasDatabaseName("IX_DevoirADomicile_IdEcole");
-
-                    b.HasIndex("IdClasse", "Statut")
-                        .HasDatabaseName("IX_DevoirADomicile_Classe_Statut");
-
-                    b.ToTable("DevoirsADomicile");
-                });
-
-            modelBuilder.Entity("KelasiNaBiso.Models.Direction", b =>
-                {
-                    b.Property<int>("IdDirection")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("DateCreation")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<int?>("IdEcole")
-                        .HasColumnType("int");
-
-                    b.Property<string>("NiveauEnseignement")
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
-
-                    b.Property<string>("NomDirection")
-                        .IsRequired()
-                        .HasColumnType("varchar(255)");
-
-                    b.Property<bool?>("Statut")
-                        .HasColumnType("tinyint(1)");
-
-                    b.HasKey("IdDirection");
-
-                    b.HasIndex("IdEcole");
-
-                    b.HasIndex("NomDirection", "IdEcole")
-                        .IsUnique();
-
-                    b.ToTable("Directions");
-                });
-
-            modelBuilder.Entity("KelasiNaBiso.Models.Document", b =>
-                {
-                    b.Property<int>("IdDocument")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("DateCreation")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<int>("IdEleve")
-                        .HasColumnType("int");
-
-                    b.Property<int>("IdUtilisateur")
-                        .HasColumnType("int");
-
-                    b.Property<bool?>("Statut")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<string>("TypeDocument")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("varchar(100)");
-
-                    b.HasKey("IdDocument");
-
-                    b.HasIndex("IdEleve");
-
-                    b.HasIndex("IdUtilisateur");
-
-                    b.ToTable("Documents");
-                });
-
             modelBuilder.Entity("KelasiNaBiso.Models.DTOs.EleveParEcoleDTO", b =>
                 {
                     b.Property<int>("IdEleve")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
                     b.Property<int?>("Age")
@@ -942,13 +804,14 @@ namespace KelasiNaBiso.Migrations
 
                     b.HasKey("IdEleve");
 
-                    b.ToView("EleveParEcole");
+                    b.ToTable((string)null);
+
+                    b.ToView("EleveParEcole", (string)null);
                 });
 
             modelBuilder.Entity("KelasiNaBiso.Models.DTOs.VuePaiementsFraisParEcoleDTO", b =>
                 {
                     b.Property<int>("IdPaiement")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
                     b.Property<int?>("Age")
@@ -1193,13 +1056,14 @@ namespace KelasiNaBiso.Migrations
 
                     b.HasKey("IdPaiement");
 
-                    b.ToView("VuePaiementsFraisParEcole");
+                    b.ToTable((string)null);
+
+                    b.ToView("VuePaiementsFraisParEcole", (string)null);
                 });
 
             modelBuilder.Entity("KelasiNaBiso.Models.DTOs.VuePointagePresenceParEcoleDTO", b =>
                 {
                     b.Property<int>("IdPresence")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
                     b.Property<int?>("Age")
@@ -1441,7 +1305,9 @@ namespace KelasiNaBiso.Migrations
 
                     b.HasKey("IdPresence");
 
-                    b.ToView("VuePointagePresenceParEcole");
+                    b.ToTable((string)null);
+
+                    b.ToView("VuePointagePresenceParEcole", (string)null);
                 });
 
             modelBuilder.Entity("KelasiNaBiso.Models.DTOs.VueRepertoireAgentsParParentDTO", b =>
@@ -1562,7 +1428,175 @@ namespace KelasiNaBiso.Migrations
 
                     b.HasKey("IdAgent", "IdCours", "IdEleve");
 
-                    b.ToView("Vue_RepertoireAgentsParParent");
+                    b.ToTable((string)null);
+
+                    b.ToView("Vue_RepertoireAgentsParParent", (string)null);
+                });
+
+            modelBuilder.Entity("KelasiNaBiso.Models.DevoirADomicile", b =>
+                {
+                    b.Property<int>("IdDevoirADomicile")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdDevoirADomicile"));
+
+                    b.Property<string>("CheminFichier")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<int>("CoefficientDevoir")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Contenu")
+                        .HasMaxLength(5000)
+                        .HasColumnType("varchar(5000)");
+
+                    b.Property<DateTime>("DateCreation")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("DateLimite")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("DateModification")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("DatePublication")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<int>("IdAgent")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdClasse")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdCours")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdDirection")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdEcole")
+                        .HasColumnType("int");
+
+                    b.Property<string>("NomFichier")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<int>("NombreTelechargements")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("Statut")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<long?>("TailleFichier")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Titre")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("TypeMIME")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.HasKey("IdDevoirADomicile");
+
+                    b.HasIndex("DatePublication")
+                        .HasDatabaseName("IX_DevoirADomicile_DatePublication");
+
+                    b.HasIndex("IdAgent")
+                        .HasDatabaseName("IX_DevoirADomicile_IdAgent");
+
+                    b.HasIndex("IdClasse")
+                        .HasDatabaseName("IX_DevoirADomicile_IdClasse");
+
+                    b.HasIndex("IdCours");
+
+                    b.HasIndex("IdDirection")
+                        .HasDatabaseName("IX_DevoirADomicile_IdDirection");
+
+                    b.HasIndex("IdEcole")
+                        .HasDatabaseName("IX_DevoirADomicile_IdEcole");
+
+                    b.HasIndex("IdClasse", "Statut")
+                        .HasDatabaseName("IX_DevoirADomicile_Classe_Statut");
+
+                    b.ToTable("DevoirsADomicile");
+                });
+
+            modelBuilder.Entity("KelasiNaBiso.Models.Direction", b =>
+                {
+                    b.Property<int>("IdDirection")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdDirection"));
+
+                    b.Property<DateTime?>("DateCreation")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int?>("IdEcole")
+                        .HasColumnType("int");
+
+                    b.Property<string>("NiveauEnseignement")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("NomDirection")
+                        .IsRequired()
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<bool?>("Statut")
+                        .HasColumnType("tinyint(1)");
+
+                    b.HasKey("IdDirection");
+
+                    b.HasIndex("IdEcole");
+
+                    b.HasIndex("NomDirection", "IdEcole")
+                        .IsUnique();
+
+                    b.ToTable("Directions");
+                });
+
+            modelBuilder.Entity("KelasiNaBiso.Models.Document", b =>
+                {
+                    b.Property<int>("IdDocument")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdDocument"));
+
+                    b.Property<DateTime>("DateCreation")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("IdEleve")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdUtilisateur")
+                        .HasColumnType("int");
+
+                    b.Property<bool?>("Statut")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("TypeDocument")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.HasKey("IdDocument");
+
+                    b.HasIndex("IdEleve");
+
+                    b.HasIndex("IdUtilisateur");
+
+                    b.ToTable("Documents");
                 });
 
             modelBuilder.Entity("KelasiNaBiso.Models.Ecole", b =>
@@ -1570,6 +1604,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdEcole")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdEcole"));
 
                     b.Property<bool?>("AcceptNotification")
                         .HasColumnType("tinyint(1)");
@@ -1652,6 +1688,8 @@ namespace KelasiNaBiso.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdEcoleBeneficiaireMomo"));
+
                     b.Property<DateTime>("DateCreation")
                         .HasColumnType("datetime(6)");
 
@@ -1703,6 +1741,8 @@ namespace KelasiNaBiso.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdEcoleInfoPaiementMobile"));
+
                     b.Property<bool>("CarteActif")
                         .HasColumnType("tinyint(1)");
 
@@ -1746,6 +1786,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdEcoleWallet")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdEcoleWallet"));
 
                     b.Property<DateTime>("DateCreation")
                         .HasColumnType("datetime(6)");
@@ -1793,6 +1835,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdEcoleWalletMouvement")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdEcoleWalletMouvement"));
 
                     b.Property<string>("Commentaire")
                         .HasMaxLength(500)
@@ -1851,6 +1895,8 @@ namespace KelasiNaBiso.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdEleve"));
+
                     b.Property<string>("Avenue")
                         .HasColumnType("longtext");
 
@@ -1868,9 +1914,6 @@ namespace KelasiNaBiso.Migrations
 
                     b.Property<string>("Genre")
                         .HasColumnType("longtext");
-
-                    b.Property<int?>("IdClasse")
-                        .HasColumnType("int");
 
                     b.Property<int?>("IdTuteur")
                         .HasColumnType("int");
@@ -1923,8 +1966,6 @@ namespace KelasiNaBiso.Migrations
 
                     b.HasKey("IdEleve");
 
-                    b.HasIndex("IdClasse");
-
                     b.HasIndex("IdTuteur");
 
                     b.HasIndex("Matricule")
@@ -1935,9 +1976,9 @@ namespace KelasiNaBiso.Migrations
                         .IsUnique()
                         .HasDatabaseName("IX_Eleves_SerialNumber_Unique");
 
-                    b.HasIndex("Nom", "Postnom", "Prenom", "DateNaissance", "IdTuteur", "IdClasse")
+                    b.HasIndex("Nom", "Postnom", "Prenom", "DateNaissance", "IdTuteur")
                         .IsUnique()
-                        .HasDatabaseName("IX_Eleves_Unique_Nom_Prenom_DateNaissance_Tuteur_Classe");
+                        .HasDatabaseName("IX_Eleves_Unique_Nom_Prenom_DateNaissance_Tuteur");
 
                     b.ToTable("Eleves");
                 });
@@ -1947,6 +1988,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdEvaluation")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdEvaluation"));
 
                     b.Property<double?>("Coefficient")
                         .HasColumnType("double");
@@ -1987,6 +2030,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdFilePayoutMoko")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdFilePayoutMoko"));
 
                     b.Property<DateTime>("DateCreation")
                         .HasColumnType("datetime(6)");
@@ -2074,6 +2119,8 @@ namespace KelasiNaBiso.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdFrais"));
+
                     b.Property<DateTime>("DateCreation")
                         .HasColumnType("datetime(6)");
 
@@ -2084,6 +2131,12 @@ namespace KelasiNaBiso.Migrations
                         .IsRequired()
                         .HasMaxLength(10)
                         .HasColumnType("varchar(10)");
+
+                    b.Property<int>("IdAnneeScolaire")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IdClasse")
+                        .HasColumnType("int");
 
                     b.Property<int>("IdDirection")
                         .HasColumnType("int");
@@ -2107,7 +2160,14 @@ namespace KelasiNaBiso.Migrations
 
                     b.HasKey("IdFrais");
 
+                    b.HasIndex("IdAnneeScolaire");
+
+                    b.HasIndex("IdClasse");
+
                     b.HasIndex("IdDirection");
+
+                    b.HasIndex("IdDirection", "IdAnneeScolaire", "LibelleFrais", "IdClasse")
+                        .HasDatabaseName("IX_Frais_Direction_Annee_Libelle_Classe");
 
                     b.ToTable("Frais");
                 });
@@ -2117,6 +2177,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdGroupe")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdGroupe"));
 
                     b.Property<int?>("CreePar")
                         .HasColumnType("int");
@@ -2149,6 +2211,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdHoraire")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdHoraire"));
 
                     b.Property<DateTime>("DateCreation")
                         .HasColumnType("datetime(6)");
@@ -2189,6 +2253,8 @@ namespace KelasiNaBiso.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdInscription"));
+
                     b.Property<DateTime>("DateCreation")
                         .HasColumnType("datetime(6)");
 
@@ -2227,7 +2293,8 @@ namespace KelasiNaBiso.Migrations
 
                     b.HasIndex("IdEcole");
 
-                    b.HasIndex("IdEleve");
+                    b.HasIndex("IdEleve", "IdAnneeScolaire", "Statut")
+                        .HasDatabaseName("IX_Inscriptions_Eleve_Annee_Statut");
 
                     b.ToTable("Inscriptions");
                 });
@@ -2237,6 +2304,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdMessage")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdMessage"));
 
                     b.Property<string>("ContenuMessage")
                         .IsRequired()
@@ -2279,6 +2348,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdNote")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdNote"));
 
                     b.Property<string>("Appreciation")
                         .IsRequired()
@@ -2332,6 +2403,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdNotification")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdNotification"));
 
                     b.Property<int?>("AgentIdAgent")
                         .HasColumnType("int");
@@ -2451,6 +2524,8 @@ namespace KelasiNaBiso.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdOption"));
+
                     b.Property<DateTime>("DateCreation")
                         .HasColumnType("datetime(6)");
 
@@ -2477,6 +2552,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdPaiement")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdPaiement"));
 
                     b.Property<string>("Commentaire")
                         .HasColumnType("longtext");
@@ -2550,6 +2627,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdPaiementCrashed")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdPaiementCrashed"));
 
                     b.Property<string>("Commentaire")
                         .HasMaxLength(1000)
@@ -2657,6 +2736,8 @@ namespace KelasiNaBiso.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdPreference"));
+
                     b.Property<string>("Canal")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -2692,6 +2773,8 @@ namespace KelasiNaBiso.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdPasswordResetToken"));
+
                     b.Property<DateTime>("DateCreation")
                         .HasColumnType("datetime(6)");
 
@@ -2724,6 +2807,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdPermission")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdPermission"));
 
                     b.Property<string>("Action")
                         .IsRequired()
@@ -2760,6 +2845,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdPresence")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdPresence"));
 
                     b.Property<DateTime>("DateCreation")
                         .HasColumnType("datetime(6)");
@@ -2824,6 +2911,8 @@ namespace KelasiNaBiso.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdRefreshToken"));
+
                     b.Property<DateTime>("DateCreation")
                         .HasColumnType("datetime(6)");
 
@@ -2862,6 +2951,8 @@ namespace KelasiNaBiso.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdRessourcePedagogique"));
+
                     b.Property<DateTime>("DateCreation")
                         .HasColumnType("datetime(6)");
 
@@ -2896,6 +2987,8 @@ namespace KelasiNaBiso.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdRole"));
+
                     b.Property<DateTime>("DateCreation")
                         .HasColumnType("datetime(6)");
 
@@ -2928,6 +3021,8 @@ namespace KelasiNaBiso.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdRolePermission"));
+
                     b.Property<DateTime>("DateAttribution")
                         .HasColumnType("datetime(6)");
 
@@ -2955,6 +3050,8 @@ namespace KelasiNaBiso.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdSection"));
+
                     b.Property<DateTime>("DateCreation")
                         .HasColumnType("datetime(6)");
 
@@ -2981,6 +3078,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdSmsLog")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdSmsLog"));
 
                     b.Property<int?>("CodeErreur")
                         .HasColumnType("int");
@@ -3057,6 +3156,8 @@ namespace KelasiNaBiso.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdTitulaireClasse"));
+
                     b.Property<string>("Commentaire")
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
@@ -3103,6 +3204,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdTransactionMoko")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdTransactionMoko"));
 
                     b.Property<string>("Action")
                         .IsRequired()
@@ -3200,6 +3303,8 @@ namespace KelasiNaBiso.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdTuteur"));
+
                     b.Property<DateTime?>("DateCreation")
                         .HasColumnType("datetime(6)");
 
@@ -3210,9 +3315,6 @@ namespace KelasiNaBiso.Migrations
                         .IsRequired()
                         .HasMaxLength(10)
                         .HasColumnType("varchar(10)");
-
-                    b.Property<int?>("IdEcole")
-                        .HasColumnType("int");
 
                     b.Property<string>("NomComplet")
                         .IsRequired()
@@ -3246,8 +3348,6 @@ namespace KelasiNaBiso.Migrations
                         .IsUnique()
                         .HasDatabaseName("IX_Tuteurs_Email_Unique");
 
-                    b.HasIndex("IdEcole");
-
                     b.ToTable("Tuteurs");
                 });
 
@@ -3256,6 +3356,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdUserDevice")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdUserDevice"));
 
                     b.Property<DateTime?>("DateDerniereUtilisation")
                         .HasColumnType("datetime(6)");
@@ -3303,6 +3405,8 @@ namespace KelasiNaBiso.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdUserPermission"));
+
                     b.Property<int?>("AttribueParIdUtilisateur")
                         .HasColumnType("int");
 
@@ -3341,6 +3445,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdUserRole")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdUserRole"));
 
                     b.Property<DateTime>("DateAttribution")
                         .HasColumnType("datetime(6)");
@@ -3383,6 +3489,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdUtilisateur")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdUtilisateur"));
 
                     b.Property<string>("Avenue")
                         .HasColumnType("longtext");
@@ -3485,7 +3593,6 @@ namespace KelasiNaBiso.Migrations
             modelBuilder.Entity("KelasiNaBiso.Models.V_Eleve", b =>
                 {
                     b.Property<int>("IdEleve")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
                     b.Property<string>("Avenue")
@@ -3659,13 +3766,14 @@ namespace KelasiNaBiso.Migrations
 
                     b.HasKey("IdEleve");
 
-                    b.ToView("V_Eleve");
+                    b.ToTable((string)null);
+
+                    b.ToView("V_Eleve", (string)null);
                 });
 
             modelBuilder.Entity("KelasiNaBiso.Models.V_Utilisateur", b =>
                 {
                     b.Property<int>("IdUtilisateur")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
                     b.Property<string>("Avenue")
@@ -3790,7 +3898,9 @@ namespace KelasiNaBiso.Migrations
 
                     b.HasKey("IdUtilisateur");
 
-                    b.ToView("V_Utilisateur");
+                    b.ToTable((string)null);
+
+                    b.ToView("V_Utilisateur", (string)null);
                 });
 
             modelBuilder.Entity("KelasiNaBiso.Models.Vacation", b =>
@@ -3798,6 +3908,8 @@ namespace KelasiNaBiso.Migrations
                     b.Property<int>("IdVacation")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("IdVacation"));
 
                     b.Property<DateTime>("DateCreation")
                         .HasColumnType("datetime(6)");
@@ -4197,17 +4309,10 @@ namespace KelasiNaBiso.Migrations
 
             modelBuilder.Entity("KelasiNaBiso.Models.Eleve", b =>
                 {
-                    b.HasOne("KelasiNaBiso.Models.Classe", "Classe")
-                        .WithMany("Eleves")
-                        .HasForeignKey("IdClasse")
-                        .OnDelete(DeleteBehavior.NoAction);
-
                     b.HasOne("KelasiNaBiso.Models.Tuteur", "Tuteur")
                         .WithMany("Eleves")
                         .HasForeignKey("IdTuteur")
                         .OnDelete(DeleteBehavior.NoAction);
-
-                    b.Navigation("Classe");
 
                     b.Navigation("Tuteur");
                 });
@@ -4265,11 +4370,26 @@ namespace KelasiNaBiso.Migrations
 
             modelBuilder.Entity("KelasiNaBiso.Models.Frais", b =>
                 {
+                    b.HasOne("KelasiNaBiso.Models.AnneeScolaire", "AnneeScolaire")
+                        .WithMany("Frais")
+                        .HasForeignKey("IdAnneeScolaire")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("KelasiNaBiso.Models.Classe", "Classe")
+                        .WithMany("Frais")
+                        .HasForeignKey("IdClasse")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.HasOne("KelasiNaBiso.Models.Direction", "Direction")
                         .WithMany("Frais")
                         .HasForeignKey("IdDirection")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
+
+                    b.Navigation("AnneeScolaire");
+
+                    b.Navigation("Classe");
 
                     b.Navigation("Direction");
                 });
@@ -4694,16 +4814,6 @@ namespace KelasiNaBiso.Migrations
                     b.Navigation("Paiement");
                 });
 
-            modelBuilder.Entity("KelasiNaBiso.Models.Tuteur", b =>
-                {
-                    b.HasOne("KelasiNaBiso.Models.Ecole", "Ecole")
-                        .WithMany("Tuteurs")
-                        .HasForeignKey("IdEcole")
-                        .OnDelete(DeleteBehavior.NoAction);
-
-                    b.Navigation("Ecole");
-                });
-
             modelBuilder.Entity("KelasiNaBiso.Models.UserDevice", b =>
                 {
                     b.HasOne("KelasiNaBiso.Models.Utilisateur", "Utilisateur")
@@ -4810,6 +4920,8 @@ namespace KelasiNaBiso.Migrations
 
             modelBuilder.Entity("KelasiNaBiso.Models.AnneeScolaire", b =>
                 {
+                    b.Navigation("Frais");
+
                     b.Navigation("Inscriptions");
 
                     b.Navigation("Notes");
@@ -4821,9 +4933,9 @@ namespace KelasiNaBiso.Migrations
                 {
                     b.Navigation("Cours");
 
-                    b.Navigation("Eleves");
-
                     b.Navigation("Evaluations");
+
+                    b.Navigation("Frais");
 
                     b.Navigation("Horaires");
 
@@ -4888,8 +5000,6 @@ namespace KelasiNaBiso.Migrations
                     b.Navigation("Sections");
 
                     b.Navigation("SegmentsCommunication");
-
-                    b.Navigation("Tuteurs");
 
                     b.Navigation("Utilisateurs");
 

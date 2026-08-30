@@ -51,7 +51,7 @@ namespace KelasiNaBiso.Models.DTOs
         // CHAMPS PROTÉGÉS (Non modifiables via cet endpoint)
         // ═══════════════════════════════════════════════════════════
         // ❌ SerialNumber       → Auto-généré ou endpoint dédié
-        // ❌ IdEcole            → Immuable (défini à la création)
+        // ❌ IdEcole            → Obsolète : école dérivée des inscriptions des enfants
         // ❌ Statut             → Endpoint dédié (/toggle-statut)
         // ❌ DateCreation       → Immuable (audit)
         // ❌ IdUtilisateur      → Géré automatiquement

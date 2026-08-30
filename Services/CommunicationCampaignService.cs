@@ -420,7 +420,7 @@ namespace KelasiNaBiso.Services
                 .Include(r => r.Utilisateur)
                 .ThenInclude(u => u.Tuteur)
                 .Include(r => r.Eleve)
-                .ThenInclude(e => e.Classe);
+                .ThenInclude(e => e!.Inscriptions).ThenInclude(i => i.Classe);
 
             if (!string.IsNullOrWhiteSpace(request.SearchTerm))
             {
@@ -460,7 +460,17 @@ namespace KelasiNaBiso.Services
                     DateEnvoi = r.DateEnvoi,
                     ErrorMessage = r.ErrorMessage,
                     NomEleve = r.Eleve != null ? r.Eleve.NomComplet ?? $"{r.Eleve.Prenom} {r.Eleve.Nom}" : null,
-                    Classe = r.Eleve != null && r.Eleve.Classe != null ? r.Eleve.Classe.NomClasse : null
+                    Classe = r.Eleve != null
+                        ? r.Eleve.Inscriptions
+                            .Where(i => i.Statut == true
+                                && i.StatutInscription != null
+                                && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                                    || i.StatutInscription == "Confirme"
+                                    || i.StatutInscription.StartsWith("Confirm")))
+                            .OrderByDescending(i => i.DateInscription)
+                            .Select(i => i.Classe != null ? i.Classe.NomClasse : null)
+                            .FirstOrDefault()
+                        : null
                 })
                 .ToListAsync(cancellationToken);
 
@@ -811,8 +821,13 @@ namespace KelasiNaBiso.Services
                                             where user.IdTuteur != null && user.Statut == true
                                             join tuteur in _context.Tuteurs.AsNoTracking() on user.IdTuteur equals tuteur.IdTuteur
                                             join eleve in _context.Eleves.AsNoTracking() on tuteur.IdTuteur equals eleve.IdTuteur
-                                            join classe in _context.Classes.AsNoTracking() on eleve.IdClasse equals classe.IdClasse
-                                            where classeIds.Contains(classe.IdClasse) && tuteur.IdEcole == campaign.IdEcole
+                                            join inscription in _context.Inscriptions.AsNoTracking() on eleve.IdEleve equals inscription.IdEleve
+                                            join classe in _context.Classes.AsNoTracking() on inscription.IdClasse equals classe.IdClasse
+                                            where classeIds.Contains(classe.IdClasse)
+                                                && inscription.IdEcole == campaign.IdEcole
+                                                && inscription.Statut == true
+                                                && inscription.StatutInscription != null
+                                                && inscription.StatutInscription.StartsWith("Confirm")
                                             select new RecipientCandidate
                                             {
                                                 IdUtilisateur = user.IdUtilisateur,
@@ -838,8 +853,14 @@ namespace KelasiNaBiso.Services
                                             where user.IdTuteur != null && user.Statut == true
                                             join tuteur in _context.Tuteurs.AsNoTracking() on user.IdTuteur equals tuteur.IdTuteur
                                             join eleve in _context.Eleves.AsNoTracking() on tuteur.IdTuteur equals eleve.IdTuteur
-                                            join classe in _context.Classes.AsNoTracking() on eleve.IdClasse equals classe.IdClasse
-                                            where classe.IdDirection != null && directionIds.Contains(classe.IdDirection.Value) && tuteur.IdEcole == campaign.IdEcole
+                                            join inscription in _context.Inscriptions.AsNoTracking() on eleve.IdEleve equals inscription.IdEleve
+                                            join classe in _context.Classes.AsNoTracking() on inscription.IdClasse equals classe.IdClasse
+                                            where classe.IdDirection != null
+                                                && directionIds.Contains(classe.IdDirection.Value)
+                                                && inscription.IdEcole == campaign.IdEcole
+                                                && inscription.Statut == true
+                                                && inscription.StatutInscription != null
+                                                && inscription.StatutInscription.StartsWith("Confirm")
                                             select new RecipientCandidate
                                             {
                                                 IdUtilisateur = user.IdUtilisateur,

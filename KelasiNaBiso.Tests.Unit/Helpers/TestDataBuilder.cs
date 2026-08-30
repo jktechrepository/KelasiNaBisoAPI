@@ -142,6 +142,95 @@ namespace KelasiNaBiso.Tests.Unit.Helpers
                 DateCreation = DateTime.Now
             };
         }
+
+        public static AnneeScolaire CreateAnneeScolaire(int id, int idEcole, string libelle, DateTime? debut = null, DateTime? fin = null, bool statut = true)
+        {
+            debut ??= new DateTime(DateTime.UtcNow.Year, 9, 1);
+            fin ??= debut.Value.AddYears(1).AddDays(-1);
+            return new AnneeScolaire
+            {
+                IdAnneeScolaire = id,
+                IdEcole = idEcole,
+                LibelleAnneeScolaire = libelle,
+                DateDebut = debut.Value,
+                DateFin = fin.Value,
+                Statut = statut,
+                DateCreation = DateTime.Now
+            };
+        }
+
+        public static Agent CreateAgent(int id, string nom, int? idEcole = null, bool statut = true)
+        {
+            return new Agent
+            {
+                IdAgent = id,
+                Nom = nom,
+                Postnom = "Test",
+                Prenom = "Agent",
+                Genre = "M",
+                DateNaissance = new DateTime(1985, 1, 1),
+                IdEcole = idEcole,
+                Statut = statut,
+                DateCreation = DateTime.Now
+            };
+        }
+
+        public static Tuteur CreateTuteur(int id, string nom, string? telephone = null, string? email = null, bool statut = true)
+        {
+            return new Tuteur
+            {
+                IdTuteur = id,
+                NomComplet = nom,
+                Genre = "M",
+                Telephone = telephone ?? $"+243900000{id:D3}",
+                Email = email,
+                Statut = statut,
+                DateCreation = DateTime.Now
+            };
+        }
+
+        public static Eleve CreateEleve(int id, int? idTuteur, string nom = "Eleve", bool statut = true)
+        {
+            return new Eleve
+            {
+                IdEleve = id,
+                Nom = nom,
+                Postnom = "Test",
+                Prenom = "Jean",
+                NomComplet = $"{nom} Test Jean",
+                Genre = "M",
+                DateNaissance = new DateTime(2015, 5, 1),
+                Nationalite = "RDC",
+                IdTuteur = idTuteur,
+                Statut = statut,
+                DateCreation = DateTime.Now
+            };
+        }
+
+        public static Inscription CreateInscription(
+            int id,
+            int idEleve,
+            int idEcole,
+            int idClasse,
+            int idAnneeScolaire,
+            string statutInscription = "Confirmé",
+            bool statut = true,
+            DateTime? dateInscription = null)
+        {
+            return new Inscription
+            {
+                IdInscription = id,
+                Type = "Inscription",
+                IdEleve = idEleve,
+                IdEcole = idEcole,
+                IdClasse = idClasse,
+                IdAnneeScolaire = idAnneeScolaire,
+                DateInscription = dateInscription ?? DateTime.UtcNow,
+                StatutInscription = statutInscription,
+                Statut = statut,
+                DateCreation = DateTime.UtcNow
+            };
+        }
     }
 }
 

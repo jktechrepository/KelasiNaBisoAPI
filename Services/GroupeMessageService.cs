@@ -11,17 +11,20 @@ namespace KelasiNaBiso.Services
         private readonly KelasiNaBisoDbContext _context;
         private readonly IFirebaseNotificationService _notificationService;
         private readonly ISmsNotificationService _smsService;
+        private readonly IInscriptionActiveResolver _inscriptionResolver;
         private readonly ILogger<GroupeMessageService> _logger;
 
         public GroupeMessageService(
             KelasiNaBisoDbContext context,
             IFirebaseNotificationService notificationService,
             ISmsNotificationService smsService,
+            IInscriptionActiveResolver inscriptionResolver,
             ILogger<GroupeMessageService> logger)
         {
             _context = context;
             _notificationService = notificationService;
             _smsService = smsService;
+            _inscriptionResolver = inscriptionResolver;
             _logger = logger;
         }
 
@@ -229,10 +232,8 @@ namespace KelasiNaBiso.Services
                     : "École";
 
                 // Récupérer tous les tuteurs de l'école (membres potentiels du groupe)
-                var idsUtilisateurs = await _context.Utilisateurs
-                    .Where(u => u.IdTuteur != null &&
-                               u.Statut == true &&
-                               _context.Tuteurs.Any(t => t.IdTuteur == u.IdTuteur && t.IdEcole == groupe.IdEcole))
+                var idsUtilisateurs = await _inscriptionResolver
+                    .FilterUtilisateursParentsInEcole(_context.Utilisateurs, groupe.IdEcole)
                     .Select(u => u.IdUtilisateur)
                     .Distinct()
                     .ToListAsync();

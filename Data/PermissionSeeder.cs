@@ -23,6 +23,7 @@ namespace KelasiNaBiso.Data
                 Console.WriteLine("✅ Permissions déjà initialisées");
                 // Même si les permissions existent : s'assurer qu'IT-Support a bien les siennes
                 await EnsureItSupportPermissionsAsync(context);
+                await EnsureEvaluationPermissionsAsync(context);
                 return;
             }
 
@@ -151,6 +152,15 @@ namespace KelasiNaBiso.Data
                 new Permission { Nom = "Note.ReadChildren", Categorie = "Note", Action = "ReadChildren", Description = "Voir les notes de ses enfants (parent)", Statut = true },
                 new Permission { Nom = "Note.Update", Categorie = "Note", Action = "Update", Description = "Modifier une note", Statut = true },
                 new Permission { Nom = "Note.Delete", Categorie = "Note", Action = "Delete", Description = "Supprimer une note", Statut = true },
+
+                // ═══════════════════════════════════════════════════════════════════
+                // EVALUATION - 5 permissions
+                // ═══════════════════════════════════════════════════════════════════
+                new Permission { Nom = "Evaluation.Create", Categorie = "Evaluation", Action = "Create", Description = "Créer une évaluation", Statut = true },
+                new Permission { Nom = "Evaluation.Read", Categorie = "Evaluation", Action = "Read", Description = "Voir une évaluation", Statut = true },
+                new Permission { Nom = "Evaluation.ReadAll", Categorie = "Evaluation", Action = "ReadAll", Description = "Voir toutes les évaluations", Statut = true },
+                new Permission { Nom = "Evaluation.Update", Categorie = "Evaluation", Action = "Update", Description = "Modifier une évaluation", Statut = true },
+                new Permission { Nom = "Evaluation.Delete", Categorie = "Evaluation", Action = "Delete", Description = "Supprimer une évaluation", Statut = true },
 
                 // ═══════════════════════════════════════════════════════════════════
                 // TUTEUR - 5 permissions
@@ -283,6 +293,7 @@ namespace KelasiNaBiso.Data
                     p.Categorie == "Agent" ||
                     p.Categorie == "Paiement" ||
                     p.Categorie == "Note" ||
+                    p.Categorie == "Evaluation" ||
                     p.Categorie == "Tuteur" ||
                     p.Categorie == "Classe" ||
                     p.Categorie == "Frais" ||
@@ -320,6 +331,7 @@ namespace KelasiNaBiso.Data
                     // Paiements : Création et lecture uniquement (PAS modification ni suppression)
                     (p.Categorie == "Paiement" && p.Action != "Update" && p.Action != "Delete") ||
                     p.Categorie == "Note" ||
+                    p.Categorie == "Evaluation" ||
                     p.Categorie == "Tuteur" ||
                     p.Categorie == "Classe" ||
                     p.Categorie == "Frais" ||
@@ -348,6 +360,8 @@ namespace KelasiNaBiso.Data
                 var enseignantPermissions = allPermissions.Where(p =>
                     // Notes : Créer, lire, modifier (pas supprimer)
                     (p.Categorie == "Note" && p.Action != "Delete") ||
+                    // Évaluations : Créer, lire, modifier (pas supprimer)
+                    (p.Categorie == "Evaluation" && p.Action != "Delete") ||
                     // Présences : Gestion complète
                     p.Categorie == "Presence" ||
                     // Élèves : Lecture seule
@@ -511,6 +525,85 @@ namespace KelasiNaBiso.Data
 
             await context.SaveChangesAsync();
             Console.WriteLine($"✅ {toAdd.Count} permission(s) ajoutée(s) au rôle IT-Support (total cible: {itSupportPermissions.Count})");
+        }
+
+        /// <summary>
+        /// Crée (idempotent) les permissions Evaluation.* et les assigne aux rôles pédagogiques.
+        /// </summary>
+        public static async Task EnsureEvaluationPermissionsAsync(KelasiNaBisoDbContext context)
+        {
+            var defs = new (string Nom, string Action, string Description)[]
+            {
+                ("Evaluation.Create", "Create", "Créer une évaluation"),
+                ("Evaluation.Read", "Read", "Voir une évaluation"),
+                ("Evaluation.ReadAll", "ReadAll", "Voir toutes les évaluations"),
+                ("Evaluation.Update", "Update", "Modifier une évaluation"),
+                ("Evaluation.Delete", "Delete", "Supprimer une évaluation"),
+            };
+
+            var existingNames = await context.Permissions
+                .Where(p => p.Categorie == "Evaluation")
+                .Select(p => p.Nom)
+                .ToListAsync();
+
+            var created = 0;
+            foreach (var (nom, action, description) in defs)
+            {
+                if (existingNames.Contains(nom))
+                    continue;
+
+                context.Permissions.Add(new Permission
+                {
+                    Nom = nom,
+                    Categorie = "Evaluation",
+                    Action = action,
+                    Description = description,
+                    Statut = true,
+                    DateCreation = DateTime.UtcNow
+                });
+                created++;
+            }
+
+            if (created > 0)
+                await context.SaveChangesAsync();
+
+            var evalPermissions = await context.Permissions
+                .Where(p => p.Categorie == "Evaluation")
+                .ToListAsync();
+
+            if (!evalPermissions.Any())
+                return;
+
+            var roleNames = new[] { "Super-Admin", "Admin", "Directeur", "Enseignant" };
+            var roles = await context.Roles.Where(r => roleNames.Contains(r.Nom)).ToListAsync();
+
+            foreach (var role in roles)
+            {
+                var existingIds = await context.RolePermissions
+                    .Where(rp => rp.IdRole == role.IdRole)
+                    .Select(rp => rp.IdPermission)
+                    .ToListAsync();
+
+                foreach (var permission in evalPermissions)
+                {
+                    if (role.Nom == "Enseignant" && permission.Action == "Delete")
+                        continue;
+
+                    if (existingIds.Contains(permission.IdPermission))
+                        continue;
+
+                    context.RolePermissions.Add(new RolePermission
+                    {
+                        IdRole = role.IdRole,
+                        IdPermission = permission.IdPermission,
+                        DateAttribution = DateTime.UtcNow
+                    });
+                }
+            }
+
+            await context.SaveChangesAsync();
+            if (created > 0)
+                Console.WriteLine($"✅ {created} permission(s) Evaluation ajoutée(s) et assignées aux rôles.");
         }
 
         /// <summary>

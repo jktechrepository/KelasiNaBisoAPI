@@ -2,6 +2,9 @@ using KelasiNaBiso.Data;
 using KelasiNaBiso.Models;
 using KelasiNaBiso.Models.DTOs;
 using KelasiNaBiso.Models.DTOs.Pagination;
+using KelasiNaBiso.Models.DTOs.Reporting;
+using KelasiNaBiso.Services;
+using KelasiNaBiso.Services.Reporting;
 using KelasiNaBiso.Services.Repositories;
 using KelasiNaBiso.Attributes;
 using KelasiNaBiso.Helpers;
@@ -19,56 +22,83 @@ namespace KelasiNaBiso.Controllers
         private readonly IPresenceRepository _presenceRepository;
         private readonly IAuditService _auditService;
         private readonly IPresenceReportingService _reportingService;
+        private readonly IFeuilleAppelExcelExporter _feuilleAppelExcelExporter;
         private readonly KelasiNaBisoDbContext _context;
 
         public PresenceController(
             IPresenceRepository presenceRepository,
             IPresenceReportingService reportingService,
+            IFeuilleAppelExcelExporter feuilleAppelExcelExporter,
             IAuditService auditService,
             KelasiNaBisoDbContext context)
         {
             _presenceRepository = presenceRepository;
             _reportingService = reportingService;
+            _feuilleAppelExcelExporter = feuilleAppelExcelExporter;
             _auditService = auditService;
             _context = context;
         }
 
-        // ✅ GET: api/Presence/paged (NOUVELLE VERSION PAGINÉE - RECOMMANDÉE)
-        /// <summary>
-        /// Récupère toutes les présences avec pagination offset-based
-        /// </summary>
         [HttpGet("paged")]
-        [ProducesResponseType(typeof(PagedResult<Presence>), 200)]
-        public async Task<ActionResult<PagedResult<Presence>>> GetPresencesPaged([FromQuery] PagedRequest request)
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<PagedResult<Presence>>), 200)]
+        public async Task<IActionResult> GetPresencesPaged(
+            [FromQuery] PagedRequest request,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var result = await _presenceRepository.GetAllPagedAsync(request);
-            return Ok(result);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _presenceRepository.GetAllPagedAsync(resolvedEcole, request, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // ✅ GET: api/Presence/cursor-paged (PAGINATION CURSOR - MOBILE)
-        /// <summary>
-        /// Récupère toutes les présences avec pagination cursor-based (scroll infini)
-        /// </summary>
         [HttpGet("cursor-paged")]
-        [ProducesResponseType(typeof(CursorPaginatedResult<Presence>), 200)]
-        public async Task<ActionResult<CursorPaginatedResult<Presence>>> GetPresencesCursorPaged(
-            [FromQuery] CursorPaginationRequest request)
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<CursorPaginatedResult<Presence>>), 200)]
+        public async Task<IActionResult> GetPresencesCursorPaged(
+            [FromQuery] CursorPaginationRequest request,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var result = await _presenceRepository.GetAllCursorPagedAsync(request);
-            return Ok(result);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _presenceRepository.GetAllCursorPagedAsync(resolvedEcole, request, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // ⚠️ GET: api/Presence (DEPRECATED - NON PAGINÉ)
-        /// <summary>
-        /// [DEPRECATED] Récupère TOUTES les présences sans pagination
-        /// ⚠️ Peut causer des problèmes de performance. Utiliser /api/Presence/paged
-        /// </summary>
         [HttpGet]
         [Obsolete("Cette méthode n'est pas paginée. Utilisez GET /api/Presence/paged")]
-        public async Task<ActionResult<IEnumerable<Presence>>> GetPresences()
+        public async Task<IActionResult> GetPresences(
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var presences = await _presenceRepository.GetAllAsync();
-            return Ok(presences);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _presenceRepository.GetAllAsync(resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // GET: api/Presence/5
@@ -88,13 +118,20 @@ namespace KelasiNaBiso.Controllers
         /// Récupère les présences d'un élève avec pagination
         /// </summary>
         [HttpGet("eleve/{idEleve}/paged")]
-        [ProducesResponseType(typeof(PagedResult<Presence>), 200)]
-        public async Task<ActionResult<PagedResult<Presence>>> GetPresencesByElevePaged(
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<PagedResult<Presence>>), 200)]
+        public async Task<IActionResult> GetPresencesByElevePaged(
             int idEleve,
-            [FromQuery] PagedRequest request)
+            [FromQuery] PagedRequest request,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var result = await _presenceRepository.GetByElevePagedAsync(idEleve, request);
-            return Ok(result);
+            try
+            {
+                return Ok(await _presenceRepository.GetByElevePagedAsync(idEleve, request, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // ✅ POINTAGE AGENT: GET: api/Presence/agent/5/paged (NOUVELLE VERSION PAGINÉE)
@@ -125,28 +162,45 @@ namespace KelasiNaBiso.Controllers
             return Ok(result);
         }
 
-        // ✅ GET: api/Presence/date-range/paged (NOUVELLE - TRÈS UTILE)
-        /// <summary>
-        /// Récupère les présences sur une période avec pagination
-        /// </summary>
         [HttpGet("date-range/paged")]
-        [ProducesResponseType(typeof(PagedResult<Presence>), 200)]
-        public async Task<ActionResult<PagedResult<Presence>>> GetPresencesByDateRangePaged(
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<PagedResult<Presence>>), 200)]
+        public async Task<IActionResult> GetPresencesByDateRangePaged(
             [FromQuery] DateTime dateDebut,
             [FromQuery] DateTime dateFin,
-            [FromQuery] PagedRequest request)
+            [FromQuery] PagedRequest request,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var result = await _presenceRepository.GetByDateRangePagedAsync(dateDebut, dateFin, request);
-            return Ok(result);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _presenceRepository.GetByDateRangePagedAsync(
+                    resolvedEcole, dateDebut, dateFin, request, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // ⚠️ GET: api/Presence/eleve/5 (DEPRECATED - NON PAGINÉ)
         [HttpGet("eleve/{idEleve}")]
         [Obsolete("Utiliser GET /api/Presence/eleve/{idEleve}/paged")]
-        public async Task<ActionResult<IEnumerable<Presence>>> GetPresencesByEleve(int idEleve)
+        public async Task<IActionResult> GetPresencesByEleve(
+            int idEleve,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var presences = await _presenceRepository.GetByEleveAsync(idEleve);
-            return Ok(presences);
+            try
+            {
+                return Ok(await _presenceRepository.GetByEleveAsync(idEleve, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // ⚠️ POINTAGE AGENT: GET: api/Presence/agent/5 (DEPRECATED - NON PAGINÉ)
@@ -460,75 +514,137 @@ namespace KelasiNaBiso.Controllers
         }
 
         /// <summary>
-        /// 📋 Obtient les présences pour une école avec pagination
+        /// Feuille d'appel nominative : élèves de la classe pour une date (présent / absent / retard).
+        /// Date optionnelle (défaut = aujourd'hui). Année scolaire courante par défaut ; idAnneeScolaire optionnel pour une année antérieure.
         /// </summary>
-        [HttpGet("ecole/{idEcole}")]
-        [ProducesResponseType(typeof(PagedResult<Presence>), 200)]
-        public async Task<ActionResult<PagedResult<Presence>>> GetPresencesByEcole(
-            int idEcole,
-            [FromQuery] int page = 1,
-            [FromQuery] int pageSize = 15,
-            [FromQuery] DateTime? dateDebut = null,
-            [FromQuery] DateTime? dateFin = null)
+        [HttpGet("eleves/classe/{idClasse}/feuille-appel")]
+        [ProducesResponseType(typeof(FeuilleAppelClasseDto), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(403)]
+        [ProducesResponseType(404)]
+        public async Task<IActionResult> GetFeuilleAppel(
+            int idClasse,
+            [FromQuery] DateTime? date = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
             try
             {
+                var jour = (date ?? DateTime.Today).Date;
+                var result = await _reportingService.GetFeuilleAppelAsync(idClasse, jour, idAnneeScolaire);
+
+                var deny = this.ForbidIfWrongSchool(result.IdEcole);
+                if (deny != null)
+                    return deny;
+
+                return Ok(result);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Erreur lors de la récupération de la feuille d'appel", error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Export de la feuille d'appel (Excel). format=xlsx par défaut ; pdf prévu en phase 2.
+        /// Date optionnelle (défaut = aujourd'hui). Année scolaire courante par défaut.
+        /// </summary>
+        [HttpGet("eleves/classe/{idClasse}/feuille-appel/export")]
+        [ProducesResponseType(typeof(FileContentResult), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(403)]
+        [ProducesResponseType(404)]
+        public async Task<IActionResult> ExportFeuilleAppel(
+            int idClasse,
+            [FromQuery] DateTime? date = null,
+            [FromQuery] int? idAnneeScolaire = null,
+            [FromQuery] string format = "xlsx")
+        {
+            try
+            {
+                var normalizedFormat = (format ?? "xlsx").Trim().ToLowerInvariant();
+                if (normalizedFormat == "pdf")
+                {
+                    return BadRequest(new
+                    {
+                        message = "L'export PDF n'est pas encore disponible. Utilisez format=xlsx."
+                    });
+                }
+
+                if (normalizedFormat != "xlsx")
+                {
+                    return BadRequest(new
+                    {
+                        message = $"Format '{format}' non supporté. Formats acceptés : xlsx."
+                    });
+                }
+
+                var jour = (date ?? DateTime.Today).Date;
+                var result = await _reportingService.GetFeuilleAppelAsync(idClasse, jour, idAnneeScolaire);
+
+                var deny = this.ForbidIfWrongSchool(result.IdEcole);
+                if (deny != null)
+                    return deny;
+
+                var bytes = _feuilleAppelExcelExporter.Export(result);
+                var fileName = _feuilleAppelExcelExporter.GetFileName(result);
+                return File(bytes, _feuilleAppelExcelExporter.ContentType, fileName);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Erreur lors de l'export de la feuille d'appel", error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// 📋 Obtient les présences pour une école avec pagination
+        /// </summary>
+        [HttpGet("ecole/{idEcole}")]
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<PagedResult<Presence>>), 200)]
+        public async Task<IActionResult> GetPresencesByEcole(
+            int idEcole,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 15,
+            [FromQuery] int? idAnneeScolaire = null)
+        {
+            try
+            {
+                var deny = this.ForbidIfWrongSchool(idEcole);
+                if (deny != null)
+                    return deny;
+
                 var request = new PagedRequest
                 {
                     PageNumber = page,
                     PageSize = pageSize,
                     SortBy = "DateDuJour",
-                    SortDescending = true
+                    SortDescending = false
                 };
 
-                // Construire la requête de base
-                var query = _context.Presences
-                    .Include(p => p.Eleve)
-                        .ThenInclude(e => e.Classe)
-                        .ThenInclude(c => c.Direction)
-                    .Include(p => p.Agent)
-                    .Where(p => p.Statut == true)
-                    .AsQueryable();
-
-                // Filtrer par école (via élèves ou agents)
-                query = query.Where(p =>
-                    (p.Eleve != null && p.Eleve.Classe != null && p.Eleve.Classe.Direction != null && p.Eleve.Classe.Direction.IdEcole == idEcole) ||
-                    (p.Agent != null && p.Agent.IdEcole == idEcole));
-
-                // Filtrer par période si spécifiée
-                if (dateDebut.HasValue)
-                {
-                    query = query.Where(p => p.DateDuJour.Date >= dateDebut.Value.Date);
-                }
-
-                if (dateFin.HasValue)
-                {
-                    query = query.Where(p => p.DateDuJour.Date <= dateFin.Value.Date);
-                }
-
-                // Appliquer la pagination
-                var totalItems = await query.CountAsync();
-                var presences = await query
-                    .OrderByDescending(p => p.DateDuJour)
-                    .ThenByDescending(p => p.HeureArrivee)
-                    .Skip((request.PageNumber - 1) * request.PageSize)
-                    .Take(request.PageSize)
-                    .ToListAsync();
-
-                var result = new PagedResult<Presence>
-                {
-                    Data = presences,
-                    TotalRecords = totalItems,
-                    PageNumber = request.PageNumber,
-                    PageSize = request.PageSize,
-                    TotalPages = (int)Math.Ceiling(totalItems / (double)request.PageSize)
-                };
-
-                return Ok(result);
+                return Ok(await _presenceRepository.GetAllPagedAsync(idEcole, request, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "Erreur lors de la récupération des présences par école", error = ex.Message });
+                return StatusCode(500, new { message = "Erreur lors de la récupération des présences", error = ex.Message });
             }
         }
 
@@ -600,11 +716,13 @@ namespace KelasiNaBiso.Controllers
             int idEcole,
             [FromQuery] DateTime? date,
             [FromQuery] DateTime? dateDebut,
-            [FromQuery] DateTime? dateFin)
+            [FromQuery] DateTime? dateFin,
+            [FromQuery] int? idAnneeScolaire = null)
         {
             try
             {
-                var result = await _reportingService.GetDashboardEcoleAsync(idEcole, date, dateDebut, dateFin);
+                var result = await _reportingService.GetDashboardEcoleAsync(
+                    idEcole, date, dateDebut, dateFin, idAnneeScolaire);
                 return Ok(result);
             }
             catch (KeyNotFoundException ex)

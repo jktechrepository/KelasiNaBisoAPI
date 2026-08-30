@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using System.Security.Claims;
 using KelasiNaBiso.Data;
+using KelasiNaBiso.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace KelasiNaBisoAPI.Hubs
@@ -49,21 +50,28 @@ namespace KelasiNaBisoAPI.Hubs
                 
                 if (utilisateur != null)
                 {
-                    // 4. Si c'est un parent (tuteur), ajouter aux groupes de ses enfants
+                    // 4. Si c'est un parent (tuteur), classes via Inscription active (plus Eleve.IdClasse)
                     if (utilisateur.IdTuteur.HasValue)
                     {
-                        var classesEnfants = await _context.Eleves
-                            .Where(e => e.IdTuteur == utilisateur.IdTuteur.Value && e.Statut == true)
-                            .Select(e => e.IdClasse)
+                        var idTuteur = utilisateur.IdTuteur.Value;
+                        var classesEnfantsList = await _context.Inscriptions
+                            .AsNoTracking()
+                            .Where(i =>
+                                i.Statut == true
+                                && i.Eleve != null
+                                && i.Eleve.IdTuteur == idTuteur
+                                && i.Eleve.Statut == true
+                                && i.StatutInscription != null
+                                && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                                    || i.StatutInscription == "Confirme"
+                                    || i.StatutInscription.StartsWith("Confirm")))
+                            .Select(i => i.IdClasse)
                             .Distinct()
                             .ToListAsync();
-                        
-                        var classesEnfantsList = classesEnfants.ToList();
+
                         foreach (var idClasse in classesEnfantsList)
                         {
-                            // Groupe classe
                             await Groups.AddToGroupAsync(Context.ConnectionId, $"classe_{idClasse}");
-                            // Groupe parents de la classe
                             await Groups.AddToGroupAsync(Context.ConnectionId, $"parents_classe_{idClasse}");
                         }
                         

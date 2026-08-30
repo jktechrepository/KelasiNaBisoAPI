@@ -24,55 +24,113 @@ namespace KelasiNaBiso.Controllers
             _auditService = auditService;
         }
 
-        // ✅ GET: api/Paiement/paged (NOUVELLE VERSION PAGINÉE - RECOMMANDÉE)
+        // ✅ GET: api/Paiement/paged?idEcole=&idAnneeScolaire=
         [HttpGet("paged")]
-        [ProducesResponseType(typeof(PagedResult<Paiement>), 200)]
-        public async Task<ActionResult<PagedResult<Paiement>>> GetPaiementsPaged([FromQuery] PagedRequest request)
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<PagedResult<Paiement>>), 200)]
+        public async Task<IActionResult> GetPaiementsPaged(
+            [FromQuery] PagedRequest request,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var result = await _paiementRepository.GetAllPagedAsync(request);
-            return Ok(result);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _paiementRepository.GetAllPagedAsync(resolvedEcole, request, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // ✅ GET: api/Paiement/cursor-paged (PAGINATION CURSOR - MOBILE)
+        // ✅ GET: api/Paiement/cursor-paged?idEcole=&idAnneeScolaire=
         [HttpGet("cursor-paged")]
-        [ProducesResponseType(typeof(CursorPaginatedResult<Paiement>), 200)]
-        public async Task<ActionResult<CursorPaginatedResult<Paiement>>> GetPaiementsCursorPaged(
-            [FromQuery] CursorPaginationRequest request)
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<CursorPaginatedResult<Paiement>>), 200)]
+        public async Task<IActionResult> GetPaiementsCursorPaged(
+            [FromQuery] CursorPaginationRequest request,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var result = await _paiementRepository.GetAllCursorPagedAsync(request);
-            return Ok(result);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _paiementRepository.GetAllCursorPagedAsync(resolvedEcole, request, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // ✅ GET: api/Paiement/eleve/5/paged (NOUVELLE - PAGINÉE)
+        // ✅ GET: api/Paiement/eleve/5/paged?idAnneeScolaire=
         [HttpGet("eleve/{idEleve}/paged")]
-        [ProducesResponseType(typeof(PagedResult<Paiement>), 200)]
-        public async Task<ActionResult<PagedResult<Paiement>>> GetPaiementsByElevePaged(
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<PagedResult<Paiement>>), 200)]
+        public async Task<IActionResult> GetPaiementsByElevePaged(
             int idEleve,
-            [FromQuery] PagedRequest request)
+            [FromQuery] PagedRequest request,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var result = await _paiementRepository.GetByElevePagedAsync(idEleve, request);
-            return Ok(result);
+            try
+            {
+                return Ok(await _paiementRepository.GetByElevePagedAsync(idEleve, request, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // ✅ GET: api/Paiement/date-range/paged (NOUVELLE - TRÈS UTILE)
+        // ✅ GET: api/Paiement/date-range/paged?idEcole=&idAnneeScolaire=
         [HttpGet("date-range/paged")]
-        [ProducesResponseType(typeof(PagedResult<Paiement>), 200)]
-        public async Task<ActionResult<PagedResult<Paiement>>> GetPaiementsByDateRangePaged(
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<PagedResult<Paiement>>), 200)]
+        public async Task<IActionResult> GetPaiementsByDateRangePaged(
             [FromQuery] DateTime dateDebut,
             [FromQuery] DateTime dateFin,
-            [FromQuery] PagedRequest request)
+            [FromQuery] PagedRequest request,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var result = await _paiementRepository.GetByDateRangePagedAsync(dateDebut, dateFin, request);
-            return Ok(result);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _paiementRepository.GetByDateRangePagedAsync(
+                    resolvedEcole, dateDebut, dateFin, request, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // ⚠️ GET: api/Paiement (DEPRECATED - NON PAGINÉ)
+        // ⚠️ GET: api/Paiement?idEcole=&idAnneeScolaire= (DEPRECATED)
         [HttpGet]
         [Obsolete("Cette méthode n'est pas paginée. Utilisez GET /api/Paiement/paged")]
-        public async Task<ActionResult<IEnumerable<Paiement>>> GetPaiements()
+        [RequireGlobalAccess]
+        public async Task<IActionResult> GetPaiements(
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var paiements = await _paiementRepository.GetAllAsync();
-            return Ok(paiements);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _paiementRepository.GetAllAsync(resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // GET: api/Paiement/5
@@ -87,12 +145,20 @@ namespace KelasiNaBiso.Controllers
             return Ok(paiement);
         }
 
-        // GET: api/Paiement/eleve/5
+        // GET: api/Paiement/eleve/5?idAnneeScolaire=
         [HttpGet("eleve/{idEleve}")]
-        public async Task<ActionResult<IEnumerable<Paiement>>> GetPaiementsByEleve(int idEleve)
+        public async Task<IActionResult> GetPaiementsByEleve(
+            int idEleve,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var paiements = await _paiementRepository.GetByEleveAsync(idEleve);
-            return Ok(paiements);
+            try
+            {
+                return Ok(await _paiementRepository.GetByEleveAsync(idEleve, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // GET: api/Paiement/frais/5
@@ -103,44 +169,55 @@ namespace KelasiNaBiso.Controllers
             return Ok(paiements);
         }
 
-        // GET: api/Paiement/ecole/5?page=1&pageSize=15
+        // GET: api/Paiement/ecole/5?idAnneeScolaire=
         [HttpGet("ecole/{idEcole}")]
-        public async Task<ActionResult<IEnumerable<Paiement>>> GetPaiementsByEcole(
+        public async Task<IActionResult> GetPaiementsByEcole(
             int idEcole, 
             [FromQuery] int page = 1, 
-            [FromQuery] int pageSize = 15)
+            [FromQuery] int pageSize = 15,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            // Validation des paramètres de pagination
+            var deny = this.ForbidIfWrongSchool(idEcole);
+            if (deny != null)
+                return deny;
+
             if (page < 1) page = 1;
             if (pageSize < 1) pageSize = 15;
-            if (pageSize > 100) pageSize = 100; // Limite max pour éviter surcharge
+            if (pageSize > 100) pageSize = 100;
 
-            var allPaiements = await _paiementRepository.GetByEcoleAsync(idEcole);
-            
-            // Appliquer la pagination
-            var paiementsPaginated = allPaiements
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .ToList();
-
-            // Calculer les métadonnées de pagination
-            var totalCount = allPaiements.Count();
-            var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
-
-            // Retourner avec les métadonnées
-            return Ok(new
+            try
             {
-                data = paiementsPaginated,
-                pagination = new
+                var scoped = await _paiementRepository.GetByEcoleAsync(idEcole, idAnneeScolaire);
+                var allPaiements = scoped.Data.ToList();
+            
+                var paiementsPaginated = allPaiements
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .ToList();
+
+                var totalCount = allPaiements.Count;
+                var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+
+                return Ok(new
                 {
-                    currentPage = page,
-                    pageSize = pageSize,
-                    totalCount = totalCount,
-                    totalPages = totalPages,
-                    hasNextPage = page < totalPages,
-                    hasPreviousPage = page > 1
-                }
-            });
+                    data = paiementsPaginated,
+                    idEcole = scoped.IdEcole,
+                    idAnneeScolaire = scoped.IdAnneeScolaire,
+                    pagination = new
+                    {
+                        currentPage = page,
+                        pageSize = pageSize,
+                        totalCount = totalCount,
+                        totalPages = totalPages,
+                        hasNextPage = page < totalPages,
+                        hasPreviousPage = page > 1
+                    }
+                });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // GET: api/Paiement/mode/Carte
@@ -177,6 +254,7 @@ namespace KelasiNaBiso.Controllers
 
         // POST: api/Paiement
         [HttpPost]
+        [Permission("Paiement.Create")]
         public async Task<ActionResult<Paiement>> CreatePaiement(Paiement paiement)
         {
             if (!ModelState.IsValid)
@@ -190,6 +268,7 @@ namespace KelasiNaBiso.Controllers
 
         // POST: api/Paiement/batch
         [HttpPost("batch")]
+        [Permission("Paiement.Create")]
         public async Task<ActionResult<object>> CreatePaiementsBatch(IEnumerable<Paiement> paiements)
         {
             if (!ModelState.IsValid)
@@ -257,6 +336,7 @@ namespace KelasiNaBiso.Controllers
         /// </summary>
         [HttpPost("bulk-excel")]
         [Authorize(Roles = "Admin,Super-Admin,Directeur")]
+        [Permission("Paiement.Create")]
         [ProducesResponseType(typeof(BulkPaiementResult), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(401)]
@@ -331,6 +411,7 @@ namespace KelasiNaBiso.Controllers
         /// </remarks>
         [HttpPut("{id}")]
         [Authorize(Roles = "Admin,Super-Admin")]
+        [Permission("Paiement.Update")]
         [ProducesResponseType(typeof(Paiement), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(404)]
@@ -406,6 +487,7 @@ namespace KelasiNaBiso.Controllers
         /// </summary>
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin,Super-Admin")]
+        [Permission("Paiement.Delete")]
         [ProducesResponseType(204)]
         [ProducesResponseType(404)]
         [ProducesResponseType(401)]
@@ -426,6 +508,7 @@ namespace KelasiNaBiso.Controllers
         /// </summary>
         [HttpPut("toggle-statut/{id}")]
         [Authorize(Roles = "Admin,Super-Admin")]
+        [Permission("Paiement.Update")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(404)]
         [ProducesResponseType(401)]
@@ -468,7 +551,8 @@ namespace KelasiNaBiso.Controllers
             [FromQuery] DateTime? date,
             [FromQuery] DateTime? dateDebut,
             [FromQuery] DateTime? dateFin,
-            [FromQuery] string? periode)
+            [FromQuery] string? periode,
+            [FromQuery] int? idAnneeScolaire = null)
         {
             try
             {
@@ -478,7 +562,8 @@ namespace KelasiNaBiso.Controllers
                     return StatusCode(500, new { message = "Service non disponible" });
                 }
 
-                var result = await paiementService.GetDashboardEcoleAsync(idEcole, date, dateDebut, dateFin, periode);
+                var result = await paiementService.GetDashboardEcoleAsync(
+                    idEcole, date, dateDebut, dateFin, periode, idAnneeScolaire);
                 return Ok(result);
             }
             catch (KeyNotFoundException ex)
@@ -503,7 +588,8 @@ namespace KelasiNaBiso.Controllers
             int idEleve,
             [FromQuery] DateTime? dateDebut,
             [FromQuery] DateTime? dateFin,
-            [FromQuery] string? periode)
+            [FromQuery] string? periode,
+            [FromQuery] int? idAnneeScolaire = null)
         {
             try
             {
@@ -513,7 +599,8 @@ namespace KelasiNaBiso.Controllers
                     return StatusCode(500, new { message = "Service non disponible" });
                 }
 
-                var result = await paiementService.GetTauxPaiementEleveAsync(idEleve, dateDebut, dateFin, periode);
+                var result = await paiementService.GetTauxPaiementEleveAsync(
+                    idEleve, dateDebut, dateFin, periode, idAnneeScolaire);
                 return Ok(result);
             }
             catch (KeyNotFoundException ex)
@@ -540,7 +627,8 @@ namespace KelasiNaBiso.Controllers
             [FromQuery] DateTime? dateDebut,
             [FromQuery] DateTime? dateFin,
             [FromQuery] string? periode,
-            [FromQuery] bool includeDetails = false)
+            [FromQuery] bool includeDetails = false,
+            [FromQuery] int? idAnneeScolaire = null)
         {
             try
             {
@@ -550,7 +638,8 @@ namespace KelasiNaBiso.Controllers
                     return StatusCode(500, new { message = "Service non disponible" });
                 }
 
-                var result = await paiementService.GetTauxPaiementClasseAsync(idClasse, date, dateDebut, dateFin, periode, includeDetails);
+                var result = await paiementService.GetTauxPaiementClasseAsync(
+                    idClasse, date, dateDebut, dateFin, periode, includeDetails, idAnneeScolaire);
                 return Ok(result);
             }
             catch (KeyNotFoundException ex)

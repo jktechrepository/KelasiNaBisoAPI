@@ -25,7 +25,7 @@ namespace KelasiNaBiso.Models.DTOs
         
         public DateTime? DateInscription { get; set; }
         
-        public string StatutInscription { get; set; } = "En attente";
+        public string StatutInscription { get; set; } = "Confirmé";
 
         // Données de l'élève
         [Required(ErrorMessage = "Le nom de l'élève est obligatoire")]

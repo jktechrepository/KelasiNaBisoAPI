@@ -17,7 +17,7 @@ namespace KelasiNaBiso.Services.Repositories
         
         // Récupération par critères
         Task<IEnumerable<DevoirADomicile>> GetAllAsync(); // Pour Super-Admin
-        Task<IEnumerable<DevoirADomicile>> GetByClasseAsync(int idClasse);
+        Task<IEnumerable<DevoirADomicile>> GetByClasseAsync(int idClasse, int idAnneeScolaire);
         Task<IEnumerable<DevoirADomicile>> GetByAgentAsync(int idAgent);
         Task<IEnumerable<DevoirADomicile>> GetByEcoleAsync(int idEcole);
         Task<IEnumerable<DevoirADomicile>> GetByDirectionAsync(int idDirection);
@@ -25,10 +25,10 @@ namespace KelasiNaBiso.Services.Repositories
         Task<IEnumerable<DevoirADomicile>> GetByDatePublicationAsync(DateTime dateDebut, DateTime dateFin);
         
         // Pagination
-        Task<PagedResult<DevoirADomicile>> GetAllPagedAsync(PagedRequest request, int? idEcole = null, int? idClasse = null); // Pour Super-Admin avec filtres optionnels
-        Task<PagedResult<DevoirADomicile>> GetByClassePagedAsync(int idClasse, PagedRequest request);
-        Task<PagedResult<DevoirADomicile>> GetByAgentPagedAsync(int idAgent, PagedRequest request, int? idClasse = null); // Avec filtre classe optionnel
-        Task<PagedResult<DevoirADomicile>> GetByEcolePagedAsync(int idEcole, PagedRequest request, int? idClasse = null); // Avec filtre classe optionnel
+        Task<PagedResult<DevoirADomicile>> GetAllPagedAsync(PagedRequest request, int idAnneeScolaire, int? idEcole = null, int? idClasse = null); // Pour Super-Admin avec filtres optionnels
+        Task<PagedResult<DevoirADomicile>> GetByClassePagedAsync(int idClasse, PagedRequest request, int idAnneeScolaire);
+        Task<PagedResult<DevoirADomicile>> GetByAgentPagedAsync(int idAgent, PagedRequest request, int idAnneeScolaire, int? idClasse = null); // Avec filtre classe optionnel
+        Task<PagedResult<DevoirADomicile>> GetByEcolePagedAsync(int idEcole, PagedRequest request, int idAnneeScolaire, int? idClasse = null); // Avec filtre classe optionnel
         
         // Vérifications d'accès (intégrées dans le service)
         Task<bool> AgentPeutPublierPourClasseAsync(int idAgent, int idClasse);

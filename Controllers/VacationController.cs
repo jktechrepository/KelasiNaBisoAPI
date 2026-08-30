@@ -19,6 +19,10 @@ namespace KelasiNaBiso.Controllers
             _VacationRepository = VacationRepository;
         }
 
+        /// <summary>
+        /// Créneaux horaires (vacations) par école — configuration transversale aux années.
+        /// Le filtre année scolaire s'applique aux endpoints Présence (pointages élèves).
+        /// </summary>
         // GET: api/Vacation
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Vacation>>> GetVacations()

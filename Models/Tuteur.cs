@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 
 namespace KelasiNaBiso.Models
@@ -23,7 +22,6 @@ namespace KelasiNaBiso.Models
         public string? TelephoneRepresentant { get; set; }
         public string? PhotoTuteurUrl { get; set; }
         public string? PieceIdentiteTuteur { get; set; }
-        public int? IdEcole { get; set; }
         public bool? Statut { get; set; } = true; // True et False
         public string? SerialNumber { get; set; }
        // [ValidateNever]
@@ -33,11 +31,7 @@ namespace KelasiNaBiso.Models
         [JsonIgnore]
         public DateTime? DateCreation { get; set; }
 
-        // Attributs de Navigation
-        [JsonIgnore]
-        [ValidateNever]
-        public Ecole? Ecole { get; set; }
-        
+        // École via Inscription des enfants (pas de FK directe)
         // Collections
         [JsonIgnore]
         [ValidateNever]

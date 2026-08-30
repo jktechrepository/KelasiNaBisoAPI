@@ -32,6 +32,8 @@ namespace KelasiNaBiso.Models.DTOs.DevoirADomicile
         [Range(1, int.MaxValue, ErrorMessage = "Le coefficient doit être supérieur à 0")]
         public int CoefficientDevoir { get; set; } = 1; // Coefficient pour l'évaluation associée
         
+        public int? IdAnneeScolaire { get; set; }
+        
         public DateTime? DateLimite { get; set; } // Optionnel : date limite de remise
     }
 }

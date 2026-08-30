@@ -20,6 +20,7 @@ namespace KelasiNaBiso.Controllers
 
         // Endpoints généraux
         [HttpGet]
+        [RequireGlobalAccess]
         public async Task<ActionResult<IEnumerable<VueRepertoireAgentsParParentDTO>>> GetAll()
         {
             var repertoire = await _repertoireRepository.GetAllAsync();

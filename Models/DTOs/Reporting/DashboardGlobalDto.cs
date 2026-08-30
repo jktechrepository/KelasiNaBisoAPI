@@ -6,6 +6,8 @@ namespace KelasiNaBiso.Models.DTOs.Reporting
     public class DashboardGlobalDto
     {
         public EcoleInfoDto Ecole { get; set; } = new();
+        public int IdAnneeScolaire { get; set; }
+        public string? LibelleAnneeScolaire { get; set; }
         public PeriodeDto Periode { get; set; } = new();
         public StatistiquesGeneralesDto Statistiques { get; set; } = new();
         public RepartitionElevesDto RepartitionEleves { get; set; } = new();

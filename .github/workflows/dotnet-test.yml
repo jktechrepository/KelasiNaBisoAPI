@@ -1,0 +1,39 @@
+name: CI - Non-regression
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "6.0.x"
+
+      - name: Install libgdiplus (FastReport PDF)
+        run: sudo apt-get update && sudo apt-get install -y libgdiplus
+
+      - name: Restore
+        run: dotnet restore KelasiNaBiso.sln
+
+      - name: Build
+        run: dotnet build KelasiNaBiso.sln --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test KelasiNaBiso.sln --no-build --configuration Release --logger "trx;LogFileName=test-results.trx"
+        env:
+          ASPNETCORE_ENVIRONMENT: Testing
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: "**/TestResults/*.trx"

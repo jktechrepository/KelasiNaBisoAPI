@@ -1,7 +1,6 @@
 
 using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 
 namespace KelasiNaBiso.Models
@@ -23,23 +22,15 @@ namespace KelasiNaBiso.Models
           public string? PhotoUrl { get; set; }
           public string Nationalite { get; set; }
           public string? Commentaire { get; set; } //On peut signaler une alergie ou autre chose
-          public int? IdClasse { get; set; }
           public int? IdTuteur { get; set; }
           public bool? Statut { get; set; } = true;//True et False
           public string? SerialNumber { get; set; }
-       // [ValidateNever]
-       // public IFormFile? Image { get; set; }
-
 
         // Attributs Techniques
         [JsonIgnore]
           public DateTime DateCreation { get; set; } = DateTime.Now;
 
-         // Attributs de Navigation
-          [JsonIgnore]
-          [ValidateNever]
-          public Classe? Classe { get; set; }
-
+         // Navigation : classe courante via Inscription (pas de FK directe)
           [JsonIgnore]
           [ValidateNever]
           public Tuteur? Tuteur { get; set; }

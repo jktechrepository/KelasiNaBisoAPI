@@ -2,6 +2,7 @@ using KelasiNaBiso.Models.DTOs.Reporting;
 using KelasiNaBiso.Models.DTOs.Paiement;
 using RepartitionModeDto = KelasiNaBiso.Models.DTOs.Reporting.RepartitionModeDto;
 using KelasiNaBiso.Services.Repositories;
+using KelasiNaBiso.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using KelasiNaBiso.Data;
@@ -20,34 +21,51 @@ namespace KelasiNaBiso.Controllers
         private readonly KelasiNaBisoDbContext _context;
         private readonly ILogger<DashboardController> _logger;
         private readonly ICurrentUserService _currentUserService;
+        private readonly EleveAnneeScopeHelper _scope;
+        private readonly IInscriptionActiveResolver _inscriptionResolver;
 
         public DashboardController(
             IPresenceReportingService presenceReportingService,
             IPaiementRepository paiementRepository,
             KelasiNaBisoDbContext context,
             ILogger<DashboardController> logger,
-            ICurrentUserService currentUserService)
+            ICurrentUserService currentUserService,
+            EleveAnneeScopeHelper scope,
+            IInscriptionActiveResolver inscriptionResolver)
         {
             _presenceReportingService = presenceReportingService;
             _paiementRepository = paiementRepository;
             _context = context;
             _logger = logger;
             _currentUserService = currentUserService;
+            _scope = scope;
+            _inscriptionResolver = inscriptionResolver;
         }
 
         /// <summary>
         /// 📊 Dashboard global combiné (Présence + Paiement) pour une école
         /// </summary>
         /// <param name="idEcole">ID de l'école (requis)</param>
+        /// <param name="idAnneeScolaire">Année scolaire (optionnel — défaut : année courante)</param>
         /// <returns>Dashboard combiné avec présence et paiement sur un mois</returns>
         [HttpGet("global")]
         [ProducesResponseType(typeof(DashboardGlobalDto), 200)]
         public async Task<ActionResult<DashboardGlobalDto>> GetDashboardGlobal(
-            [FromQuery] int idEcole)
+            [FromQuery] int idEcole,
+            [FromQuery] int? idAnneeScolaire = null)
         {
             try
             {
-                _logger.LogInformation($"📊 Récupération du dashboard global pour l'école {idEcole}");
+                var idAnnee = await _scope.ResolveIdAnneeScolaireAsync(idEcole, idAnneeScolaire);
+                var libelleAnnee = await _context.AnneeScolaires
+                    .AsNoTracking()
+                    .Where(a => a.IdAnneeScolaire == idAnnee)
+                    .Select(a => a.LibelleAnneeScolaire)
+                    .FirstOrDefaultAsync();
+
+                _logger.LogInformation(
+                    "📊 Récupération du dashboard global pour l'école {IdEcole}, année {IdAnnee}",
+                    idEcole, idAnnee);
 
                 // ✅ Période : Mois en cours (du 1er au dernier jour du mois)
                 var aujourdhui = DateTime.Now;
@@ -56,7 +74,7 @@ namespace KelasiNaBiso.Controllers
 
                 // Récupérer le dashboard de présence (mois complet)
                 var dashboardPresence = await _presenceReportingService.GetDashboardEcoleAsync(
-                    idEcole, null, debutMois, finMois);
+                    idEcole, null, debutMois, finMois, idAnnee);
 
                 // Récupérer le dashboard de paiement (mois en cours)
                 var paiementService = _paiementRepository as KelasiNaBiso.Services.PaiementService;
@@ -66,18 +84,20 @@ namespace KelasiNaBiso.Controllers
                 }
 
                 var dashboardPaiement = await paiementService.GetDashboardEcoleAsync(
-                    idEcole, null, debutMois, finMois, "mois");
+                    idEcole, null, debutMois, finMois, "mois", idAnnee);
 
                 // ✅ Calculer les statistiques générales (Classes, Élèves, Enseignants, Directions)
-                var statistiques = await CalculerStatistiquesGeneralesAsync(idEcole);
+                var statistiques = await CalculerStatistiquesGeneralesAsync(idEcole, idAnnee);
 
                 // ✅ Calculer la répartition des élèves (par direction, section, option)
-                var repartitionEleves = await CalculerRepartitionElevesAsync(idEcole);
+                var repartitionEleves = await CalculerRepartitionElevesAsync(idEcole, idAnnee);
 
                 // Combiner les deux dashboards
                 var dashboardGlobal = new DashboardGlobalDto
                 {
                     Ecole = dashboardPresence.Ecole,
+                    IdAnneeScolaire = idAnnee,
+                    LibelleAnneeScolaire = libelleAnnee,
                     Periode = new PeriodeDto
                     {
                         DateDebut = debutMois,
@@ -111,6 +131,10 @@ namespace KelasiNaBiso.Controllers
                 _logger.LogWarning($"⚠️ École non trouvée : {ex.Message}");
                 return NotFound(new { message = ex.Message });
             }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
             catch (Exception ex)
             {
                 _logger.LogError($"❌ Erreur lors de la récupération du dashboard global : {ex.Message}");
@@ -119,26 +143,40 @@ namespace KelasiNaBiso.Controllers
         }
 
         /// <summary>
-        /// ✅ Helper : Récupère les requêtes de base pour compter les élèves d'une école
-        /// Retourne deux requêtes : une pour le total (tous statuts) et une pour les actifs uniquement
+        /// Élèves inscrits confirmés pour l'école et l'année scolaire.
         /// </summary>
-        private (IQueryable<Eleve> Total, IQueryable<Eleve> Actifs) GetElevesQueries(int idEcole)
+        private (IQueryable<Eleve> Total, IQueryable<Eleve> Actifs) GetElevesQueries(int idEcole, int idAnneeScolaire)
         {
-            var baseQuery = _context.Eleves
-                .Where(e => e.Classe != null && 
-                           e.Classe.Direction != null && 
-                           e.Classe.Direction.IdEcole == idEcole);
-            
-            var actifsQuery = baseQuery
-                .Where(e => e.Statut == true);
-            
+            var baseQuery = _inscriptionResolver.FilterElevesInEcole(_context.Eleves, idEcole, idAnneeScolaire);
+            var actifsQuery = baseQuery.Where(e => e.Statut == true);
             return (baseQuery, actifsQuery);
+        }
+
+        private static IQueryable<Inscription> FilterInscriptionsConfirmees(
+            IQueryable<Inscription> query,
+            int? idEcole = null,
+            int? idAnneeScolaire = null)
+        {
+            query = query.Where(i =>
+                i.Statut == true
+                && i.StatutInscription != null
+                && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                    || i.StatutInscription == "Confirme"
+                    || i.StatutInscription.StartsWith("Confirm")));
+
+            if (idEcole.HasValue)
+                query = query.Where(i => i.IdEcole == idEcole.Value);
+
+            if (idAnneeScolaire.HasValue)
+                query = query.Where(i => i.IdAnneeScolaire == idAnneeScolaire.Value);
+
+            return query;
         }
 
         /// <summary>
         /// Calculer les statistiques générales de l'école (Classes, Élèves, Enseignants, Directions)
         /// </summary>
-        private async Task<StatistiquesGeneralesDto> CalculerStatistiquesGeneralesAsync(int idEcole)
+        private async Task<StatistiquesGeneralesDto> CalculerStatistiquesGeneralesAsync(int idEcole, int idAnneeScolaire)
         {
             // Nombre de directions pour cette école
             var nombreDirections = await _context.Directions
@@ -151,7 +189,7 @@ namespace KelasiNaBiso.Controllers
                 .CountAsync();
 
             // ✅ CORRECTION : Nombre d'élèves total (tous statuts) et actifs
-            var (elevesQueryTotal, elevesQueryActifs) = GetElevesQueries(idEcole);
+            var (elevesQueryTotal, elevesQueryActifs) = GetElevesQueries(idEcole, idAnneeScolaire);
 
             var nombreEleves = await elevesQueryTotal.CountAsync();
             var nombreElevesActifs = await elevesQueryActifs.CountAsync();
@@ -177,92 +215,70 @@ namespace KelasiNaBiso.Controllers
         /// <summary>
         /// Calculer la répartition des élèves par école, direction, section et option
         /// </summary>
-        private async Task<RepartitionElevesDto> CalculerRepartitionElevesAsync(int idEcole)
+        private async Task<RepartitionElevesDto> CalculerRepartitionElevesAsync(int idEcole, int idAnneeScolaire)
         {
-            // ✅ CORRECTION : Base query pour tous les élèves de l'école (tous statuts)
-            var (elevesQueryBase, elevesQueryActifsBase) = GetElevesQueries(idEcole);
-            
-            // Ajouter les Includes pour les répartitions
-            var elevesQueryTotal = elevesQueryBase
-                .Include(e => e.Classe)
-                    .ThenInclude(c => c.Direction)
-                .Include(e => e.Classe)
-                    .ThenInclude(c => c.Section)
-                .Include(e => e.Classe)
-                    .ThenInclude(c => c.Option)
-                        .ThenInclude(o => o.Section);
+            var (elevesQueryBase, elevesQueryActifsBase) = GetElevesQueries(idEcole, idAnneeScolaire);
 
-            var elevesQueryActifs = elevesQueryActifsBase
-                .Include(e => e.Classe)
-                    .ThenInclude(c => c.Direction)
-                .Include(e => e.Classe)
-                    .ThenInclude(c => c.Section)
-                .Include(e => e.Classe)
-                    .ThenInclude(c => c.Option)
-                        .ThenInclude(o => o.Section);
+            var totalEleves = await elevesQueryBase.CountAsync();
+            var totalElevesActifs = await elevesQueryActifsBase.CountAsync();
 
-            var totalEleves = await elevesQueryTotal.CountAsync();
-            var totalElevesActifs = await elevesQueryActifs.CountAsync();
+            var inscriptionsActifs = FilterInscriptionsConfirmees(_context.Inscriptions, idEcole, idAnneeScolaire)
+                .Where(i => i.Eleve != null && i.Eleve.Statut == true);
 
-            // ✅ CORRECTION : Répartition par Direction (utiliser elevesQueryActifs pour ne compter que les élèves actifs)
-            var repartitionParDirection = await elevesQueryActifs
-                .Where(e => e.Classe != null && e.Classe.Direction != null)
-                .GroupBy(e => new
+            var repartitionParDirection = await inscriptionsActifs
+                .Where(i => i.Classe != null && i.Classe.Direction != null)
+                .GroupBy(i => new
                 {
-                    IdDirection = e.Classe.Direction.IdDirection,
-                    NomDirection = e.Classe.Direction.NomDirection
+                    IdDirection = i.Classe!.Direction!.IdDirection,
+                    NomDirection = i.Classe.Direction.NomDirection
                 })
                 .Select(g => new RepartitionDirectionDto
                 {
                     IdDirection = g.Key.IdDirection,
                     NomDirection = g.Key.NomDirection ?? "Non défini",
-                    NombreEleves = g.Count(), // Tous les élèves de cette requête sont actifs
-                    NombreElevesActifs = g.Count() // Identique car on filtre déjà sur les actifs
+                    NombreEleves = g.Select(i => i.IdEleve).Distinct().Count(),
+                    NombreElevesActifs = g.Select(i => i.IdEleve).Distinct().Count()
                 })
                 .ToListAsync();
 
-            // Calculer les pourcentages pour les directions (basé sur le total d'élèves actifs)
             foreach (var direction in repartitionParDirection)
             {
-                direction.Pourcentage = totalElevesActifs > 0 
+                direction.Pourcentage = totalElevesActifs > 0
                     ? Math.Round((decimal)direction.NombreEleves * 100 / totalElevesActifs, 2)
                     : 0;
             }
 
-            // ✅ CORRECTION : Répartition par Section (utiliser elevesQueryActifs pour ne compter que les élèves actifs)
-            var repartitionParSection = await elevesQueryActifs
-                .Where(e => e.Classe != null && e.Classe.Section != null)
-                .GroupBy(e => new
+            var repartitionParSection = await inscriptionsActifs
+                .Where(i => i.Classe != null && i.Classe.Section != null)
+                .GroupBy(i => new
                 {
-                    IdSection = e.Classe.Section.IdSection,
-                    NomSection = e.Classe.Section.NomSection
+                    IdSection = i.Classe!.Section!.IdSection,
+                    NomSection = i.Classe.Section.NomSection
                 })
                 .Select(g => new RepartitionSectionDto
                 {
                     IdSection = g.Key.IdSection,
                     NomSection = g.Key.NomSection ?? "Non défini",
-                    NombreEleves = g.Count(), // Tous les élèves de cette requête sont actifs
-                    NombreElevesActifs = g.Count() // Identique car on filtre déjà sur les actifs
+                    NombreEleves = g.Select(i => i.IdEleve).Distinct().Count(),
+                    NombreElevesActifs = g.Select(i => i.IdEleve).Distinct().Count()
                 })
                 .ToListAsync();
 
-            // Calculer les pourcentages pour les sections (basé sur le total d'élèves actifs)
             foreach (var section in repartitionParSection)
             {
-                section.Pourcentage = totalElevesActifs > 0 
+                section.Pourcentage = totalElevesActifs > 0
                     ? Math.Round((decimal)section.NombreEleves * 100 / totalElevesActifs, 2)
                     : 0;
             }
 
-            // ✅ CORRECTION : Répartition par Option (utiliser elevesQueryActifs pour ne compter que les élèves actifs)
-            var repartitionParOption = await elevesQueryActifs
-                .Where(e => e.Classe != null && e.Classe.Option != null)
-                .GroupBy(e => new
+            var repartitionParOption = await inscriptionsActifs
+                .Where(i => i.Classe != null && i.Classe.Option != null)
+                .GroupBy(i => new
                 {
-                    IdOption = e.Classe.Option.IdOption,
-                    NomOption = e.Classe.Option.NomOption,
-                    IdSection = e.Classe.Option.Section != null ? e.Classe.Option.Section.IdSection : (int?)null,
-                    NomSection = e.Classe.Option.Section != null ? e.Classe.Option.Section.NomSection : null
+                    IdOption = i.Classe!.Option!.IdOption,
+                    NomOption = i.Classe.Option.NomOption,
+                    IdSection = i.Classe.Option.Section != null ? i.Classe.Option.Section.IdSection : (int?)null,
+                    NomSection = i.Classe.Option.Section != null ? i.Classe.Option.Section.NomSection : null
                 })
                 .Select(g => new RepartitionOptionDto
                 {
@@ -270,15 +286,14 @@ namespace KelasiNaBiso.Controllers
                     NomOption = g.Key.NomOption ?? "Non défini",
                     IdSection = g.Key.IdSection,
                     NomSection = g.Key.NomSection,
-                    NombreEleves = g.Count(), // Tous les élèves de cette requête sont actifs
-                    NombreElevesActifs = g.Count() // Identique car on filtre déjà sur les actifs
+                    NombreEleves = g.Select(i => i.IdEleve).Distinct().Count(),
+                    NombreElevesActifs = g.Select(i => i.IdEleve).Distinct().Count()
                 })
                 .ToListAsync();
 
-            // Calculer les pourcentages pour les options (basé sur le total d'élèves actifs)
             foreach (var option in repartitionParOption)
             {
-                option.Pourcentage = totalElevesActifs > 0 
+                option.Pourcentage = totalElevesActifs > 0
                     ? Math.Round((decimal)option.NombreEleves * 100 / totalElevesActifs, 2)
                     : 0;
             }
@@ -302,16 +317,22 @@ namespace KelasiNaBiso.Controllers
             [FromQuery] int idEcole,
             [FromQuery] DateTime? date = null,
             [FromQuery] DateTime? dateDebut = null,
-            [FromQuery] DateTime? dateFin = null)
+            [FromQuery] DateTime? dateFin = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
             try
             {
-                var result = await _presenceReportingService.GetDashboardEcoleAsync(idEcole, date, dateDebut, dateFin);
+                var result = await _presenceReportingService.GetDashboardEcoleAsync(
+                    idEcole, date, dateDebut, dateFin, idAnneeScolaire);
                 return Ok(result);
             }
             catch (KeyNotFoundException ex)
             {
                 return NotFound(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
             {
@@ -330,7 +351,8 @@ namespace KelasiNaBiso.Controllers
             [FromQuery] DateTime? date = null,
             [FromQuery] DateTime? dateDebut = null,
             [FromQuery] DateTime? dateFin = null,
-            [FromQuery] string? periode = null)
+            [FromQuery] string? periode = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
             try
             {
@@ -340,12 +362,17 @@ namespace KelasiNaBiso.Controllers
                     return StatusCode(500, new { message = "Service de paiement non disponible" });
                 }
 
-                var result = await paiementService.GetDashboardEcoleAsync(idEcole, date, dateDebut, dateFin, periode);
+                var result = await paiementService.GetDashboardEcoleAsync(
+                    idEcole, date, dateDebut, dateFin, periode, idAnneeScolaire);
                 return Ok(result);
             }
             catch (KeyNotFoundException ex)
             {
                 return NotFound(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
             {
@@ -550,11 +577,14 @@ namespace KelasiNaBiso.Controllers
             var totalDirections = await _context.Directions.Where(d => d.Statut == true).CountAsync();
             var totalClasses = await _context.Classes.Where(c => c.Statut == true).CountAsync();
             
-            // ✅ CORRECTION : Requête de base SANS filtre Statut pour le total
             var elevesQueryBase = _context.Eleves
-                .Where(e => e.Classe != null && 
-                           e.Classe.Direction != null && 
-                           e.Classe.Direction.IdEcole != null);
+                .Where(e => e.Inscriptions.Any(i =>
+                    i.Statut == true
+                    && i.IdEcole != null
+                    && i.StatutInscription != null
+                    && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                        || i.StatutInscription == "Confirme"
+                        || i.StatutInscription.StartsWith("Confirm"))));
             
             var elevesQueryActifs = elevesQueryBase
                 .Where(e => e.Statut == true);
@@ -625,62 +655,59 @@ namespace KelasiNaBiso.Controllers
         /// </summary>
         private async Task<List<RepartitionEcoleDto>> CalculerSyntheseEcolesAsync()
         {
-            // ✅ Base query pour tous les élèves de toutes les écoles (tous statuts)
-            var elevesQueryBase = _context.Eleves
-                .Where(e => e.Classe != null && 
-                           e.Classe.Direction != null && 
-                           e.Classe.Direction.IdEcole != null)
-                .Include(e => e.Classe)
-                    .ThenInclude(c => c.Direction)
-                        .ThenInclude(d => d.Ecole);
+            var inscriptions = FilterInscriptionsConfirmees(_context.Inscriptions)
+                .Include(i => i.Eleve)
+                .Include(i => i.Ecole);
 
-            var totalEleves = await elevesQueryBase.CountAsync();
-
-            // ✅ Répartition par École
-            var repartitionParEcole = await elevesQueryBase
-                .Where(e => e.Classe != null && 
-                           e.Classe.Direction != null && 
-                           e.Classe.Direction.Ecole != null)
-                .GroupBy(e => new
+            var elevesParEcole = await inscriptions
+                .Where(i => i.Ecole != null && i.Eleve != null)
+                .Select(i => new
                 {
-                    IdEcole = e.Classe.Direction.Ecole.IdEcole,
-                    NomEcole = e.Classe.Direction.Ecole.Nom,
-                    Province = e.Classe.Direction.Ecole.Province,
-                    Ville = e.Classe.Direction.Ecole.Ville
-                })
-                .Select(g => new RepartitionEcoleDto
-                {
-                    IdEcole = g.Key.IdEcole,
-                    NomEcole = g.Key.NomEcole ?? "Non défini",
-                    Province = g.Key.Province,
-                    Ville = g.Key.Ville,
-                    NombreEleves = g.Count(),
-                    NombreElevesActifs = g.Count(e => e.Statut == true),
-                    NombreElevesFilles = g.Count(e => e.Genre != null && (e.Genre.ToLower() == "féminin" || e.Genre.ToLower() == "feminin" || e.Genre.ToLower() == "f")),
-                    NombreElevesGarcons = g.Count(e => e.Genre != null && (e.Genre.ToLower() == "masculin" || e.Genre.ToLower() == "m")),
-                    NombreElevesFillesActives = g.Count(e => e.Statut == true && e.Genre != null && (e.Genre.ToLower() == "féminin" || e.Genre.ToLower() == "feminin" || e.Genre.ToLower() == "f")),
-                    NombreElevesGarconsActifs = g.Count(e => e.Statut == true && e.Genre != null && (e.Genre.ToLower() == "masculin" || e.Genre.ToLower() == "m"))
+                    IdEcole = i.IdEcole,
+                    NomEcole = i.Ecole!.Nom,
+                    Province = i.Ecole.Province,
+                    Ville = i.Ecole.Ville,
+                    IdEleve = i.IdEleve,
+                    StatutEleve = i.Eleve!.Statut,
+                    Genre = i.Eleve.Genre
                 })
                 .ToListAsync();
 
-            // Calculer les pourcentages pour les écoles
-            foreach (var ecole in repartitionParEcole)
-            {
-                ecole.Pourcentage = totalEleves > 0 
-                    ? Math.Round((decimal)ecole.NombreEleves * 100 / totalEleves, 2)
-                    : 0;
-                
-                ecole.PourcentageFilles = ecole.NombreEleves > 0 
-                    ? Math.Round((decimal)ecole.NombreElevesFilles * 100 / ecole.NombreEleves, 2)
-                    : 0;
-                
-                ecole.PourcentageGarcons = ecole.NombreEleves > 0 
-                    ? Math.Round((decimal)ecole.NombreElevesGarcons * 100 / ecole.NombreEleves, 2)
-                    : 0;
-            }
+            var totalEleves = elevesParEcole.Select(x => x.IdEleve).Distinct().Count();
 
-            // Retourner trié par nombre d'élèves décroissant
-            return repartitionParEcole.OrderByDescending(e => e.NombreEleves).ToList();
+            var repartitionParEcole = elevesParEcole
+                .GroupBy(x => new { x.IdEcole, x.NomEcole, x.Province, x.Ville })
+                .Select(g =>
+                {
+                    var elevesDistincts = g.GroupBy(x => x.IdEleve).Select(eg => eg.First()).ToList();
+                    var dto = new RepartitionEcoleDto
+                    {
+                        IdEcole = g.Key.IdEcole,
+                        NomEcole = g.Key.NomEcole ?? "Non défini",
+                        Province = g.Key.Province,
+                        Ville = g.Key.Ville,
+                        NombreEleves = elevesDistincts.Count,
+                        NombreElevesActifs = elevesDistincts.Count(e => e.StatutEleve == true),
+                        NombreElevesFilles = elevesDistincts.Count(e => e.Genre != null && (e.Genre.ToLower() == "féminin" || e.Genre.ToLower() == "feminin" || e.Genre.ToLower() == "f")),
+                        NombreElevesGarcons = elevesDistincts.Count(e => e.Genre != null && (e.Genre.ToLower() == "masculin" || e.Genre.ToLower() == "m")),
+                        NombreElevesFillesActives = elevesDistincts.Count(e => e.StatutEleve == true && e.Genre != null && (e.Genre.ToLower() == "féminin" || e.Genre.ToLower() == "feminin" || e.Genre.ToLower() == "f")),
+                        NombreElevesGarconsActifs = elevesDistincts.Count(e => e.StatutEleve == true && e.Genre != null && (e.Genre.ToLower() == "masculin" || e.Genre.ToLower() == "m"))
+                    };
+                    dto.Pourcentage = totalEleves > 0
+                        ? Math.Round((decimal)dto.NombreEleves * 100 / totalEleves, 2)
+                        : 0;
+                    dto.PourcentageFilles = dto.NombreEleves > 0
+                        ? Math.Round((decimal)dto.NombreElevesFilles * 100 / dto.NombreEleves, 2)
+                        : 0;
+                    dto.PourcentageGarcons = dto.NombreEleves > 0
+                        ? Math.Round((decimal)dto.NombreElevesGarcons * 100 / dto.NombreEleves, 2)
+                        : 0;
+                    return dto;
+                })
+                .OrderByDescending(e => e.NombreEleves)
+                .ToList();
+
+            return repartitionParEcole;
         }
 
         /// <summary>
@@ -688,137 +715,91 @@ namespace KelasiNaBiso.Controllers
         /// </summary>
         private async Task<(List<RepartitionEcoleDto>, List<RepartitionProvinceDto>, List<RepartitionVilleDto>)> CalculerRepartitionsGeographiquesAsync()
         {
-            // ✅ CORRECTION : Base query pour tous les élèves de toutes les écoles (tous statuts)
             var elevesQueryBase = _context.Eleves
-                .Where(e => e.Classe != null && 
-                           e.Classe.Direction != null && 
-                           e.Classe.Direction.IdEcole != null)
-                .Include(e => e.Classe)
-                    .ThenInclude(c => c.Direction)
-                        .ThenInclude(d => d.Ecole);
+                .Where(e => e.Inscriptions.Any(i =>
+                    i.Statut == true
+                    && i.IdEcole != null
+                    && i.StatutInscription != null
+                    && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                        || i.StatutInscription == "Confirme"
+                        || i.StatutInscription.StartsWith("Confirm"))))
+                .Include(e => e.Inscriptions)
+                    .ThenInclude(i => i.Ecole);
 
-            var elevesQueryActifs = elevesQueryBase
-                .Where(e => e.Statut == true);
+            var eleves = await elevesQueryBase.ToListAsync();
+            var totalEleves = eleves.Count;
 
-            var totalEleves = await elevesQueryBase.CountAsync();
+            var repartitionParEcole = await CalculerSyntheseEcolesAsync();
 
-            // ✅ CORRECTION : Répartition par École (utiliser elevesQueryBase pour le total)
-            var repartitionParEcole = await elevesQueryBase
-                .Where(e => e.Classe != null && 
-                           e.Classe.Direction != null && 
-                           e.Classe.Direction.Ecole != null)
-                .GroupBy(e => new
-                {
-                    IdEcole = e.Classe.Direction.Ecole.IdEcole,
-                    NomEcole = e.Classe.Direction.Ecole.Nom,
-                    Province = e.Classe.Direction.Ecole.Province,
-                    Ville = e.Classe.Direction.Ecole.Ville
-                })
-                .Select(g => new RepartitionEcoleDto
-                {
-                    IdEcole = g.Key.IdEcole,
-                    NomEcole = g.Key.NomEcole ?? "Non défini",
-                    Province = g.Key.Province,
-                    Ville = g.Key.Ville,
-                    NombreEleves = g.Count(),
-                    NombreElevesActifs = g.Count(e => e.Statut == true),
-                    NombreElevesFilles = g.Count(e => e.Genre != null && (e.Genre.ToLower() == "féminin" || e.Genre.ToLower() == "feminin" || e.Genre.ToLower() == "f")),
-                    NombreElevesGarcons = g.Count(e => e.Genre != null && (e.Genre.ToLower() == "masculin" || e.Genre.ToLower() == "m")),
-                    NombreElevesFillesActives = g.Count(e => e.Statut == true && e.Genre != null && (e.Genre.ToLower() == "féminin" || e.Genre.ToLower() == "feminin" || e.Genre.ToLower() == "f")),
-                    NombreElevesGarconsActifs = g.Count(e => e.Statut == true && e.Genre != null && (e.Genre.ToLower() == "masculin" || e.Genre.ToLower() == "m"))
-                })
-                .ToListAsync();
-
-            // Calculer les pourcentages pour les écoles
-            foreach (var ecole in repartitionParEcole)
-            {
-                ecole.Pourcentage = totalEleves > 0 
-                    ? Math.Round((decimal)ecole.NombreEleves * 100 / totalEleves, 2)
-                    : 0;
-                
-                ecole.PourcentageFilles = ecole.NombreEleves > 0 
-                    ? Math.Round((decimal)ecole.NombreElevesFilles * 100 / ecole.NombreEleves, 2)
-                    : 0;
-                
-                ecole.PourcentageGarcons = ecole.NombreEleves > 0 
-                    ? Math.Round((decimal)ecole.NombreElevesGarcons * 100 / ecole.NombreEleves, 2)
-                    : 0;
-            }
-
-            // ✅ CORRECTION : Répartition par Province (utiliser elevesQueryBase pour le total)
-            var repartitionParProvince = await elevesQueryBase
+            var repartitionParProvince = eleves
                 .Where(e => !string.IsNullOrEmpty(e.Province))
-                .GroupBy(e => new
+                .GroupBy(e => e.Province)
+                .Select(g =>
                 {
-                    Province = e.Province
+                    var dto = new RepartitionProvinceDto
+                    {
+                        Province = g.Key ?? "Non défini",
+                        NombreEleves = g.Count(),
+                        NombreElevesActifs = g.Count(e => e.Statut == true),
+                        NombreElevesFilles = g.Count(e => e.Genre != null && (e.Genre.ToLower() == "féminin" || e.Genre.ToLower() == "feminin" || e.Genre.ToLower() == "f")),
+                        NombreElevesGarcons = g.Count(e => e.Genre != null && (e.Genre.ToLower() == "masculin" || e.Genre.ToLower() == "m")),
+                        NombreEcoles = g.SelectMany(e => e.Inscriptions
+                                .Where(i => InscriptionActiveRules.IsActiveConfirmed(i))
+                                .Select(i => i.IdEcole))
+                            .Distinct()
+                            .Count()
+                    };
+                    dto.Pourcentage = totalEleves > 0
+                        ? Math.Round((decimal)dto.NombreEleves * 100 / totalEleves, 2)
+                        : 0;
+                    dto.PourcentageFilles = dto.NombreEleves > 0
+                        ? Math.Round((decimal)dto.NombreElevesFilles * 100 / dto.NombreEleves, 2)
+                        : 0;
+                    dto.PourcentageGarcons = dto.NombreEleves > 0
+                        ? Math.Round((decimal)dto.NombreElevesGarcons * 100 / dto.NombreEleves, 2)
+                        : 0;
+                    return dto;
                 })
-                .Select(g => new RepartitionProvinceDto
-                {
-                    Province = g.Key.Province ?? "Non défini",
-                    NombreEleves = g.Count(),
-                    NombreElevesActifs = g.Count(e => e.Statut == true),
-                    NombreElevesFilles = g.Count(e => e.Genre != null && (e.Genre.ToLower() == "féminin" || e.Genre.ToLower() == "feminin" || e.Genre.ToLower() == "f")),
-                    NombreElevesGarcons = g.Count(e => e.Genre != null && (e.Genre.ToLower() == "masculin" || e.Genre.ToLower() == "m")),
-                    NombreEcoles = g.Select(e => e.Classe.Direction.Ecole.IdEcole).Distinct().Count()
-                })
-                .ToListAsync();
+                .OrderByDescending(p => p.NombreEleves)
+                .ToList();
 
-            // Calculer les pourcentages pour les provinces
-            foreach (var province in repartitionParProvince)
-            {
-                province.Pourcentage = totalEleves > 0 
-                    ? Math.Round((decimal)province.NombreEleves * 100 / totalEleves, 2)
-                    : 0;
-                
-                province.PourcentageFilles = province.NombreEleves > 0 
-                    ? Math.Round((decimal)province.NombreElevesFilles * 100 / province.NombreEleves, 2)
-                    : 0;
-                
-                province.PourcentageGarcons = province.NombreEleves > 0 
-                    ? Math.Round((decimal)province.NombreElevesGarcons * 100 / province.NombreEleves, 2)
-                    : 0;
-            }
-
-            // ✅ CORRECTION : Répartition par Ville (utiliser elevesQueryBase pour le total)
-            var repartitionParVille = await elevesQueryBase
+            var repartitionParVille = eleves
                 .Where(e => !string.IsNullOrEmpty(e.Ville))
-                .GroupBy(e => new
+                .GroupBy(e => new { e.Ville, e.Province })
+                .Select(g =>
                 {
-                    Ville = e.Ville,
-                    Province = e.Province
+                    var dto = new RepartitionVilleDto
+                    {
+                        Ville = g.Key.Ville ?? "Non défini",
+                        Province = g.Key.Province,
+                        NombreEleves = g.Count(),
+                        NombreElevesActifs = g.Count(e => e.Statut == true),
+                        NombreElevesFilles = g.Count(e => e.Genre != null && (e.Genre.ToLower() == "féminin" || e.Genre.ToLower() == "feminin" || e.Genre.ToLower() == "f")),
+                        NombreElevesGarcons = g.Count(e => e.Genre != null && (e.Genre.ToLower() == "masculin" || e.Genre.ToLower() == "m")),
+                        NombreEcoles = g.SelectMany(e => e.Inscriptions
+                                .Where(i => InscriptionActiveRules.IsActiveConfirmed(i))
+                                .Select(i => i.IdEcole))
+                            .Distinct()
+                            .Count()
+                    };
+                    dto.Pourcentage = totalEleves > 0
+                        ? Math.Round((decimal)dto.NombreEleves * 100 / totalEleves, 2)
+                        : 0;
+                    dto.PourcentageFilles = dto.NombreEleves > 0
+                        ? Math.Round((decimal)dto.NombreElevesFilles * 100 / dto.NombreEleves, 2)
+                        : 0;
+                    dto.PourcentageGarcons = dto.NombreEleves > 0
+                        ? Math.Round((decimal)dto.NombreElevesGarcons * 100 / dto.NombreEleves, 2)
+                        : 0;
+                    return dto;
                 })
-                .Select(g => new RepartitionVilleDto
-                {
-                    Ville = g.Key.Ville ?? "Non défini",
-                    Province = g.Key.Province,
-                    NombreEleves = g.Count(),
-                    NombreElevesActifs = g.Count(e => e.Statut == true),
-                    NombreElevesFilles = g.Count(e => e.Genre != null && (e.Genre.ToLower() == "féminin" || e.Genre.ToLower() == "feminin" || e.Genre.ToLower() == "f")),
-                    NombreElevesGarcons = g.Count(e => e.Genre != null && (e.Genre.ToLower() == "masculin" || e.Genre.ToLower() == "m")),
-                    NombreEcoles = g.Select(e => e.Classe.Direction.Ecole.IdEcole).Distinct().Count()
-                })
-                .ToListAsync();
-
-            // Calculer les pourcentages pour les villes
-            foreach (var ville in repartitionParVille)
-            {
-                ville.Pourcentage = totalEleves > 0 
-                    ? Math.Round((decimal)ville.NombreEleves * 100 / totalEleves, 2)
-                    : 0;
-                
-                ville.PourcentageFilles = ville.NombreEleves > 0 
-                    ? Math.Round((decimal)ville.NombreElevesFilles * 100 / ville.NombreEleves, 2)
-                    : 0;
-                
-                ville.PourcentageGarcons = ville.NombreEleves > 0 
-                    ? Math.Round((decimal)ville.NombreElevesGarcons * 100 / ville.NombreEleves, 2)
-                    : 0;
-            }
+                .OrderByDescending(v => v.NombreEleves)
+                .ToList();
 
             return (
-                repartitionParEcole.OrderByDescending(e => e.NombreEleves).ToList(),
-                repartitionParProvince.OrderByDescending(p => p.NombreEleves).ToList(),
-                repartitionParVille.OrderByDescending(v => v.NombreEleves).ToList()
+                repartitionParEcole,
+                repartitionParProvince,
+                repartitionParVille
             );
         }
 

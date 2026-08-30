@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Report ScriptLanguage="CSharp" ReportInfo.Name="BulletinEleve" ReportInfo.Description="Bulletin scolaire élève A4" ReportInfo.Created="08/12/2026 10:00:00" ReportInfo.Modified="08/12/2026 10:00:00" ReportInfo.CreatorVersion="2024.1.7.0">
+  <Dictionary>
+    <TableDataSource Name="BulletinLignes" ReferenceName="BulletinLignes" DataType="System.Int32" Enabled="true">
+      <Column Name="NomCours" DataType="System.String"/>
+      <Column Name="MoyenneCoursTexte" DataType="System.String"/>
+      <Column Name="CoefficientTexte" DataType="System.String"/>
+      <Column Name="DetailNotes" DataType="System.String"/>
+    </TableDataSource>
+  </Dictionary>
+  <ReportPage Name="BulletinPage" PaperWidth="2100" PaperHeight="2970" LeftMargin="150" TopMargin="150" RightMargin="150" BottomMargin="150" Watermark.Font="Arial, 60pt">
+    <ReportTitleBand Name="HeaderBand" Width="1800" Height="340">
+      <TextObject Name="txtEcole" Width="1800" Height="56" Text="Ecole" HorzAlign="Center" VertAlign="Center" Font="Arial, 14pt, style=Bold"/>
+      <TextObject Name="txtTitle" Top="66" Width="1800" Height="47" Text="BULLETIN SCOLAIRE" HorzAlign="Center" VertAlign="Center" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="txtEleve" Top="123" Width="900" Height="38" Text="Eleve" Font="Arial, 10pt"/>
+      <TextObject Name="txtClasse" Top="123" Left="900" Width="900" Height="38" Text="Classe" Font="Arial, 10pt"/>
+      <TextObject Name="txtAnnee" Top="170" Width="900" Height="38" Text="Annee" Font="Arial, 10pt"/>
+      <TextObject Name="txtPeriode" Top="170" Left="900" Width="900" Height="38" Text="Periode" Font="Arial, 10pt"/>
+      <TextObject Name="txtMoyenne" Top="217" Width="600" Height="38" Text="Moyenne" Font="Arial, 10pt, style=Bold"/>
+      <TextObject Name="txtRang" Top="217" Left="600" Width="600" Height="38" Text="Rang" Font="Arial, 10pt, style=Bold"/>
+      <TextObject Name="txtEffectif" Top="217" Left="1200" Width="600" Height="38" Text="Effectif" Font="Arial, 10pt, style=Bold"/>
+      <TextObject Name="txtColCours" Top="285" Width="630" Height="38" Text="Cours" Font="Arial, 9pt, style=Bold"/>
+      <TextObject Name="txtColMoy" Top="285" Left="630" Width="216" Height="38" Text="Moy." HorzAlign="Center" Font="Arial, 9pt, style=Bold"/>
+      <TextObject Name="txtColCoeff" Top="285" Left="846" Width="180" Height="38" Text="Coeff." HorzAlign="Center" Font="Arial, 9pt, style=Bold"/>
+      <TextObject Name="txtColDetail" Top="285" Left="1026" Width="774" Height="38" Text="Detail notes" Font="Arial, 9pt, style=Bold"/>
+    </ReportTitleBand>
+    <DataBand Name="LignesBand" Top="344" Width="1800" Height="94" CanGrow="true" DataSource="BulletinLignes">
+      <TextObject Name="txtNomCours" Width="630" Height="85" Text="[BulletinLignes.NomCours]" CanGrow="true" Font="Arial, 9pt"/>
+      <TextObject Name="txtMoyenneCours" Left="630" Width="216" Height="85" Text="[BulletinLignes.MoyenneCoursTexte]" HorzAlign="Center" Font="Arial, 9pt"/>
+      <TextObject Name="txtCoefficient" Left="846" Width="180" Height="85" Text="[BulletinLignes.CoefficientTexte]" HorzAlign="Center" Font="Arial, 9pt"/>
+      <TextObject Name="txtDetailNotes" Left="1026" Width="774" Height="85" Text="[BulletinLignes.DetailNotes]" CanGrow="true" Font="Arial, 8pt"/>
+    </DataBand>
+    <ReportSummaryBand Name="FooterBand" Top="442" Width="1800" Height="56">
+      <TextObject Name="txtFooter" Width="1800" Height="38" Text="Document genere par KelasiNaBiso" HorzAlign="Right" Font="Arial, 8pt"/>
+    </ReportSummaryBand>
+  </ReportPage>
+</Report>

@@ -58,7 +58,8 @@ namespace KelasiNaBiso.Services
                     .Include(r => r.Utilisateur)
                     .ThenInclude(u => u.Tuteur)
                     .Include(r => r.Eleve)
-                    .ThenInclude(e => e.Classe)
+                    .ThenInclude(e => e.Inscriptions)
+                        .ThenInclude(i => i.Classe)
                     .ToListAsync(cancellationToken);
 
                 if (recipients.Count == 0)

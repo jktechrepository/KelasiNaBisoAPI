@@ -1,0 +1,18 @@
+---
+description: Redémarrer l'API après chaque changement de code
+alwaysApply: true
+---
+
+# Redémarrage API systématique
+
+Après **chaque modification** de code ou de configuration dans ce projet (C#, appsettings, templates FastReport `.frx`, assets Swagger, etc.) :
+
+1. Arrêter le processus `KelasiNaBiso` s'il tourne
+2. Relancer l'API en Development :
+   ```powershell
+   $env:ASPNETCORE_ENVIRONMENT = "Development"
+   dotnet run --project KelasiNaBiso.csproj
+   ```
+3. Vérifier que Swagger répond : `https://localhost:7102/swagger/index.html`
+
+Ne pas attendre que l'utilisateur demande « redémarre l'api » — le faire automatiquement après les changements.

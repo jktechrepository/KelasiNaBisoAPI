@@ -10,6 +10,8 @@ namespace KelasiNaBiso.Services.Repositories
         Task<IEnumerable<Evaluation>> GetByCoursAsync(int idCours);
         Task<IEnumerable<Evaluation>> GetByClasseAsync(int idClasse);
         Task<IEnumerable<Evaluation>> GetByTypeAsync(string type);
+        Task<IEnumerable<Evaluation>> GetByPeriodeAsync(string periode);
+        Task<IEnumerable<Evaluation>> GetByStatutAsync(bool statut);
         Task<IEnumerable<Evaluation>> GetByDateEvaluationAsync(DateTime date);
         Task<IEnumerable<Evaluation>> GetByDateRangeAsync(DateTime dateDebut, DateTime dateFin);
         Task<Evaluation> CreateAsync(Evaluation evaluation);

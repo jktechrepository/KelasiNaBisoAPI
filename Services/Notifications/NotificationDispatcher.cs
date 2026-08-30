@@ -34,9 +34,13 @@ namespace KelasiNaBiso.Services.Notifications
                 .Include(p => p.Eleve)
                     .ThenInclude(e => e.Tuteur)
                 .Include(p => p.Eleve)
-                    .ThenInclude(e => e.Classe)
-                        .ThenInclude(c => c.Direction)
-                            .ThenInclude(d => d.Ecole)
+                    .ThenInclude(e => e.Inscriptions)
+                        .ThenInclude(i => i.Ecole)
+                .Include(p => p.Eleve)
+                    .ThenInclude(e => e.Inscriptions)
+                        .ThenInclude(i => i.Classe)
+                            .ThenInclude(c => c.Direction)
+                                .ThenInclude(d => d.Ecole)
                 .FirstOrDefaultAsync(p => p.IdPresence == presenceId, cancellationToken);
 
             if (presence == null)
@@ -74,7 +78,12 @@ namespace KelasiNaBiso.Services.Notifications
 
             var utilisateurActif = utilisateurTuteur != null;
 
-            var ecole = presence.Eleve.Classe?.Direction?.Ecole;
+            var ecole = presence.Eleve.Inscriptions
+                .Where(i => i.Statut == true &&
+                    (i.StatutInscription == "Confirmé" || i.StatutInscription == "Confirme" || i.StatutInscription.StartsWith("Confirm")))
+                .OrderByDescending(i => i.DateInscription)
+                .Select(i => i.Ecole ?? i.Classe.Direction.Ecole)
+                .FirstOrDefault();
             var acceptsSms = ecole?.AcceptNotification == true;
 
             var preferences = await LoadPreferencesAsync(tuteur.IdTuteur, cancellationToken);
@@ -120,9 +129,13 @@ namespace KelasiNaBiso.Services.Notifications
                 .Include(p => p.Eleve)
                     .ThenInclude(e => e.Tuteur)
                 .Include(p => p.Eleve)
-                    .ThenInclude(e => e.Classe)
-                        .ThenInclude(c => c.Direction)
-                            .ThenInclude(d => d.Ecole)
+                    .ThenInclude(e => e.Inscriptions)
+                        .ThenInclude(i => i.Ecole)
+                .Include(p => p.Eleve)
+                    .ThenInclude(e => e.Inscriptions)
+                        .ThenInclude(i => i.Classe)
+                            .ThenInclude(c => c.Direction)
+                                .ThenInclude(d => d.Ecole)
                 .Include(p => p.Frais)
                 .FirstOrDefaultAsync(p => p.IdPaiement == paiementId, cancellationToken);
 
@@ -161,7 +174,12 @@ namespace KelasiNaBiso.Services.Notifications
 
             var utilisateurActif = utilisateurTuteur != null;
 
-            var ecole = paiement.Eleve.Classe?.Direction?.Ecole;
+            var ecole = paiement.Eleve.Inscriptions
+                .Where(i => i.Statut == true &&
+                    (i.StatutInscription == "Confirmé" || i.StatutInscription == "Confirme" || i.StatutInscription.StartsWith("Confirm")))
+                .OrderByDescending(i => i.DateInscription)
+                .Select(i => i.Ecole ?? i.Classe.Direction.Ecole)
+                .FirstOrDefault();
             var acceptsSms = ecole?.AcceptNotification == true;
 
             var preferences = await LoadPreferencesAsync(tuteur.IdTuteur, cancellationToken);

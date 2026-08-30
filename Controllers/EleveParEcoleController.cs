@@ -1,186 +1,410 @@
-using KelasiNaBiso.Models.DTOs;
-using KelasiNaBiso.Services.Repositories;
 using KelasiNaBiso.Attributes;
-using Microsoft.AspNetCore.Mvc;
+using KelasiNaBiso.Helpers;
+using KelasiNaBiso.Models.DTOs;
+using KelasiNaBiso.Services;
+using KelasiNaBiso.Services.Repositories;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace KelasiNaBiso.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize] // 🔒 Élèves par école - Token JWT requis
+    [Authorize]
     public class EleveParEcoleController : ControllerBase
     {
         private readonly IEleveParEcoleRepository _eleveParEcoleRepository;
+        private readonly EleveAnneeScopeHelper _scope;
 
-        public EleveParEcoleController(IEleveParEcoleRepository eleveParEcoleRepository)
+        public EleveParEcoleController(
+            IEleveParEcoleRepository eleveParEcoleRepository,
+            EleveAnneeScopeHelper scope)
         {
             _eleveParEcoleRepository = eleveParEcoleRepository;
+            _scope = scope;
         }
 
-        // GET: api/EleveParEcole
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<EleveParEcoleDTO>>> GetAll()
+        private async Task<IActionResult?> ForbidClasseSchoolAsync(int idClasse)
         {
-            var eleves = await _eleveParEcoleRepository.GetAllAsync();
-            return Ok(eleves);
+            int idEcole;
+            try
+            {
+                idEcole = await _scope.ResolveIdEcoleForClasseAsync(idClasse);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+
+            return this.ForbidIfWrongSchool(idEcole);
         }
 
-        // GET: api/EleveParEcole/5
+        private async Task<IActionResult?> ForbidDirectionSchoolAsync(int idDirection)
+        {
+            int idEcole;
+            try
+            {
+                idEcole = await _scope.ResolveIdEcoleForDirectionAsync(idDirection);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+
+            return this.ForbidIfWrongSchool(idEcole);
+        }
+
+        private async Task<IActionResult?> ForbidOptionSchoolAsync(int idOption)
+        {
+            int idEcole;
+            try
+            {
+                idEcole = await _scope.ResolveIdEcoleForOptionAsync(idOption);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+
+            return this.ForbidIfWrongSchool(idEcole);
+        }
+
+        [HttpGet]
+        [RequireGlobalAccess]
+        public async Task<IActionResult> GetAll(
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
+        {
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _eleveParEcoleRepository.GetAllAsync(resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
         [HttpGet("{id}")]
         public async Task<ActionResult<EleveParEcoleDTO>> GetById(int id)
         {
             var eleve = await _eleveParEcoleRepository.GetByIdAsync(id);
             if (eleve == null)
-            {
-                return NotFound($"Aucun �l�ve trouv� avec l'ID {id}");
-            }
+                return NotFound($"Aucun élève trouvé avec l'ID {id}");
             return Ok(eleve);
         }
 
-        // GET: api/EleveParEcole/ecole/5
         [HttpGet("ecole/{idEcole}")]
-        public async Task<ActionResult<IEnumerable<EleveParEcoleDTO>>> GetByEcole(int idEcole)
+        public async Task<IActionResult> GetByEcole(int idEcole, [FromQuery] int? idAnneeScolaire = null)
         {
-            var eleves = await _eleveParEcoleRepository.GetByEcoleAsync(idEcole);
-            return Ok(eleves);
+            var deny = this.ForbidIfWrongSchool(idEcole);
+            if (deny != null)
+                return deny;
+
+            try
+            {
+                return Ok(await _eleveParEcoleRepository.GetByEcoleAsync(idEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/EleveParEcole/classe/5
         [HttpGet("classe/{idClasse}")]
-        public async Task<ActionResult<IEnumerable<EleveParEcoleDTO>>> GetByClasse(int idClasse)
+        public async Task<IActionResult> GetByClasse(int idClasse, [FromQuery] int? idAnneeScolaire = null)
         {
-            var eleves = await _eleveParEcoleRepository.GetByClasseAsync(idClasse);
-            return Ok(eleves);
+            var deny = await ForbidClasseSchoolAsync(idClasse);
+            if (deny != null)
+                return deny;
+
+            try
+            {
+                return Ok(await _eleveParEcoleRepository.GetByClasseAsync(idClasse, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/EleveParEcole/direction/5
         [HttpGet("direction/{idDirection}")]
-        public async Task<ActionResult<IEnumerable<EleveParEcoleDTO>>> GetByDirection(int idDirection)
+        public async Task<IActionResult> GetByDirection(int idDirection, [FromQuery] int? idAnneeScolaire = null)
         {
-            var eleves = await _eleveParEcoleRepository.GetByDirectionAsync(idDirection);
-            return Ok(eleves);
+            var deny = await ForbidDirectionSchoolAsync(idDirection);
+            if (deny != null)
+                return deny;
+
+            try
+            {
+                return Ok(await _eleveParEcoleRepository.GetByDirectionAsync(idDirection, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/EleveParEcole/option/5
         [HttpGet("option/{idOption}")]
-        public async Task<ActionResult<IEnumerable<EleveParEcoleDTO>>> GetByOption(int idOption)
+        public async Task<IActionResult> GetByOption(int idOption, [FromQuery] int? idAnneeScolaire = null)
         {
-            var eleves = await _eleveParEcoleRepository.GetByOptionAsync(idOption);
-            return Ok(eleves);
+            var deny = await ForbidOptionSchoolAsync(idOption);
+            if (deny != null)
+                return deny;
+
+            try
+            {
+                return Ok(await _eleveParEcoleRepository.GetByOptionAsync(idOption, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/EleveParEcole/tuteur/5
         [HttpGet("tuteur/{idTuteur}")]
-        public async Task<ActionResult<IEnumerable<EleveParEcoleDTO>>> GetByTuteur(int idTuteur)
+        public async Task<IActionResult> GetByTuteur(
+            int idTuteur,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var eleves = await _eleveParEcoleRepository.GetByTuteurAsync(idTuteur);
-            return Ok(eleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _eleveParEcoleRepository.GetByTuteurAsync(idTuteur, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/EleveParEcole/statut/actif
         [HttpGet("statut/{statut}")]
-        public async Task<ActionResult<IEnumerable<EleveParEcoleDTO>>> GetByStatut(string statut)
+        public async Task<IActionResult> GetByStatut(
+            string statut,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
             if (!bool.TryParse(statut, out bool statutBool))
+                return BadRequest("Le paramètre statut doit être 'true' ou 'false'");
+
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
             {
-                return BadRequest("Le param�tre statut doit �tre 'true' ou 'false'");
+                return Ok(await _eleveParEcoleRepository.GetByStatutAsync(statutBool, resolvedEcole, idAnneeScolaire));
             }
-            
-            var eleves = await _eleveParEcoleRepository.GetByStatutAsync(statutBool);
-            return Ok(eleves);
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/EleveParEcole/genre/M
         [HttpGet("genre/{genre}")]
-        public async Task<ActionResult<IEnumerable<EleveParEcoleDTO>>> GetByGenre(string genre)
+        public async Task<IActionResult> GetByGenre(
+            string genre,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var eleves = await _eleveParEcoleRepository.GetByGenreAsync(genre);
-            return Ok(eleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _eleveParEcoleRepository.GetByGenreAsync(genre, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/EleveParEcole/age-range?minAge=10&maxAge=15
         [HttpGet("age-range")]
-        public async Task<ActionResult<IEnumerable<EleveParEcoleDTO>>> GetByAgeRange(
+        public async Task<IActionResult> GetByAgeRange(
             [FromQuery] int minAge,
-            [FromQuery] int maxAge)
+            [FromQuery] int maxAge,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var eleves = await _eleveParEcoleRepository.GetByAgeRangeAsync(minAge, maxAge);
-            return Ok(eleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _eleveParEcoleRepository.GetByAgeRangeAsync(minAge, maxAge, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/EleveParEcole/province/Kinshasa
         [HttpGet("province/{province}")]
-        public async Task<ActionResult<IEnumerable<EleveParEcoleDTO>>> GetByProvince(string province)
+        public async Task<IActionResult> GetByProvince(
+            string province,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var eleves = await _eleveParEcoleRepository.GetByProvinceAsync(province);
-            return Ok(eleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _eleveParEcoleRepository.GetByProvinceAsync(province, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/EleveParEcole/ville/Kinshasa
         [HttpGet("ville/{ville}")]
-        public async Task<ActionResult<IEnumerable<EleveParEcoleDTO>>> GetByVille(string ville)
+        public async Task<IActionResult> GetByVille(
+            string ville,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var eleves = await _eleveParEcoleRepository.GetByVilleAsync(ville);
-            return Ok(eleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _eleveParEcoleRepository.GetByVilleAsync(ville, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/EleveParEcole/commune/Gombe
         [HttpGet("commune/{commune}")]
-        public async Task<ActionResult<IEnumerable<EleveParEcoleDTO>>> GetByCommune(string commune)
+        public async Task<IActionResult> GetByCommune(
+            string commune,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var eleves = await _eleveParEcoleRepository.GetByCommuneAsync(commune);
-            return Ok(eleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _eleveParEcoleRepository.GetByCommuneAsync(commune, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/EleveParEcole/tuteur-contact/+243123456789
         [HttpGet("tuteur-contact/{contact}")]
-        public async Task<ActionResult<IEnumerable<EleveParEcoleDTO>>> GetByTuteurContact(string contact)
+        public async Task<IActionResult> GetByTuteurContact(
+            string contact,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
             if (string.IsNullOrWhiteSpace(contact))
-            {
-                return BadRequest("Le contact ne peut pas �tre vide");
-            }
+                return BadRequest("Le contact ne peut pas être vide");
 
-            var eleves = await _eleveParEcoleRepository.GetByTuteurContactAsync(contact);
-            return Ok(eleves);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                return Ok(await _eleveParEcoleRepository.GetByTuteurContactAsync(contact, resolvedEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/EleveParEcole/search?term=John
         [HttpGet("search")]
-        public async Task<ActionResult<IEnumerable<EleveParEcoleDTO>>> Search([FromQuery] string term)
+        public async Task<IActionResult> Search(
+            [FromQuery] string term,
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null)
         {
             if (string.IsNullOrWhiteSpace(term))
+                return BadRequest("Le terme de recherche ne peut pas être vide");
+
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
             {
-                return BadRequest("Le terme de recherche ne peut pas �tre vide");
+                return Ok(await _eleveParEcoleRepository.SearchAsync(term, resolvedEcole, idAnneeScolaire));
             }
-
-            var eleves = await _eleveParEcoleRepository.SearchAsync(term);
-            return Ok(eleves);
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/EleveParEcole/count/ecole/5
         [HttpGet("count/ecole/{idEcole}")]
-        public async Task<ActionResult<int>> GetCountByEcole(int idEcole)
+        public async Task<IActionResult> GetCountByEcole(int idEcole, [FromQuery] int? idAnneeScolaire = null)
         {
-            var count = await _eleveParEcoleRepository.GetCountByEcoleAsync(idEcole);
-            return Ok(count);
+            var deny = this.ForbidIfWrongSchool(idEcole);
+            if (deny != null)
+                return deny;
+
+            try
+            {
+                return Ok(await _eleveParEcoleRepository.GetCountByEcoleAsync(idEcole, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/EleveParEcole/count/classe/5
         [HttpGet("count/classe/{idClasse}")]
-        public async Task<ActionResult<int>> GetCountByClasse(int idClasse)
+        public async Task<IActionResult> GetCountByClasse(int idClasse, [FromQuery] int? idAnneeScolaire = null)
         {
-            var count = await _eleveParEcoleRepository.GetCountByClasseAsync(idClasse);
-            return Ok(count);
+            var deny = await ForbidClasseSchoolAsync(idClasse);
+            if (deny != null)
+                return deny;
+
+            try
+            {
+                return Ok(await _eleveParEcoleRepository.GetCountByClasseAsync(idClasse, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // GET: api/EleveParEcole/count/direction/5
         [HttpGet("count/direction/{idDirection}")]
-        public async Task<ActionResult<int>> GetCountByDirection(int idDirection)
+        public async Task<IActionResult> GetCountByDirection(int idDirection, [FromQuery] int? idAnneeScolaire = null)
         {
-            var count = await _eleveParEcoleRepository.GetCountByDirectionAsync(idDirection);
-            return Ok(count);
+            var deny = await ForbidDirectionSchoolAsync(idDirection);
+            if (deny != null)
+                return deny;
+
+            try
+            {
+                return Ok(await _eleveParEcoleRepository.GetCountByDirectionAsync(idDirection, idAnneeScolaire));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
     }
 }

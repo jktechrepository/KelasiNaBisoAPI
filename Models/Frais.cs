@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
-using Microsoft.CodeAnalysis;
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 
@@ -29,6 +28,13 @@ namespace KelasiNaBiso.Models
 
         public int IdDirection { get; set; }
 
+        /// <summary>Année scolaire obligatoire (une grille tarifaire = une année).</summary>
+        [Required]
+        public int IdAnneeScolaire { get; set; }
+
+        /// <summary>Null = applicable à toute la direction ; sinon tarif spécifique à une classe.</summary>
+        public int? IdClasse { get; set; }
+
         // Attributs Technique
         [JsonIgnore]
         public DateTime DateCreation { get; set; }
@@ -37,6 +43,14 @@ namespace KelasiNaBiso.Models
         [JsonIgnore]
         [ValidateNever]
         public Direction Direction { get; set; }
+
+        [JsonIgnore]
+        [ValidateNever]
+        public AnneeScolaire AnneeScolaire { get; set; }
+
+        [JsonIgnore]
+        [ValidateNever]
+        public Classe? Classe { get; set; }
         
         // Collections
         [JsonIgnore]

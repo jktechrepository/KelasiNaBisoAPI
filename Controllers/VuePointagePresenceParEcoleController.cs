@@ -20,6 +20,7 @@ namespace KelasiNaBiso.Controllers
 
         // GET: api/VuePointagePresenceParEcole
         [HttpGet]
+        [RequireGlobalAccess]
         public async Task<ActionResult<IEnumerable<VuePointagePresenceParEcoleDTO>>> GetAll()
         {
             var pointages = await _vuePointageRepository.GetAllAsync();
@@ -726,6 +727,7 @@ namespace KelasiNaBiso.Controllers
             return Ok(rapport);
         }
 
+        // Rapports détaillés
         [HttpGet("parent/rapport/trimestriel/{contactParent}/trimestre/{trimestre}/annee/{annee}")]
         public async Task<ActionResult<object>> GetRapportTrimestrielEnfant(
             string contactParent,
@@ -734,21 +736,6 @@ namespace KelasiNaBiso.Controllers
         {
             var rapport = await _vuePointageRepository.GetRapportTrimestrielEnfantAsync(contactParent, trimestre, annee);
             return Ok(rapport);
-        }
-
-        // Endpoint temporaire pour recr�er la vue
-        [HttpPost("recreate-view")]
-        public ActionResult RecreateView()
-        {
-            try
-            {
-                _vuePointageRepository.RecreateView();
-                return Ok(new { message = "Vue recr��e avec succ�s" });
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new { error = ex.Message });
-            }
         }
     }
 }

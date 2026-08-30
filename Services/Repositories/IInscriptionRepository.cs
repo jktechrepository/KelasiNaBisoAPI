@@ -10,10 +10,11 @@ namespace KelasiNaBiso.Services.Repositories
         Task<IEnumerable<Inscription>> GetAllAsync();
         Task<Inscription> GetByIdAsync(int id);
         Task<IEnumerable<Inscription>> GetByEleveAsync(int idEleve);
-        Task<IEnumerable<Inscription>> GetByEcoleAsync(int idEcole);
-        Task<IEnumerable<Inscription>> GetByClasseAsync(int idClasse);
+        Task<ElevesAnneeScopedResult<IEnumerable<Inscription>>> GetByEcoleAsync(int idEcole, int? idAnneeScolaire = null);
+        Task<ElevesAnneeScopedResult<IEnumerable<Inscription>>> GetByClasseAsync(int idClasse, int? idAnneeScolaire = null);
         Task<IEnumerable<Inscription>> GetByAnneeScolaireAsync(int idAnneeScolaire);
         Task<IEnumerable<Inscription>> GetByStatutAsync(bool statut);
+        [Obsolete("Utiliser CreateInscriptionAsync. La SP sp_CreateInscription reposait sur Eleves.IdClasse / Tuteurs.IdEcole.")]
         Task<InscriptionResult> CreateInscriptionWithStoredProcedureAsync(CreateInscriptionDto inscriptionDto);
         Task<InscriptionResult> CreateInscriptionAsync(CreateInscriptionDto inscriptionDto);
         Task<Inscription> UpdateAsync(Inscription inscription);
@@ -29,8 +30,10 @@ namespace KelasiNaBiso.Services.Repositories
         // ✅ PAGINATION
         Task<PagedResult<Inscription>> GetAllPagedAsync(PagedRequest request);
         Task<PagedResult<Inscription>> GetByElevePagedAsync(int idEleve, PagedRequest request);
-        Task<PagedResult<Inscription>> GetByEcolePagedAsync(int idEcole, PagedRequest request);
-        Task<PagedResult<Inscription>> GetByClassePagedAsync(int idClasse, PagedRequest request);
+        Task<ElevesAnneeScopedResult<PagedResult<Inscription>>> GetByEcolePagedAsync(
+            int idEcole, PagedRequest request, int? idAnneeScolaire = null);
+        Task<ElevesAnneeScopedResult<PagedResult<Inscription>>> GetByClassePagedAsync(
+            int idClasse, PagedRequest request, int? idAnneeScolaire = null);
         Task<PagedResult<Inscription>> GetByStatutPagedAsync(bool statut, PagedRequest request);
     }
 }

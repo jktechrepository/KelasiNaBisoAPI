@@ -65,13 +65,13 @@ namespace KelasiNaBiso.Models.DTOs
         [StringLength(500)]
         public string? Commentaire { get; set; }
         
-        // Tuteur et Classe (modifiables par admin)
+        // Tuteur (modifiable par admin) — classe via Inscription uniquement
         public int? IdTuteur { get; set; }
-        public int? IdClasse { get; set; }
         
         // ═══════════════════════════════════════════════════════════
         // CHAMPS PROTÉGÉS (Non modifiables via cet endpoint)
         // ═══════════════════════════════════════════════════════════
+        // ❌ IdClasse           → Via Inscription (source de vérité)
         // ❌ Matricule          → Auto-généré, immuable
         // ❌ SerialNumber       → Endpoint dédié si nécessaire
         // ❌ ReferenceEleve     → Auto-généré (Guid), immuable

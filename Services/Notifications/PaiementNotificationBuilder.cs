@@ -22,7 +22,12 @@ namespace KelasiNaBiso.Services.Notifications
             var eleve = context.Eleve;
             var tuteur = context.Tuteur;
             var ecole = context.Ecole;
-            var classe = eleve.Classe;
+            var classe = eleve.Inscriptions
+                .Where(i => i.Statut == true &&
+                    (i.StatutInscription == "Confirmé" || i.StatutInscription == "Confirme" || i.StatutInscription.StartsWith("Confirm")))
+                .OrderByDescending(i => i.DateInscription)
+                .Select(i => i.Classe)
+                .FirstOrDefault();
 
             var montantFormate = $"{paiement.Montant:N2} {paiement.Devise ?? "USD"}";
             var dateFormatee = paiement.DatePaiement.ToString("dd/MM/yyyy HH:mm");

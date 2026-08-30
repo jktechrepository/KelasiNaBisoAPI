@@ -19,6 +19,7 @@ namespace KelasiNaBiso.Services
     {
         private readonly KelasiNaBisoDbContext _context;
         private readonly IConfiguration _configuration;
+        private readonly IInscriptionActiveResolver _inscriptionResolver;
         private readonly ILogger<TwilioSmsService> _logger;
         
         private readonly string _accountSid;
@@ -31,10 +32,12 @@ namespace KelasiNaBiso.Services
         public TwilioSmsService(
             KelasiNaBisoDbContext context,
             IConfiguration configuration,
+            IInscriptionActiveResolver inscriptionResolver,
             ILogger<TwilioSmsService> logger)
         {
             _context = context;
             _configuration = configuration;
+            _inscriptionResolver = inscriptionResolver;
             _logger = logger;
 
             // ✅ Récupérer la configuration Twilio depuis appsettings.json
@@ -267,11 +270,10 @@ namespace KelasiNaBiso.Services
         public async Task<List<SmsLog>> EnvoyerSmsParEcoleAsync(int idEcole, string message, string? typeNotification = null)
         {
             // ✅ Récupérer tous les utilisateurs qui sont tuteurs de l'école avec numéro
-            var utilisateurs = await _context.Utilisateurs
-                .Where(u => u.IdTuteur != null &&
-                           u.Telephone != null &&
-                           u.Telephone != "" &&
-                           _context.Tuteurs.Any(t => t.IdTuteur == u.IdTuteur && t.IdEcole == idEcole))
+            var utilisateurs = await _inscriptionResolver
+                .FilterUtilisateursParentsInEcole(
+                    _context.Utilisateurs.Where(u => u.Telephone != null && u.Telephone != ""),
+                    idEcole)
                 .ToListAsync();
 
             _logger.LogInformation($"📨 Envoi SMS aux {utilisateurs.Count} tuteurs de l'école {idEcole}");

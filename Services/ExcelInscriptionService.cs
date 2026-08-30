@@ -190,7 +190,8 @@ namespace KelasiNaBiso.Services
                         inscription.IdClasse = GetIntValue(worksheet, row, headers, "IdClasse");
                         inscription.IdAnneeScolaire = GetIntValue(worksheet, row, headers, "IdAnneeScolaire");
                         inscription.DateInscription = GetDateTimeValue(worksheet, row, headers, "DateInscription");
-                        inscription.StatutInscription = GetCellValue(worksheet, row, headers, "StatutInscription") ?? "En attente";
+                        inscription.StatutInscription = InscriptionActiveRules.NormalizeStatutInscriptionForCreate(
+                            GetCellValue(worksheet, row, headers, "StatutInscription"));
 
                         inscription.NomEleve = GetCellValue(worksheet, row, headers, "NomEleve") ?? string.Empty;
                         inscription.PostnomEleve = GetCellValue(worksheet, row, headers, "PostnomEleve") ?? string.Empty;
@@ -605,7 +606,7 @@ namespace KelasiNaBiso.Services
                 worksheet.Cells[2, 3].Value = 1; // IdClasse
                 worksheet.Cells[2, 4].Value = 1; // IdAnneeScolaire
                 worksheet.Cells[2, 5].Value = DateTime.Now.ToString("dd/MM/yyyy");
-                worksheet.Cells[2, 6].Value = "En attente";
+                worksheet.Cells[2, 6].Value = "Confirmé";
                 worksheet.Cells[2, 7].Value = "KABEYA";
                 worksheet.Cells[2, 8].Value = "MULENGA";
                 worksheet.Cells[2, 9].Value = "Jean";

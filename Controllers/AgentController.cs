@@ -361,6 +361,7 @@ namespace KelasiNaBiso.Controllers
 
         // POST: api/Agent
         [HttpPost]
+        [Permission("Agent.Create")]
         public async Task<ActionResult<Agent>> CreateAgent(Agent agent)
         {
             if (!ModelState.IsValid)
@@ -374,6 +375,7 @@ namespace KelasiNaBiso.Controllers
 
         // POST: api/Agent/batch
         [HttpPost("batch")]
+        [Permission("Agent.Create")]
         public async Task<ActionResult<object>> CreateAgentsBatch(IEnumerable<Agent> agents)
         {
             if (!ModelState.IsValid)
@@ -423,6 +425,7 @@ namespace KelasiNaBiso.Controllers
         /// - Statut (endpoint toggle-statut)
         /// </remarks>
         [HttpPut("{id}")]
+        [Permission("Agent.Update")]
         [ProducesResponseType(typeof(Agent), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(403)]
@@ -533,7 +536,7 @@ namespace KelasiNaBiso.Controllers
             existingAgent.Postnom = dto.Postnom;
             existingAgent.Prenom = dto.Prenom;
             existingAgent.EmailAgent = dto.EmailAgent;
-            existingAgent.TelephoneAgent = dto.TelephoneAgent;
+            existingAgent.TelephoneAgent = TelephoneNormalizer.Normalize(dto.TelephoneAgent);
             existingAgent.PhotoUrl = dto.PhotoUrl;
             if (dto.DateNaissance.HasValue)
                 existingAgent.DateNaissance = dto.DateNaissance.Value;
@@ -581,6 +584,7 @@ namespace KelasiNaBiso.Controllers
 
         // DELETE: api/Agent/5
         [HttpDelete("{id}")]
+        [Permission("Agent.Delete")]
         public async Task<IActionResult> DeleteAgent(int id)
         {
             var success = await _agentRepository.DeleteAsync(id);
@@ -594,6 +598,7 @@ namespace KelasiNaBiso.Controllers
 
         // PUT: api/Agent/toggle-statut/{id}
         [HttpPut("toggle-statut/{id}")]
+        [Permission("Agent.Update")]
         public async Task<ActionResult<object>> ToggleStatut(int id)
         {
             try

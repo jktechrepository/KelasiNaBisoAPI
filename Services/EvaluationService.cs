@@ -68,6 +68,26 @@ namespace KelasiNaBiso.Services
                 .ToListAsync();
         }
 
+        public async Task<IEnumerable<Evaluation>> GetByPeriodeAsync(string periode)
+        {
+            return await _context.Evaluations
+                .Include(e => e.Course)
+                .Include(e => e.Classe)
+                .Where(e => e.Periode == periode && e.Statut == true)
+                .OrderByDescending(e => e.DateCreation)
+                .ToListAsync();
+        }
+
+        public async Task<IEnumerable<Evaluation>> GetByStatutAsync(bool statut)
+        {
+            return await _context.Evaluations
+                .Include(e => e.Course)
+                .Include(e => e.Classe)
+                .Where(e => e.Statut == statut)
+                .OrderByDescending(e => e.DateCreation)
+                .ToListAsync();
+        }
+
         public async Task<IEnumerable<Evaluation>> GetByDateEvaluationAsync(DateTime date)
         {
             return await _context.Evaluations
@@ -90,8 +110,10 @@ namespace KelasiNaBiso.Services
 
         public async Task<Evaluation> CreateAsync(Evaluation evaluation)
         {
+            await ValidateRelationsAsync(evaluation);
             evaluation.DateCreation = DateTime.Now;
-            
+            evaluation.Statut ??= true;
+
             _context.Evaluations.Add(evaluation);
             await _context.SaveChangesAsync();
             return evaluation;
@@ -103,7 +125,14 @@ namespace KelasiNaBiso.Services
             if (existingEvaluation == null)
                 return null;
 
-            _context.Entry(existingEvaluation).CurrentValues.SetValues(evaluation);
+            await ValidateRelationsAsync(evaluation);
+
+            existingEvaluation.TypeEvaluation = evaluation.TypeEvaluation;
+            existingEvaluation.TitreEvaluation = evaluation.TitreEvaluation;
+            existingEvaluation.Periode = evaluation.Periode;
+            existingEvaluation.Coefficient = evaluation.Coefficient;
+            existingEvaluation.IdCours = evaluation.IdCours;
+            existingEvaluation.IdClasse = evaluation.IdClasse;
             await _context.SaveChangesAsync();
             return existingEvaluation;
         }
@@ -114,14 +143,35 @@ namespace KelasiNaBiso.Services
             if (evaluation == null)
                 return false;
 
-            _context.Evaluations.Remove(evaluation);
+            evaluation.Statut = false;
             await _context.SaveChangesAsync();
             return true;
         }
 
         public async Task<bool> ExistsAsync(int id)
         {
-            return await _context.Evaluations.AnyAsync(e => e.IdEvaluation == id);
+            return await _context.Evaluations.AnyAsync(e => e.IdEvaluation == id && e.Statut == true);
+        }
+
+        private async Task ValidateRelationsAsync(Evaluation evaluation)
+        {
+            if (evaluation.IdCours <= 0)
+                throw new InvalidOperationException("IdCours est obligatoire.");
+            if (evaluation.IdClasse <= 0)
+                throw new InvalidOperationException("IdClasse est obligatoire.");
+
+            var coursOk = await _context.Cours.AsNoTracking()
+                .AnyAsync(c => c.IdCours == evaluation.IdCours && c.Statut == true);
+            if (!coursOk)
+                throw new InvalidOperationException($"Cours {evaluation.IdCours} introuvable ou inactif.");
+
+            var classeOk = await _context.Classes.AsNoTracking()
+                .AnyAsync(c => c.IdClasse == evaluation.IdClasse && c.Statut == true);
+            if (!classeOk)
+                throw new InvalidOperationException($"Classe {evaluation.IdClasse} introuvable ou inactive.");
+
+            if (evaluation.Coefficient.HasValue && evaluation.Coefficient.Value < 0)
+                throw new InvalidOperationException("Le coefficient ne peut pas être négatif.");
         }
 
         //public async Task<bool> ExistsByTitreAsync(string titre)

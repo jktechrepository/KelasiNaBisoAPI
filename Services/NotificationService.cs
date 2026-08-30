@@ -14,17 +14,20 @@ namespace KelasiNaBiso.Services
         private readonly KelasiNaBisoDbContext _context;
         private readonly IFirebaseNotificationService _notificationService;
         private readonly ISmsNotificationService _smsService;
+        private readonly IInscriptionActiveResolver _inscriptionResolver;
         private readonly ILogger<NotificationService> _logger;
 
         public NotificationService(
             KelasiNaBisoDbContext context,
             IFirebaseNotificationService notificationService,
             ISmsNotificationService smsService,
+            IInscriptionActiveResolver inscriptionResolver,
             ILogger<NotificationService> logger)
         {
             _context = context;
             _notificationService = notificationService;
             _smsService = smsService;
+            _inscriptionResolver = inscriptionResolver;
             _logger = logger;
         }
 
@@ -171,11 +174,8 @@ namespace KelasiNaBiso.Services
                 if (idClasse.HasValue)
                 {
                     // Parents d'une classe spécifique
-                    idsUtilisateurs = await _context.Utilisateurs
-                        .Where(u => u.IdTuteur != null &&
-                                   u.Statut == true &&
-                                   _context.Tuteurs.Any(t => t.IdTuteur == u.IdTuteur &&
-                                       _context.Eleves.Any(e => e.IdTuteur == t.IdTuteur && e.IdClasse == idClasse)))
+                    idsUtilisateurs = await _inscriptionResolver
+                        .FilterUtilisateursParentsInClasse(_context.Utilisateurs, idClasse.Value)
                         .Select(u => u.IdUtilisateur)
                         .Distinct()
                 .ToListAsync();
@@ -183,10 +183,8 @@ namespace KelasiNaBiso.Services
                 else if (idEcole.HasValue)
                 {
                     // Tous les parents de l'école
-                    idsUtilisateurs = await _context.Utilisateurs
-                        .Where(u => u.IdTuteur != null &&
-                                   u.Statut == true &&
-                                   _context.Tuteurs.Any(t => t.IdTuteur == u.IdTuteur && t.IdEcole == idEcole))
+                    idsUtilisateurs = await _inscriptionResolver
+                        .FilterUtilisateursParentsInEcole(_context.Utilisateurs, idEcole.Value)
                         .Select(u => u.IdUtilisateur)
                         .Distinct()
                 .ToListAsync();
@@ -285,21 +283,16 @@ namespace KelasiNaBiso.Services
 
                 if (idClasse.HasValue)
                 {
-                    idsUtilisateurs = await _context.Utilisateurs
-                        .Where(u => u.IdTuteur != null &&
-                                   u.Statut == true &&
-                                   _context.Tuteurs.Any(t => t.IdTuteur == u.IdTuteur &&
-                                       _context.Eleves.Any(e => e.IdTuteur == t.IdTuteur && e.IdClasse == idClasse)))
+                    idsUtilisateurs = await _inscriptionResolver
+                        .FilterUtilisateursParentsInClasse(_context.Utilisateurs, idClasse.Value)
                         .Select(u => u.IdUtilisateur)
                         .Distinct()
                 .ToListAsync();
         }
                 else if (idEcole.HasValue)
                 {
-                    idsUtilisateurs = await _context.Utilisateurs
-                        .Where(u => u.IdTuteur != null &&
-                                   u.Statut == true &&
-                                   _context.Tuteurs.Any(t => t.IdTuteur == u.IdTuteur && t.IdEcole == idEcole))
+                    idsUtilisateurs = await _inscriptionResolver
+                        .FilterUtilisateursParentsInEcole(_context.Utilisateurs, idEcole.Value)
                         .Select(u => u.IdUtilisateur)
                         .Distinct()
                 .ToListAsync();
@@ -359,23 +352,16 @@ namespace KelasiNaBiso.Services
 
                 if (idClasse.HasValue)
                 {
-                    // Tous parents de la classe
-                    idsUtilisateurs = await _context.Utilisateurs
-                        .Where(u => u.IdTuteur != null &&
-                                   u.Statut == true &&
-                                   _context.Tuteurs.Any(t => t.IdTuteur == u.IdTuteur &&
-                                       _context.Eleves.Any(e => e.IdTuteur == t.IdTuteur && e.IdClasse == idClasse)))
+                    idsUtilisateurs = await _inscriptionResolver
+                        .FilterUtilisateursParentsInClasse(_context.Utilisateurs, idClasse.Value)
                         .Select(u => u.IdUtilisateur)
                         .Distinct()
                         .ToListAsync();
                 }
                 else if (idEcole.HasValue)
                 {
-                    // Tous parents de l'école
-                    idsUtilisateurs = await _context.Utilisateurs
-                        .Where(u => u.IdTuteur != null &&
-                                   u.Statut == true &&
-                                   _context.Tuteurs.Any(t => t.IdTuteur == u.IdTuteur && t.IdEcole == idEcole))
+                    idsUtilisateurs = await _inscriptionResolver
+                        .FilterUtilisateursParentsInEcole(_context.Utilisateurs, idEcole.Value)
                         .Select(u => u.IdUtilisateur)
                         .Distinct()
                         .ToListAsync();

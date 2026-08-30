@@ -1,5 +1,6 @@
 using KelasiNaBiso.Data;
 using KelasiNaBiso.Models;
+using KelasiNaBiso.Models.DTOs;
 using KelasiNaBiso.Models.DTOs.Pagination;
 using KelasiNaBiso.Services.Repositories;
 using KelasiNaBiso.Extensions;
@@ -10,10 +11,17 @@ namespace KelasiNaBiso.Services
     public class ClasseService : IClasseRepository
     {
         private readonly KelasiNaBisoDbContext _context;
+        private readonly IInscriptionActiveResolver _inscriptionResolver;
+        private readonly EleveAnneeScopeHelper _scope;
 
-        public ClasseService(KelasiNaBisoDbContext context)
+        public ClasseService(
+            KelasiNaBisoDbContext context,
+            IInscriptionActiveResolver inscriptionResolver,
+            EleveAnneeScopeHelper scope)
         {
             _context = context;
+            _inscriptionResolver = inscriptionResolver;
+            _scope = scope;
         }
 
         public async Task<PagedResult<Classe>> GetAllPagedAsync(PagedRequest request)
@@ -217,17 +225,13 @@ namespace KelasiNaBiso.Services
             return await _context.Classes.AnyAsync(c => c.NomClasse == nom);
         }
 
-        public async Task<IEnumerable<Eleve>> GetElevesAsync(int idClasse)
+        public async Task<ElevesAnneeScopedResult<IEnumerable<Eleve>>> GetElevesAsync(int idClasse, int? idAnneeScolaire = null)
         {
-            return await _context.Eleves
-               // .Include(e => e.Tuteur)
-               // .Include(e => e.Notes)
-               // .Include(e => e.Inscriptions)
-               // .Include(e => e.Paiements)
-               // .Include(e => e.Presences)
-               // .Include(e => e.Documents)
-                .Where(e => e.IdClasse == idClasse)
+            var (idEcole, annee) = await _scope.ResolveClasseAnneeAsync(idClasse, idAnneeScolaire);
+            var data = await _inscriptionResolver
+                .FilterElevesInClasse(_context.Eleves, idClasse, annee)
                 .ToListAsync();
+            return EleveAnneeScopeHelper.Wrap<IEnumerable<Eleve>>(data, idEcole, annee);
         }
 
         public async Task<IEnumerable<Cours>> GetCoursAsync(int idClasse)
@@ -242,14 +246,16 @@ namespace KelasiNaBiso.Services
                 .ToListAsync();
         }
 
-        public async Task<IEnumerable<Inscription>> GetInscriptionsAsync(int idClasse)
+        public async Task<ElevesAnneeScopedResult<IEnumerable<Inscription>>> GetInscriptionsAsync(
+            int idClasse, int? idAnneeScolaire = null)
         {
-            return await _context.Inscriptions
-               // .Include(i => i.Eleve)
-               // .Include(i => i.Ecole)
-               // .Include(i => i.AnneeScolaire)
-                .Where(i => i.IdClasse == idClasse)
+            var (idEcole, annee) = await _scope.ResolveClasseAnneeAsync(idClasse, idAnneeScolaire);
+            var data = await _context.Inscriptions
+                .Where(i => i.IdClasse == idClasse && i.IdAnneeScolaire == annee && i.Statut == true)
+                .OrderByDescending(i => i.DateInscription)
+                .ThenByDescending(i => i.IdInscription)
                 .ToListAsync();
+            return EleveAnneeScopeHelper.Wrap<IEnumerable<Inscription>>(data, idEcole, annee);
         }
 
         //public async Task<IEnumerable<Frais>> GetFraisAsync(int idClasse)

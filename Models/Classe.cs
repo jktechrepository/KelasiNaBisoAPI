@@ -34,9 +34,6 @@ namespace KelasiNaBiso.Models
         // Collections
         [JsonIgnore]
         [ValidateNever]
-        public ICollection<Eleve> Eleves { get; set; }
-        [JsonIgnore]
-        [ValidateNever]
         public ICollection<Cours> Cours { get; set; }
         [JsonIgnore]
         [ValidateNever]
@@ -53,5 +50,9 @@ namespace KelasiNaBiso.Models
         [JsonIgnore]
         [ValidateNever]
         public ICollection<Horaire> Horaires { get; set; }
+
+        [JsonIgnore]
+        [ValidateNever]
+        public ICollection<Frais> Frais { get; set; }
     }
 }

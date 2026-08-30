@@ -10,7 +10,7 @@ namespace KelasiNaBiso.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize] // 🔒 Notes des élèves - Token JWT requis
+    [Authorize]
     public class NoteController : ControllerBase
     {
         private readonly INoteRepository _noteRepository;
@@ -22,39 +22,34 @@ namespace KelasiNaBiso.Controllers
             _auditService = auditService;
         }
 
-        // GET: api/Note
         [HttpGet]
+        [Permission("Note.ReadAll")]
         public async Task<ActionResult<IEnumerable<Note>>> GetNotes()
         {
             var notes = await _noteRepository.GetAllAsync();
             return Ok(notes);
         }
 
-        // GET: api/Note/5
         [HttpGet("{id}")]
+        [Permission("Note.Read")]
         public async Task<ActionResult<Note>> GetNote(int id)
         {
             var note = await _noteRepository.GetByIdAsync(id);
             if (note == null)
-            {
                 return NotFound();
-            }
             return Ok(note);
         }
 
-        // GET: api/Note/eleve/5
         [HttpGet("eleve/{idEleve}")]
+        [Permission("Note.Read")]
         public async Task<ActionResult<IEnumerable<Note>>> GetNotesByEleve(int idEleve)
         {
             var notes = await _noteRepository.GetByEleveAsync(idEleve);
             return Ok(notes);
         }
 
-        // ✅ GET: api/Note/evaluation/5
-        /// <summary>
-        /// Récupère les notes d'une évaluation spécifique
-        /// </summary>
         [HttpGet("evaluation/{idEvaluation}")]
+        [Permission("Note.Read")]
         [ProducesResponseType(typeof(IEnumerable<Note>), 200)]
         public async Task<ActionResult<IEnumerable<Note>>> GetNotesByEvaluation(int idEvaluation)
         {
@@ -62,12 +57,8 @@ namespace KelasiNaBiso.Controllers
             return Ok(notes);
         }
 
-        // ⚠️ GET: api/Note/cours/5 (DEPRECATED - Utiliser /api/Note/evaluation/{idEvaluation})
-        /// <summary>
-        /// [DEPRECATED] Récupère les notes d'un cours (fonctionne via Evaluation.IdCours)
-        /// Utiliser plutôt GET /api/Note/evaluation/{idEvaluation}
-        /// </summary>
         [HttpGet("cours/{idCours}")]
+        [Permission("Note.Read")]
         [Obsolete("Utiliser GET /api/Note/evaluation/{idEvaluation} pour une meilleure précision")]
         public async Task<ActionResult<IEnumerable<Note>>> GetNotesByCours(int idCours)
         {
@@ -75,27 +66,24 @@ namespace KelasiNaBiso.Controllers
             return Ok(notes);
         }
 
-        // GET: api/Note/professeur/5
         [HttpGet("professeur/{idProfesseur}")]
+        [Permission("Note.Read")]
         public async Task<ActionResult<IEnumerable<Note>>> GetNotesByProfesseur(int idProfesseur)
         {
             var notes = await _noteRepository.GetByProfesseurAsync(idProfesseur);
             return Ok(notes);
         }
 
-        // GET: api/Note/annee/5
         [HttpGet("annee/{idAnneeScolaire}")]
+        [Permission("Note.Read")]
         public async Task<ActionResult<IEnumerable<Note>>> GetNotesByAnneeScolaire(int idAnneeScolaire)
         {
             var notes = await _noteRepository.GetByAnneeScolaireAsync(idAnneeScolaire);
             return Ok(notes);
         }
 
-        // ✅ GET: api/Note/periode/{periode}
-        /// <summary>
-        /// Récupère les notes d'une période spécifique (via Evaluation.Periode)
-        /// </summary>
         [HttpGet("periode/{periode}")]
+        [Permission("Note.Read")]
         [ProducesResponseType(typeof(IEnumerable<Note>), 200)]
         public async Task<ActionResult<IEnumerable<Note>>> GetNotesByPeriode(string periode)
         {
@@ -103,12 +91,8 @@ namespace KelasiNaBiso.Controllers
             return Ok(notes);
         }
 
-        // ⚠️ GET: api/Note/session/{session} (DEPRECATED - Utiliser /api/Note/periode/{periode})
-        /// <summary>
-        /// [DEPRECATED] Récupère les notes d'une session (fonctionne via Evaluation.Periode)
-        /// Utiliser plutôt GET /api/Note/periode/{periode}
-        /// </summary>
         [HttpGet("session/{session}")]
+        [Permission("Note.Read")]
         [Obsolete("Utiliser GET /api/Note/periode/{periode}")]
         public async Task<ActionResult<IEnumerable<Note>>> GetNotesBySession(string session)
         {
@@ -116,42 +100,52 @@ namespace KelasiNaBiso.Controllers
             return Ok(notes);
         }
 
-        // POST: api/Note
         [HttpPost]
-        public async Task<ActionResult<Note>> CreateNote(Note note)
+        [Permission("Note.Create")]
+        public async Task<ActionResult<Note>> CreateNote([FromBody] CreateNoteDto dto)
         {
             if (!ModelState.IsValid)
-            {
                 return BadRequest(ModelState);
-            }
 
-            var createdNote = await _noteRepository.CreateAsync(note);
-            return CreatedAtAction(nameof(GetNote), new { id = createdNote.IdNote }, createdNote);
+            var note = new Note
+            {
+                NoteObtenue = dto.NoteObtenue,
+                Appreciation = dto.Appreciation,
+                DateEvaluation = dto.DateEvaluation ?? DateTime.Now,
+                IdProfesseur = dto.IdProfesseur,
+                IdEleve = dto.IdEleve,
+                IdEvaluation = dto.IdEvaluation,
+                IdAnneeScolaire = dto.IdAnneeScolaire,
+                Statut = true
+            };
+
+            try
+            {
+                var createdNote = await _noteRepository.CreateAsync(note);
+                return CreatedAtAction(nameof(GetNote), new { id = createdNote.IdNote }, createdNote);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // PUT: api/Note/5
         [HttpPut("{id}")]
+        [Permission("Note.Update")]
         [Authorize(Roles = "Admin,Super-Admin,Enseignant")]
         [ProducesResponseType(typeof(Note), 200)]
         public async Task<ActionResult<Note>> UpdateNote(int id, [FromBody] UpdateNoteDto dto)
         {
             if (id != dto.IdNote)
-            {
                 return BadRequest(new { message = "L'ID ne correspond pas" });
-            }
 
             if (!ModelState.IsValid)
-            {
                 return BadRequest(ModelState);
-            }
 
             var existing = await _noteRepository.GetByIdAsync(id);
             if (existing == null)
-            {
                 return NotFound(new { message = "Note non trouvée" });
-            }
 
-            // 📸 AUDIT: Capturer l'état AVANT modification
             var oldNote = new Note
             {
                 IdNote = existing.IdNote,
@@ -162,53 +156,52 @@ namespace KelasiNaBiso.Controllers
             existing.NoteObtenue = dto.NoteObtenue;
             existing.Appreciation = dto.Appreciation;
 
-            var updated = await _noteRepository.UpdateAsync(existing);
+            try
+            {
+                var updated = await _noteRepository.UpdateAsync(existing);
 
-            // 📝 AUDIT: Enregistrer la modification
-            var auditContext = this.GetAuditContext();
-            await _auditService.LogUpdateAsync(
-                oldNote, updated,
-                auditContext.UserId, auditContext.UserName,
-                auditContext.UserRole, auditContext.IdEcole,
-                auditContext.IpAddress, auditContext.UserAgent,
-                "Modification de note"
-            );
+                var auditContext = this.GetAuditContext();
+                await _auditService.LogUpdateAsync(
+                    oldNote, updated,
+                    auditContext.UserId, auditContext.UserName,
+                    auditContext.UserRole, auditContext.IdEcole,
+                    auditContext.IpAddress, auditContext.UserAgent,
+                    "Modification de note"
+                );
 
-            return Ok(updated);
+                return Ok(updated);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // DELETE: api/Note/5
         [HttpDelete("{id}")]
+        [Permission("Note.Delete")]
         public async Task<IActionResult> DeleteNote(int id)
         {
-            var exists = await _noteRepository.ExistsAsync(id);
-            if (!exists)
-            {
+            var success = await _noteRepository.DeleteAsync(id);
+            if (!success)
                 return NotFound();
-            }
-
-            await _noteRepository.DeleteAsync(id);
             return NoContent();
         }
 
-        // PUT: api/Note/toggle-statut/{id}
         [HttpPut("toggle-statut/{id}")]
+        [Permission("Note.Update")]
         public async Task<ActionResult<object>> ToggleStatut(int id)
         {
             try
             {
                 var success = await _noteRepository.ToggleStatutAsync(id);
                 if (!success)
-                {
                     return NotFound(new { message = "Note non trouvée" });
-                }
 
                 var note = await _noteRepository.GetByIdAsync(id);
-                var estActif = note != null;
-                
-                return Ok(new { 
+                return Ok(new
+                {
                     message = "Statut modifié avec succès",
-                    nouveauStatut = estActif,
+                    nouveauStatut = note != null,
                     note = note
                 });
             }
