@@ -4,6 +4,7 @@ Guide complet pour implémenter l'**écran guichet** réservé au rôle JWT **`C
 
 **Intégration Vue 3 / Flutter :** [DOCUMENTATION_INTEGRATION_FRONTEND_CAISSIER_VUE_FLUTTER.md](DOCUMENTATION_INTEGRATION_FRONTEND_CAISSIER_VUE_FLUTTER.md)  
 **Complément Moko :** [DOCUMENTATION_FRONTEND_PAIEMENT_MOKO.md](DOCUMENTATION_FRONTEND_PAIEMENT_MOKO.md)  
+**Grille tarifaire (année + classe) :** [DOCUMENTATION_INTEGRATION_FRONTEND_FRAIS_VUE_FLUTTER.md](DOCUMENTATION_INTEGRATION_FRONTEND_FRAIS_VUE_FLUTTER.md)  
 **Base URL dev :** `https://dev-knb.asdc-rdc.org`  
 **Auth :** `Authorization: Bearer {jwt_token}`
 
@@ -128,6 +129,8 @@ Pagination si plusieurs homonymes.
 ---
 
 ## 5. Affichage frais dus / solde
+
+> **Grille tarifaire / barèmes :** voir [DOCUMENTATION_INTEGRATION_FRONTEND_FRAIS_VUE_FLUTTER.md](DOCUMENTATION_INTEGRATION_FRONTEND_FRAIS_VUE_FLUTTER.md) pour `GET /api/Frais/ecole/{idEcole}` (année + classe, wrapper `ElevesAnneeScopedResult`).
 
 ```
 GET /api/VuePaiementsFraisParEcole/eleve-matricule/{matricule}

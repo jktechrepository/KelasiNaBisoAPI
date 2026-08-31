@@ -29,7 +29,7 @@ Contient tous les modèles de données avec leurs propriétés de navigation et 
 - **Vacation.cs** - Gestion des Vacations
 - **Agent.cs** - Gestion des agents/enseignants (modèle unifié)
 - **AnneeScolaire.cs** - Gestion des années scolaires
-- **Frais.cs** - Gestion des frais
+- **Frais.cs** - Gestion des frais (année scolaire + classe optionnelle — voir [DOCUMENTATION_INTEGRATION_FRONTEND_FRAIS_VUE_FLUTTER.md](DOCUMENTATION_INTEGRATION_FRONTEND_FRAIS_VUE_FLUTTER.md))
 - **Paiement.cs** - Gestion des paiements
 - **Role.cs** - Gestion des rôles
 - **Section.cs** - Gestion des sections

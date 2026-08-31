@@ -55,6 +55,7 @@
 | `ARCHITECTURE.md` | Architecture du projet | 📊 Avancé |
 | `API_DOCUMENTATION.md` | Documentation complète de l'API | 🔧 Intermédiaire |
 | `FRONTEND_DEVELOPER_GUIDE.md` | Guide développeurs frontend | 🔧 Intermédiaire |
+| `DOCUMENTATION_INTEGRATION_FRONTEND_FRAIS_VUE_FLUTTER.md` | Module Frais — année + classe (Vue 3 / Flutter) | 🔧 Intermédiaire |
 | `JWT_IMPLEMENTATION_SUMMARY.md` | Implémentation JWT | 📊 Avancé |
 | `SOFT_DELETE_IMPLEMENTATION_COMPLETE.md` | Soft delete | 📊 Avancé |
 
@@ -111,6 +112,9 @@
 
 #### ...développer un frontend ?
 → **`FRONTEND_DEVELOPER_GUIDE.md`**
+
+#### ...intégrer la grille tarifaire Frais (année + classe) ?
+→ **`DOCUMENTATION_INTEGRATION_FRONTEND_FRAIS_VUE_FLUTTER.md`**
 
 #### ...voir ce qui a changé ?
 → **`RESUME_FINAL_MIGRATION.md`**

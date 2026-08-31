@@ -2,7 +2,8 @@
 
 Guide pour implémenter l'**écran contrôle à l'entrée** réservé au rôle JWT **`Controleur`** (vérification frais + pointage présence).
 
-**Intégration Vue 3 / Flutter :** [DOCUMENTATION_INTEGRATION_FRONTEND_CONTROLEUR_VUE_FLUTTER.md](DOCUMENTATION_INTEGRATION_FRONTEND_CONTROLEUR_VUE_FLUTTER.md)
+**Intégration Vue 3 / Flutter :** [DOCUMENTATION_INTEGRATION_FRONTEND_CONTROLEUR_VUE_FLUTTER.md](DOCUMENTATION_INTEGRATION_FRONTEND_CONTROLEUR_VUE_FLUTTER.md)  
+**Grille tarifaire (année + classe) :** [DOCUMENTATION_INTEGRATION_FRONTEND_FRAIS_VUE_FLUTTER.md](DOCUMENTATION_INTEGRATION_FRONTEND_FRAIS_VUE_FLUTTER.md)
 
 **Base URL dev :** `https://dev-knb.asdc-rdc.org`  
 **Auth :** `Authorization: Bearer {jwt_token}`
@@ -77,6 +78,8 @@ GET /api/Eleve/reinscription?matricule={matricule}
 ---
 
 ## 4. Vérification des frais (lecture seule)
+
+> **Barèmes et scoping année/classe :** [DOCUMENTATION_INTEGRATION_FRONTEND_FRAIS_VUE_FLUTTER.md](DOCUMENTATION_INTEGRATION_FRONTEND_FRAIS_VUE_FLUTTER.md)
 
 ### Solde par matricule
 
