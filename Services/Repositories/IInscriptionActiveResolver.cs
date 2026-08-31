@@ -15,6 +15,8 @@ namespace KelasiNaBiso.Services.Repositories
 
         IQueryable<Eleve> FilterElevesInClasse(IQueryable<Eleve> query, int idClasse, int? idAnneeScolaire = null);
 
+        IQueryable<Eleve> FilterElevesInDirection(IQueryable<Eleve> query, int idDirection, int? idAnneeScolaire = null);
+
         IQueryable<Eleve> FilterElevesInEcole(IQueryable<Eleve> query, int idEcole, int? idAnneeScolaire = null);
 
         IQueryable<Tuteur> FilterTuteursInEcole(IQueryable<Tuteur> query, int idEcole, int? idAnneeScolaire = null);

@@ -77,6 +77,24 @@ namespace KelasiNaBiso.Services
                         || i.StatutInscription.StartsWith("Confirm"))));
         }
 
+        public IQueryable<Eleve> FilterElevesInDirection(IQueryable<Eleve> query, int idDirection, int? idAnneeScolaire = null)
+        {
+            var classeIdsInDirection = _context.Classes
+                .Where(c => c.IdDirection == idDirection)
+                .Select(c => c.IdClasse);
+
+            return query.Where(e =>
+                e.Statut == true
+                && e.Inscriptions.Any(i =>
+                    i.Statut == true
+                    && classeIdsInDirection.Contains(i.IdClasse)
+                    && (!idAnneeScolaire.HasValue || i.IdAnneeScolaire == idAnneeScolaire.Value)
+                    && i.StatutInscription != null
+                    && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                        || i.StatutInscription == "Confirme"
+                        || i.StatutInscription.StartsWith("Confirm"))));
+        }
+
         public IQueryable<Eleve> FilterElevesInEcole(IQueryable<Eleve> query, int idEcole, int? idAnneeScolaire = null)
         {
             return query.Where(e =>

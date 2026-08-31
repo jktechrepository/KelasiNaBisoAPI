@@ -142,6 +142,16 @@ namespace KelasiNaBiso.Tests.Unit.Services
         }
 
         [Fact]
+        public async Task FilterElevesInDirection_WithAnnee_FiltersToClassesInThatDirection()
+        {
+            var elevesDir1Annee100 = await _resolver.FilterElevesInDirection(_context.Eleves, 1, 100).ToListAsync();
+            var elevesDir2Annee200 = await _resolver.FilterElevesInDirection(_context.Eleves, 2, 200).ToListAsync();
+
+            elevesDir1Annee100.Should().ContainSingle(e => e.IdEleve == 1);
+            elevesDir2Annee200.Should().ContainSingle(e => e.IdEleve == 1);
+        }
+
+        [Fact]
         public async Task FilterElevesInEcole_WithoutAnnee_FindsViaAnyActiveInscription()
         {
             var elevesEcole1 = await _resolver.FilterElevesInEcole(_context.Eleves, 1).ToListAsync();

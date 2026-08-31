@@ -35,9 +35,10 @@ namespace KelasiNaBiso.Controllers
         private IActionResult? TryResolveListIdEcole(int? idEcoleQuery, out int idEcole) =>
             EleveListScopeHelper.TryResolveListIdEcole(this, idEcoleQuery, out idEcole);
 
-        // ✅ GET: api/Eleve/paged?idEcole=&idAnneeScolaire=
+        // ✅ GET: api/Eleve/paged?idEcole=&idAnneeScolaire=&idClasse=&idDirection=
         /// <summary>
         /// Récupère les élèves de l'école (année scolaire en cours par défaut) avec pagination offset-based.
+        /// Filtres optionnels : idClasse (prioritaire) ou idDirection via inscriptions confirmées de l'année.
         /// </summary>
         [HttpGet("paged")]
         [ProducesResponseType(typeof(ElevesAnneeScopedResult<PagedResult<V_Eleve>>), 200)]
@@ -45,7 +46,9 @@ namespace KelasiNaBiso.Controllers
         public async Task<IActionResult> GetElevesPaged(
             [FromQuery] PagedRequest request,
             [FromQuery] int? idEcole = null,
-            [FromQuery] int? idAnneeScolaire = null)
+            [FromQuery] int? idAnneeScolaire = null,
+            [FromQuery] int? idClasse = null,
+            [FromQuery] int? idDirection = null)
         {
             var resolveError = TryResolveListIdEcole(idEcole, out var resolvedEcole);
             if (resolveError != null)
@@ -53,7 +56,8 @@ namespace KelasiNaBiso.Controllers
 
             try
             {
-                var result = await _eleveRepository.GetAllPagedAsync(resolvedEcole, request, idAnneeScolaire);
+                var result = await _eleveRepository.GetAllPagedAsync(
+                    resolvedEcole, request, idAnneeScolaire, idClasse, idDirection);
                 return Ok(result);
             }
             catch (InvalidOperationException ex)
@@ -62,9 +66,10 @@ namespace KelasiNaBiso.Controllers
             }
         }
 
-        // ✅ GET: api/Eleve/cursor-paged?idEcole=&idAnneeScolaire=
+        // ✅ GET: api/Eleve/cursor-paged?idEcole=&idAnneeScolaire=&idClasse=&idDirection=
         /// <summary>
         /// Récupère les élèves de l'école (année scolaire en cours par défaut) avec pagination cursor-based.
+        /// Filtres optionnels : idClasse (prioritaire) ou idDirection via inscriptions confirmées de l'année.
         /// </summary>
         [HttpGet("cursor-paged")]
         [ProducesResponseType(typeof(ElevesAnneeScopedResult<CursorPaginatedResult<V_Eleve>>), 200)]
@@ -72,7 +77,9 @@ namespace KelasiNaBiso.Controllers
         public async Task<IActionResult> GetElevesCursorPaged(
             [FromQuery] CursorPaginationRequest request,
             [FromQuery] int? idEcole = null,
-            [FromQuery] int? idAnneeScolaire = null)
+            [FromQuery] int? idAnneeScolaire = null,
+            [FromQuery] int? idClasse = null,
+            [FromQuery] int? idDirection = null)
         {
             var resolveError = TryResolveListIdEcole(idEcole, out var resolvedEcole);
             if (resolveError != null)
@@ -80,7 +87,8 @@ namespace KelasiNaBiso.Controllers
 
             try
             {
-                var result = await _eleveRepository.GetAllCursorPagedAsync(resolvedEcole, request, idAnneeScolaire);
+                var result = await _eleveRepository.GetAllCursorPagedAsync(
+                    resolvedEcole, request, idAnneeScolaire, idClasse, idDirection);
                 return Ok(result);
             }
             catch (InvalidOperationException ex)

@@ -163,6 +163,11 @@ namespace KelasiNaBiso.Services
                 .FilterElevesInClasse(_context.Eleves.AsNoTracking(), idClasse, idAnneeScolaire)
                 .Select(e => e.IdEleve);
 
+        public IQueryable<int> GetEleveIdsInDirectionAnnee(int idDirection, int idAnneeScolaire) =>
+            _inscriptionResolver
+                .FilterElevesInDirection(_context.Eleves.AsNoTracking(), idDirection, idAnneeScolaire)
+                .Select(e => e.IdEleve);
+
         public static ElevesAnneeScopedResult<T> Wrap<T>(T data, int idEcole, int idAnneeScolaire) =>
             new()
             {

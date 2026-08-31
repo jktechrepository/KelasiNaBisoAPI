@@ -97,15 +97,76 @@ namespace KelasiNaBiso.Services
             }).ToList();
         }
 
+        private async Task ValidatePagedListFiltersAsync(
+            int idEcole,
+            int? idClasse,
+            int? idDirection)
+        {
+            if (idClasse.HasValue && idClasse.Value > 0)
+            {
+                var ecoleClasse = await _scope.ResolveIdEcoleForClasseAsync(idClasse.Value);
+                if (ecoleClasse != idEcole)
+                {
+                    throw new InvalidOperationException(
+                        $"La classe {idClasse.Value} n'appartient pas à l'école {idEcole}.");
+                }
+
+                if (idDirection.HasValue && idDirection.Value > 0)
+                {
+                    var classeDirection = await _context.Classes
+                        .AsNoTracking()
+                        .Where(c => c.IdClasse == idClasse.Value)
+                        .Select(c => c.IdDirection)
+                        .FirstOrDefaultAsync();
+
+                    if (classeDirection != idDirection.Value)
+                    {
+                        throw new InvalidOperationException(
+                            $"La classe {idClasse.Value} n'appartient pas à la direction {idDirection.Value}.");
+                    }
+                }
+            }
+            else if (idDirection.HasValue && idDirection.Value > 0)
+            {
+                var ecoleDirection = await _scope.ResolveIdEcoleForDirectionAsync(idDirection.Value);
+                if (ecoleDirection != idEcole)
+                {
+                    throw new InvalidOperationException(
+                        $"La direction {idDirection.Value} n'appartient pas à l'école {idEcole}.");
+                }
+            }
+        }
+
+        private IQueryable<int> GetEleveIdsForPagedList(
+            int idEcole,
+            int idAnneeScolaire,
+            int? idClasse,
+            int? idDirection)
+        {
+            if (idClasse.HasValue && idClasse.Value > 0)
+            {
+                return _scope.GetEleveIdsInClasseAnnee(idClasse.Value, idAnneeScolaire);
+            }
+
+            if (idDirection.HasValue && idDirection.Value > 0)
+            {
+                return _scope.GetEleveIdsInDirectionAnnee(idDirection.Value, idAnneeScolaire);
+            }
+
+            return _inscriptionResolver
+                .FilterElevesInEcole(_context.Eleves, idEcole, idAnneeScolaire)
+                .Select(e => e.IdEleve);
+        }
+
         private IQueryable<V_Eleve> BuildVElevesQueryForEcoleAnnee(
             int idEcole,
             int idAnneeScolaire,
             bool includeInactive,
-            string? searchTerm)
+            string? searchTerm,
+            int? idClasse = null,
+            int? idDirection = null)
         {
-            var elevesIds = _inscriptionResolver
-                .FilterElevesInEcole(_context.Eleves, idEcole, idAnneeScolaire)
-                .Select(e => e.IdEleve);
+            var elevesIds = GetEleveIdsForPagedList(idEcole, idAnneeScolaire, idClasse, idDirection);
 
             var query = _context.V_Eleves.Where(v => elevesIds.Contains(v.IdEleve));
 
@@ -125,11 +186,12 @@ namespace KelasiNaBiso.Services
 
         // ✅ NOUVELLES MÉTHODES PAGINÉES
         public async Task<ElevesAnneeScopedResult<PagedResult<V_Eleve>>> GetAllPagedAsync(
-            int idEcole, PagedRequest request, int? idAnneeScolaire = null)
+            int idEcole, PagedRequest request, int? idAnneeScolaire = null, int? idClasse = null, int? idDirection = null)
         {
             var resolvedAnnee = await _scope.ResolveIdAnneeScolaireAsync(idEcole, idAnneeScolaire);
+            await ValidatePagedListFiltersAsync(idEcole, idClasse, idDirection);
             var query = BuildVElevesQueryForEcoleAnnee(
-                idEcole, resolvedAnnee, request.IncludeInactive, request.SearchTerm);
+                idEcole, resolvedAnnee, request.IncludeInactive, request.SearchTerm, idClasse, idDirection);
 
             if (!string.IsNullOrWhiteSpace(request.SortBy))
                 query = query.ApplySort(request.SortBy, request.SortDescending);
@@ -145,11 +207,12 @@ namespace KelasiNaBiso.Services
         }
 
         public async Task<ElevesAnneeScopedResult<CursorPaginatedResult<V_Eleve>>> GetAllCursorPagedAsync(
-            int idEcole, CursorPaginationRequest request, int? idAnneeScolaire = null)
+            int idEcole, CursorPaginationRequest request, int? idAnneeScolaire = null, int? idClasse = null, int? idDirection = null)
         {
             var resolvedAnnee = await _scope.ResolveIdAnneeScolaireAsync(idEcole, idAnneeScolaire);
+            await ValidatePagedListFiltersAsync(idEcole, idClasse, idDirection);
             var query = BuildVElevesQueryForEcoleAnnee(
-                idEcole, resolvedAnnee, request.IncludeInactive, request.SearchTerm);
+                idEcole, resolvedAnnee, request.IncludeInactive, request.SearchTerm, idClasse, idDirection);
 
             var page = await query.ToCursorPagedAsync(request, e => e.IdEleve);
             return Scoped(page, idEcole, resolvedAnnee);

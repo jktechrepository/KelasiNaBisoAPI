@@ -3,6 +3,7 @@ using FluentAssertions;
 using KelasiNaBiso.Data;
 using KelasiNaBiso.Models;
 using KelasiNaBiso.Models.DTOs;
+using KelasiNaBiso.Models.DTOs.Pagination;
 using KelasiNaBiso.Services.Repositories;
 using KelasiNaBiso.Tests.Integration.Helpers;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,8 +30,12 @@ namespace KelasiNaBiso.Tests.Integration.Controllers
             var context = scope.ServiceProvider.GetRequiredService<KelasiNaBisoDbContext>();
 
             context.Ecoles.Add(new Ecole { IdEcole = 1, Nom = "Ecole Smoke", Statut = true, DateCreation = DateTime.Now });
-            context.Directions.Add(new Direction { IdDirection = 1, IdEcole = 1, NomDirection = "Dir", Statut = true, DateCreation = DateTime.Now });
-            context.Classes.Add(new Classe { IdClasse = 10, IdDirection = 1, NomClasse = "6e", Statut = true, DateCreation = DateTime.Now });
+            context.Directions.AddRange(
+                new Direction { IdDirection = 1, IdEcole = 1, NomDirection = "Primaire", Statut = true, DateCreation = DateTime.Now },
+                new Direction { IdDirection = 2, IdEcole = 1, NomDirection = "Secondaire", Statut = true, DateCreation = DateTime.Now });
+            context.Classes.AddRange(
+                new Classe { IdClasse = 10, IdDirection = 1, NomClasse = "6e", Statut = true, DateCreation = DateTime.Now },
+                new Classe { IdClasse = 20, IdDirection = 2, NomClasse = "1ère", Statut = true, DateCreation = DateTime.Now });
             context.AnneeScolaires.AddRange(
                 new AnneeScolaire
                 {
@@ -89,6 +94,20 @@ namespace KelasiNaBiso.Tests.Integration.Controllers
                     Nationalite = "RDC",
                     Statut = true,
                     DateCreation = DateTime.Now
+                },
+                new Eleve
+                {
+                    IdEleve = 3,
+                    IdTuteur = 1,
+                    Nom = "G",
+                    Postnom = "H",
+                    Prenom = "I",
+                    NomComplet = "G H I",
+                    Genre = "M",
+                    DateNaissance = new DateTime(2017, 1, 1),
+                    Nationalite = "RDC",
+                    Statut = true,
+                    DateCreation = DateTime.Now
                 });
             context.Inscriptions.AddRange(
                 new Inscription
@@ -116,6 +135,19 @@ namespace KelasiNaBiso.Tests.Integration.Controllers
                     StatutInscription = "Confirmé",
                     Statut = true,
                     DateCreation = DateTime.Now
+                },
+                new Inscription
+                {
+                    IdInscription = 3,
+                    Type = "Inscription",
+                    IdEleve = 3,
+                    IdEcole = 1,
+                    IdClasse = 20,
+                    IdAnneeScolaire = 100,
+                    DateInscription = DateTime.Now,
+                    StatutInscription = "Confirmé",
+                    Statut = true,
+                    DateCreation = DateTime.Now
                 });
             context.V_Eleves.AddRange(
                 new V_Eleve
@@ -124,6 +156,7 @@ namespace KelasiNaBiso.Tests.Integration.Controllers
                     NomComplet = "A B C",
                     IdClasse = 10,
                     IdEcole = 1,
+                    Statut = true,
                     DateNaissance = new DateTime(2015, 1, 1),
                     Nationalite = "RDC",
                     DateCreation = DateTime.Now
@@ -134,7 +167,19 @@ namespace KelasiNaBiso.Tests.Integration.Controllers
                     NomComplet = "D E F",
                     IdClasse = 10,
                     IdEcole = 1,
+                    Statut = true,
                     DateNaissance = new DateTime(2016, 1, 1),
+                    Nationalite = "RDC",
+                    DateCreation = DateTime.Now
+                },
+                new V_Eleve
+                {
+                    IdEleve = 3,
+                    NomComplet = "G H I",
+                    IdClasse = 20,
+                    IdEcole = 1,
+                    Statut = true,
+                    DateNaissance = new DateTime(2017, 1, 1),
                     Nationalite = "RDC",
                     DateCreation = DateTime.Now
                 });
@@ -236,6 +281,47 @@ namespace KelasiNaBiso.Tests.Integration.Controllers
         {
             var response = await _client.GetAsync("/api/Eleve/ecole/1");
             response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        }
+
+        [Fact]
+        public async Task GetAllPagedAsync_WithIdClasse_ReturnsOnlyThatClassInCurrentYear()
+        {
+            using var scope = _factory.Services.CreateScope();
+            var repo = scope.ServiceProvider.GetRequiredService<IEleveRepository>();
+
+            var result = await repo.GetAllPagedAsync(
+                1, new PagedRequest { PageNumber = 1, PageSize = 20 }, idClasse: 10);
+
+            result.IdAnneeScolaire.Should().Be(100);
+            result.Data.Data.Should().ContainSingle(e => e.IdEleve == 1);
+            result.Data.Data.Should().NotContain(e => e.IdEleve == 3);
+        }
+
+        [Fact]
+        public async Task GetAllPagedAsync_WithIdDirection_ReturnsAllClassesInDirection()
+        {
+            using var scope = _factory.Services.CreateScope();
+            var repo = scope.ServiceProvider.GetRequiredService<IEleveRepository>();
+
+            var result = await repo.GetAllPagedAsync(
+                1, new PagedRequest { PageNumber = 1, PageSize = 20 }, idDirection: 2);
+
+            result.IdAnneeScolaire.Should().Be(100);
+            result.Data.Data.Should().ContainSingle(e => e.IdEleve == 3);
+            result.Data.Data.Should().NotContain(e => e.IdEleve == 1);
+        }
+
+        [Fact]
+        public async Task GetAllPagedAsync_WithMismatchedClasseAndDirection_Throws()
+        {
+            using var scope = _factory.Services.CreateScope();
+            var repo = scope.ServiceProvider.GetRequiredService<IEleveRepository>();
+
+            var act = async () => await repo.GetAllPagedAsync(
+                1, new PagedRequest { PageNumber = 1, PageSize = 20 }, idClasse: 10, idDirection: 2);
+
+            await act.Should().ThrowAsync<InvalidOperationException>()
+                .WithMessage("*n'appartient pas à la direction*");
         }
 
         public void Dispose()

@@ -6,8 +6,10 @@ namespace KelasiNaBiso.Services.Repositories
 {
     public interface IEleveRepository
     {
-        Task<ElevesAnneeScopedResult<PagedResult<V_Eleve>>> GetAllPagedAsync(int idEcole, PagedRequest request, int? idAnneeScolaire = null);
-        Task<ElevesAnneeScopedResult<CursorPaginatedResult<V_Eleve>>> GetAllCursorPagedAsync(int idEcole, CursorPaginationRequest request, int? idAnneeScolaire = null);
+        Task<ElevesAnneeScopedResult<PagedResult<V_Eleve>>> GetAllPagedAsync(
+            int idEcole, PagedRequest request, int? idAnneeScolaire = null, int? idClasse = null, int? idDirection = null);
+        Task<ElevesAnneeScopedResult<CursorPaginatedResult<V_Eleve>>> GetAllCursorPagedAsync(
+            int idEcole, CursorPaginationRequest request, int? idAnneeScolaire = null, int? idClasse = null, int? idDirection = null);
         Task<ElevesAnneeScopedResult<PagedResult<Eleve>>> GetByClassePagedAsync(int idClasse, PagedRequest request, int? idAnneeScolaire = null);
         Task<PagedResult<Eleve>> GetByTuteurPagedAsync(int idTuteur, PagedRequest request);
         Task<ElevesAnneeScopedResult<PagedResult<EleveParEcoleListItemDto>>> GetByEcolePagedAsync(int idEcole, PagedRequest request, int? idAnneeScolaire = null);
