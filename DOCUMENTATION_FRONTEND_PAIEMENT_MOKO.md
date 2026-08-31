@@ -34,7 +34,7 @@ Guide pour **Parent**, **personnel école** (Admin, Directeur, Financier,Caissie
 | Acteur | Rôle JWT | Peut lancer un PayIn ? | Contexte |
 |--------|----------|------------------------|----------|
 | **Parent** | `Parent` | Oui | Paie les frais de **son** enfant depuis l'app mobile |
-| **Personnel école** | `Admin`, `Directeur`, `Financier` | Oui | Encaisse au guichet : le parent est présent, saisie du **téléphone du payeur** (Mobile Money) |
+| **Personnel école (guichet)** | `Admin`, `Directeur`, `Financier`, **`Caissier`** | Oui | Encaisse au guichet : le parent est présent, saisie du **téléphone du payeur** (Mobile Money) |
 | **Super-Admin** | `Super-Admin` | Oui | Idem personnel école + relance PayOut échoué |
 
 **Règle clé :** Parent **et** école utilisent le **même endpoint** `POST /api/MokoAfrika/payin/frais-scolaire`. Seul le rôle JWT change.
@@ -133,19 +133,83 @@ Après mise à jour API, `GET /api/Ecole/{id}/paiement-mobile` retourne **503** 
 
 ## 3. Acteurs et rôles
 
-| Endpoint | Parent | Admin | Directeur | Financier | Super-Admin |
-|----------|--------|-------|-----------|-----------|-------------|
-| `GET /api/Ecole/{id}/paiement-mobile` | — | ✅ | ✅ | ✅ | ✅ |
-| `POST /api/Ecole/{id}/paiement-mobile` (config) | — | ✅ | ✅ | — | ✅ |
-| `POST .../beneficiaires` | — | ✅ | ✅ | — | ✅ |
-| `GET .../transactions` | — | ✅ | ✅ | ✅ | ✅ |
-| `GET .../wallet/mouvements` | — | ✅ | ✅ | ✅ | ✅ |
-| `GET .../payouts` | — | ✅ | ✅ | ✅ | ✅ |
-| `POST /api/MokoAfrika/payin/frais-scolaire` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `GET /api/MokoAfrika/fees/estimate` | ✅ (public) | ✅ | ✅ | ✅ | ✅ |
+| Endpoint | Parent | Admin | Directeur | Financier | **Caissier** | Super-Admin |
+|----------|--------|-------|-----------|-----------|--------------|-------------|
+| `GET /api/Ecole/{id}/paiement-mobile` | — | ✅ | ✅ | ✅ | **✅** | ✅ |
+| `POST /api/Ecole/{id}/paiement-mobile` (config) | — | ✅ | ✅ | — | — | ✅ |
+| `POST .../beneficiaires` | — | ✅ | ✅ | — | — | ✅ |
+| `GET .../transactions` | — | ✅ | ✅ | ✅ | — | ✅ |
+| `GET .../wallet/mouvements` | — | ✅ | ✅ | ✅ | — | ✅ |
+| `GET .../payouts` | — | ✅ | ✅ | ✅ | — | ✅ |
+| `POST /api/MokoAfrika/payin/frais-scolaire` | ✅ | ✅ | ✅ | ✅ | **✅** | ✅ |
+| `GET /api/Dashboard/caissier` | — | ✅ | ✅ | ✅ | **✅** | ✅ |
+| `GET /api/Dashboard/caissier/cloture` | — | ✅ | ✅ | ✅ | **✅** | ✅ |
+| `GET /api/MokoAfrika/fees/estimate` | ✅ (public) | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `POST /api/MokoAfrika/payout/retry` | — | — | — | — | **✅ seul** |
 
 **Contrôle d'accès école :** le frontend doit utiliser `idEcole` de l'utilisateur connecté (JWT / profil), pas un ID arbitraire.
+
+### Dashboard guichet Caissier
+
+**Route :** `GET /api/Dashboard/caissier?idEcole={idEcole}&idAnneeScolaire={optionnel}&date={optionnel}&scope=moi|ecole`
+
+- Réservé aux rôles guichet : `Caissier`, `Financier`, `Directeur`, `Admin`, `Super-Admin`
+- **`scope=moi`** (défaut) : encaissements du caissier connecté (`IdUtilisateur` JWT)
+- **`scope=ecole`** : toute la caisse du jour — **Directeur / Financier / Admin / Super-Admin uniquement** ; ignoré pour un Caissier seul
+- **Clôture :** `GET /api/Dashboard/caissier/cloture?...` — même paramètres + liste complète `tousLesPaiements`
+- **Ne pas utiliser** `GET /api/Dashboard/global` pour l'écran Caissier (présence, KPI direction, wallet)
+- **Doc guichet complète :** [DOCUMENTATION_FRONTEND_ROLE_CAISSIER.md](DOCUMENTATION_FRONTEND_ROLE_CAISSIER.md)
+
+**Payload principal :**
+
+| Bloc | Usage front |
+|------|-------------|
+| `resume` | Compteurs du jour (nombre, montant, PayIn Moko réussis/en attente/échoués) |
+| `repartitionParMode` | Camembert espèces / chèque / Mobile Money |
+| `derniersPaiements` | Journal du jour (15 max) |
+| `moko.estConfigure` | Afficher wizard si `false` |
+| `moko.payInsEnAttente` | Liste des refs à poller via `POST .../status/{ref}/check` |
+
+**Exemple TypeScript :**
+
+```typescript
+interface DashboardCaissierDto {
+  ecole: { idEcole: number; nomEcole: string; logo?: string };
+  idAnneeScolaire: number;
+  libelleAnneeScolaire?: string;
+  periode: { type: string; date?: string; libelle: string };
+  resume: {
+    nombrePaiements: number;
+    montantTotal: number;
+    payInsReussis: number;
+    payInsEnAttente: number;
+    payInsEchoues: number;
+  };
+  repartitionParMode: { modes: Record<string, { nombre: number; montant: number; pourcentage: number }> };
+  derniersPaiements: Array<{
+    idPaiement: number;
+    datePaiement: string;
+    montant: number;
+    modePaiement: string;
+    statut: string;
+    nomEleve?: string;
+    libelleFrais?: string;
+    referenceMoko?: string;
+  }>;
+  moko: {
+    estConfigure: boolean;
+    mesPayInsEnAttente: number;
+    payInsEnAttente: Array<{
+      reference: string;
+      idPaiement?: number;
+      montant: number;
+      nomEleve?: string;
+      libelleFrais?: string;
+      dateCreation: string;
+    }>;
+  };
+}
+```
 
 ---
 
@@ -795,13 +859,14 @@ async function attendreConfirmation(reference, token, maxMs = 120000) {
 - [ ] Polling USSD
 - [ ] Ne pas compter « En attente » comme payé
 
-### Frontend — École
+### Frontend — École / Caissier
+- [ ] **Écran accueil guichet** : `GET /api/Dashboard/caissier?idEcole={jwt.idEcole}` au login
 - [ ] Gérer `estConfigure === false` (wizard, pas erreur 500)
 - [ ] Gérer HTTP 503 migration
 - [ ] Dashboard wallet + stats
 - [ ] Onglets transactions (réussies / en attente / échouées)
 - [ ] Mouvements wallet + PayOuts échoués (lecture seule)
-- [ ] Écran encaissement guichet (PayIn avec rôle Admin/Directeur/Financier)
+- [ ] Écran encaissement guichet (PayIn avec rôle Admin/Directeur/Financier/**Caissier**)
 
 ### Frontend — Super-Admin
 - [ ] Bouton retry PayOut (`POST payout/retry`) **uniquement Super-Admin**

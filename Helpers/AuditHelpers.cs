@@ -1,6 +1,7 @@
 using KelasiNaBiso.Models.Enums;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 
 namespace KelasiNaBiso.Helpers
@@ -16,7 +17,8 @@ namespace KelasiNaBiso.Helpers
         public static int GetCurrentUserId(this ControllerBase controller)
         {
             var userIdClaim = controller.User.FindFirst(ClaimTypes.NameIdentifier)
-                           ?? controller.User.FindFirst("IdUtilisateur");
+                           ?? controller.User.FindFirst("IdUtilisateur")
+                           ?? controller.User.FindFirst(JwtRegisteredClaimNames.Sub);
 
             if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
             {

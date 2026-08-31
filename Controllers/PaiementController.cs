@@ -24,13 +24,14 @@ namespace KelasiNaBiso.Controllers
             _auditService = auditService;
         }
 
-        // ✅ GET: api/Paiement/paged?idEcole=&idAnneeScolaire=
+        // ✅ GET: api/Paiement/paged?idEcole=&idAnneeScolaire=&idUtilisateur=
         [HttpGet("paged")]
         [ProducesResponseType(typeof(ElevesAnneeScopedResult<PagedResult<Paiement>>), 200)]
         public async Task<IActionResult> GetPaiementsPaged(
             [FromQuery] PagedRequest request,
             [FromQuery] int? idEcole = null,
-            [FromQuery] int? idAnneeScolaire = null)
+            [FromQuery] int? idAnneeScolaire = null,
+            [FromQuery] int? idUtilisateur = null)
         {
             var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
             if (resolveError != null)
@@ -38,7 +39,8 @@ namespace KelasiNaBiso.Controllers
 
             try
             {
-                return Ok(await _paiementRepository.GetAllPagedAsync(resolvedEcole, request, idAnneeScolaire));
+                return Ok(await _paiementRepository.GetAllPagedAsync(
+                    resolvedEcole, request, idAnneeScolaire, idUtilisateur));
             }
             catch (InvalidOperationException ex)
             {
@@ -46,13 +48,14 @@ namespace KelasiNaBiso.Controllers
             }
         }
 
-        // ✅ GET: api/Paiement/cursor-paged?idEcole=&idAnneeScolaire=
+        // ✅ GET: api/Paiement/cursor-paged?idEcole=&idAnneeScolaire=&idUtilisateur=
         [HttpGet("cursor-paged")]
         [ProducesResponseType(typeof(ElevesAnneeScopedResult<CursorPaginatedResult<Paiement>>), 200)]
         public async Task<IActionResult> GetPaiementsCursorPaged(
             [FromQuery] CursorPaginationRequest request,
             [FromQuery] int? idEcole = null,
-            [FromQuery] int? idAnneeScolaire = null)
+            [FromQuery] int? idAnneeScolaire = null,
+            [FromQuery] int? idUtilisateur = null)
         {
             var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
             if (resolveError != null)
@@ -60,7 +63,8 @@ namespace KelasiNaBiso.Controllers
 
             try
             {
-                return Ok(await _paiementRepository.GetAllCursorPagedAsync(resolvedEcole, request, idAnneeScolaire));
+                return Ok(await _paiementRepository.GetAllCursorPagedAsync(
+                    resolvedEcole, request, idAnneeScolaire, idUtilisateur));
             }
             catch (InvalidOperationException ex)
             {
@@ -262,8 +266,15 @@ namespace KelasiNaBiso.Controllers
                 return BadRequest(ModelState);
             }
 
-            var createdPaiement = await _paiementRepository.CreateAsync(paiement);
-            return CreatedAtAction(nameof(GetPaiement), new { id = createdPaiement.IdPaiement }, createdPaiement);
+            try
+            {
+                var createdPaiement = await _paiementRepository.CreateAsync(paiement);
+                return CreatedAtAction(nameof(GetPaiement), new { id = createdPaiement.IdPaiement }, createdPaiement);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message, code = "MOKO_PAYIN_REQUIRED" });
+            }
         }
 
         // POST: api/Paiement/batch

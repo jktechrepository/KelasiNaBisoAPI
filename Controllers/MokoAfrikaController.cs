@@ -48,7 +48,7 @@ namespace KelasiNaBiso.Controllers
 
         /// <summary>Lance un PayIn MOKO pour le paiement de frais scolaires.</summary>
         [HttpPost("payin/frais-scolaire")]
-        [Authorize(Roles = "Parent,Admin,Super-Admin,Directeur,Financier")]
+        [Authorize(Roles = UserRoles.CashierPayInRoles)]
         [ProducesResponseType(typeof(PayInFraisScolaireResultDto), 200)]
         [ProducesResponseType(400)]
         public async Task<ActionResult<PayInFraisScolaireResultDto>> PayInFraisScolaire(

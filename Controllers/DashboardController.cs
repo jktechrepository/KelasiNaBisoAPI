@@ -3,6 +3,8 @@ using KelasiNaBiso.Models.DTOs.Paiement;
 using RepartitionModeDto = KelasiNaBiso.Models.DTOs.Reporting.RepartitionModeDto;
 using KelasiNaBiso.Services.Repositories;
 using KelasiNaBiso.Services;
+using KelasiNaBiso.Models.Enums;
+using KelasiNaBiso.Helpers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using KelasiNaBiso.Data;
@@ -23,6 +25,7 @@ namespace KelasiNaBiso.Controllers
         private readonly ICurrentUserService _currentUserService;
         private readonly EleveAnneeScopeHelper _scope;
         private readonly IInscriptionActiveResolver _inscriptionResolver;
+        private readonly IDashboardCaissierService _dashboardCaissierService;
 
         public DashboardController(
             IPresenceReportingService presenceReportingService,
@@ -31,7 +34,8 @@ namespace KelasiNaBiso.Controllers
             ILogger<DashboardController> logger,
             ICurrentUserService currentUserService,
             EleveAnneeScopeHelper scope,
-            IInscriptionActiveResolver inscriptionResolver)
+            IInscriptionActiveResolver inscriptionResolver,
+            IDashboardCaissierService dashboardCaissierService)
         {
             _presenceReportingService = presenceReportingService;
             _paiementRepository = paiementRepository;
@@ -40,7 +44,98 @@ namespace KelasiNaBiso.Controllers
             _currentUserService = currentUserService;
             _scope = scope;
             _inscriptionResolver = inscriptionResolver;
+            _dashboardCaissierService = dashboardCaissierService;
         }
+
+        /// <summary>
+        /// Dashboard guichet — encaissements du jour (scope=moi par défaut ; scope=ecole pour direction/financier).
+        /// </summary>
+        [HttpGet("caissier")]
+        [Authorize(Roles = UserRoles.CashierGuichetRoles)]
+        [ProducesResponseType(typeof(DashboardCaissierDto), 200)]
+        public async Task<IActionResult> GetDashboardCaissier(
+            [FromQuery] int idEcole,
+            [FromQuery] int? idAnneeScolaire = null,
+            [FromQuery] DateTime? date = null,
+            [FromQuery] string? scope = null)
+        {
+            var deny = this.ForbidIfWrongSchool(idEcole);
+            if (deny != null)
+                return deny;
+
+            try
+            {
+                var idUtilisateur = _currentUserService.UserId;
+                if (idUtilisateur <= 0)
+                    return BadRequest(new { message = "Utilisateur non identifié." });
+
+                var result = await _dashboardCaissierService.GetDashboardCaissierAsync(
+                    idEcole, idUtilisateur, idAnneeScolaire, date,
+                    scope ?? DashboardCaissierScopes.Moi, AllowEcoleScope());
+                return Ok(result);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur dashboard caissier pour école {IdEcole}", idEcole);
+                return StatusCode(500, new { message = "Erreur lors de la récupération du dashboard caissier", error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Clôture de caisse — rapport complet du jour (export / impression front).
+        /// </summary>
+        [HttpGet("caissier/cloture")]
+        [Authorize(Roles = UserRoles.CashierGuichetRoles)]
+        [ProducesResponseType(typeof(DashboardCaissierClotureDto), 200)]
+        public async Task<IActionResult> GetClotureCaissier(
+            [FromQuery] int idEcole,
+            [FromQuery] int? idAnneeScolaire = null,
+            [FromQuery] DateTime? date = null,
+            [FromQuery] string? scope = null)
+        {
+            var deny = this.ForbidIfWrongSchool(idEcole);
+            if (deny != null)
+                return deny;
+
+            try
+            {
+                var idUtilisateur = _currentUserService.UserId;
+                if (idUtilisateur <= 0)
+                    return BadRequest(new { message = "Utilisateur non identifié." });
+
+                var result = await _dashboardCaissierService.GetClotureCaissierAsync(
+                    idEcole, idUtilisateur, idAnneeScolaire, date,
+                    scope ?? DashboardCaissierScopes.Moi, AllowEcoleScope());
+                return Ok(result);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur clôture caissier pour école {IdEcole}", idEcole);
+                return StatusCode(500, new { message = "Erreur lors de la clôture de caisse", error = ex.Message });
+            }
+        }
+
+        private bool AllowEcoleScope() =>
+            User.IsInRole(UserRoles.SUPER_ADMIN)
+            || User.IsInRole(UserRoles.ADMIN)
+            || User.IsInRole(UserRoles.DIRECTEUR)
+            || User.IsInRole(UserRoles.FINANCIER);
 
         /// <summary>
         /// 📊 Dashboard global combiné (Présence + Paiement) pour une école

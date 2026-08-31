@@ -56,7 +56,8 @@ namespace KelasiNaBiso.Tests.Unit.Services
                 NullLogger<DashboardController>.Instance,
                 Mock.Of<ICurrentUserService>(),
                 scope,
-                resolver);
+                resolver,
+                Mock.Of<IDashboardCaissierService>());
 
             SeedCurrentYearScenario();
         }
@@ -193,7 +194,8 @@ namespace KelasiNaBiso.Tests.Unit.Services
                 NullLogger<DashboardController>.Instance,
                 Mock.Of<ICurrentUserService>(),
                 scope,
-                resolver);
+                resolver,
+                Mock.Of<IDashboardCaissierService>());
 
             var actionResult = await controller.GetDashboardGlobal(1);
 

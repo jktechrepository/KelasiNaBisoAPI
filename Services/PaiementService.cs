@@ -91,20 +91,25 @@ namespace KelasiNaBiso.Services
         }
 
         public async Task<ElevesAnneeScopedResult<PagedResult<Paiement>>> GetAllPagedAsync(
-            int idEcole, PagedRequest request, int? idAnneeScolaire = null)
+            int idEcole, PagedRequest request, int? idAnneeScolaire = null, int? idUtilisateur = null)
         {
             var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole, idAnneeScolaire);
             var query = ApplyAnneeEcoleFilter(_context.Paiements.AsQueryable(), ecole, annee);
+            if (idUtilisateur.HasValue && idUtilisateur.Value > 0)
+                query = query.Where(p => p.IdUtilisateur == idUtilisateur.Value);
             query = ApplyListFilters(query, request);
             var paged = await query.ToPagedAsync(request);
             return EleveAnneeScopeHelper.Wrap(paged, ecole, annee);
         }
 
         public async Task<ElevesAnneeScopedResult<CursorPaginatedResult<Paiement>>> GetAllCursorPagedAsync(
-            int idEcole, CursorPaginationRequest request, int? idAnneeScolaire = null)
+            int idEcole, CursorPaginationRequest request, int? idAnneeScolaire = null, int? idUtilisateur = null)
         {
             var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole, idAnneeScolaire);
             var query = ApplyAnneeEcoleFilter(_context.Paiements.AsQueryable(), ecole, annee);
+
+            if (idUtilisateur.HasValue && idUtilisateur.Value > 0)
+                query = query.Where(p => p.IdUtilisateur == idUtilisateur.Value);
 
             if (!request.IncludeInactive)
                 query = query.Where(p => p.Statut == true);
@@ -317,6 +322,8 @@ namespace KelasiNaBiso.Services
 
         public async Task<Paiement> CreateAsync(Paiement paiement)
         {
+            PaiementGatewayHelper.ValiderCreationManuelle(paiement);
+
             paiement.DatePaiement = DateTime.Now;
             paiement.DateCreation = DateTime.Now;
             
@@ -348,6 +355,7 @@ namespace KelasiNaBiso.Services
             {
                 try
                 {
+                    PaiementGatewayHelper.ValiderCreationManuelle(paiement);
                     paiement.DatePaiement = DateTime.Now;
                     paiement.DateCreation = DateTime.Now;
                     

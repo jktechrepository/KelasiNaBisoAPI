@@ -1354,8 +1354,8 @@ namespace KelasiNaBiso.Services
                 "financier" => "Financier",
                 "financière" => "Financier",
                 "comptable" => "Financier",
-                "caissier" => "Financier",
-                "caissière" => "Financier",
+                "caissier" => "Caissier",
+                "caissière" => "Caissier",
                 "trésorier" => "Financier",
                 "trésorière" => "Financier",
                 

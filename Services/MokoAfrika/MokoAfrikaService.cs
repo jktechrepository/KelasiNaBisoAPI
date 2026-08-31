@@ -176,6 +176,44 @@ namespace KelasiNaBiso.Services.MokoAfrika
     /// </summary>
     public static class PaiementGatewayHelper
     {
+        private static readonly string[] ModesMokoInterdits =
+        {
+            "mobile money", "mobilemoney", "carte", "card", "momo"
+        };
+
+        /// <summary>
+        /// Modes réservés au flux MOKO PayIn — interdits sur POST /api/Paiement manuel.
+        /// </summary>
+        public static bool EstModeMokoInterdit(Paiement paiement)
+        {
+            if (!string.IsNullOrWhiteSpace(paiement.OperateurMobileMoney))
+                return true;
+
+            if (paiement.MontantCollecte.HasValue)
+                return true;
+
+            return EstModeMokoInterdit(paiement.ModePaiement);
+        }
+
+        public static bool EstModeMokoInterdit(string? modePaiement)
+        {
+            if (string.IsNullOrWhiteSpace(modePaiement))
+                return false;
+
+            var normalized = modePaiement.Trim().ToLowerInvariant();
+            return ModesMokoInterdits.Any(m => normalized.Contains(m, StringComparison.Ordinal));
+        }
+
+        public static void ValiderCreationManuelle(Paiement paiement)
+        {
+            if (!EstModeMokoInterdit(paiement))
+                return;
+
+            throw new InvalidOperationException(
+                "Les paiements Mobile Money et Carte doivent passer par POST /api/MokoAfrika/payin/frais-scolaire. " +
+                "POST /api/Paiement est réservé à Cash, Chèque et Virement.");
+        }
+
         public static bool EstEnAttenteGateway(Paiement paiement)
         {
             if (paiement.StatutPaiement != "En attente")

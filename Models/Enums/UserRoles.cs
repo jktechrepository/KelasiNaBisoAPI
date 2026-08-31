@@ -48,6 +48,11 @@ namespace KelasiNaBiso.Models.Enums
         /// </summary>
         public const string FINANCIER = "Financier";
 
+        /// <summary>
+        /// Caissier - Encaissement guichet (espèces, chèque, PayIn Moko)
+        /// </summary>
+        public const string CAISSIER = "Caissier";
+
         // ═══════════════════════════════════════════════════════════════════
         // 🟢 NIVEAU 4 : PÉDAGOGIE (Enseignement et éducation)
         // ═══════════════════════════════════════════════════════════════════
@@ -145,10 +150,29 @@ namespace KelasiNaBiso.Models.Enums
             SOUS_DIRECTEUR,
             SECRETAIRE,
             FINANCIER,
+            CAISSIER,
             ENSEIGNANT,
             PREFET,
             IT_SUPPORT
         };
+
+        /// <summary>
+        /// Rôles autorisés à encaisser au guichet (PayIn Moko, création paiement).
+        /// </summary>
+        public const string CashierPayInRoles =
+            $"{PARENT},{SUPER_ADMIN},{ADMIN},{DIRECTEUR},{FINANCIER},{CAISSIER}";
+
+        /// <summary>
+        /// Rôles autorisés à consulter l'overview paiement mobile (sans trésorerie).
+        /// </summary>
+        public const string CashierGuichetRoles =
+            $"{SUPER_ADMIN},{ADMIN},{DIRECTEUR},{FINANCIER},{CAISSIER}";
+
+        /// <summary>
+        /// Rôles ayant accès à la trésorerie Moko (wallet, payouts, transactions).
+        /// </summary>
+        public const string FinanceTreasuryRoles =
+            $"{SUPER_ADMIN},{ADMIN},{DIRECTEUR},{FINANCIER}";
 
         /// <summary>
         /// Rôles ayant accès à la gestion financière
@@ -275,6 +299,7 @@ namespace KelasiNaBiso.Models.Enums
                 SOUS_DIRECTEUR,
                 SECRETAIRE,
                 FINANCIER,
+                CAISSIER,
                 ENSEIGNANT,
                 PREFET,
                 PARENT,
@@ -300,6 +325,7 @@ namespace KelasiNaBiso.Models.Enums
                 SECRETAIRE => 3,
                 ADMIN => 3,
                 FINANCIER => 3,
+                CAISSIER => 3,
                 ENSEIGNANT => 4,
                 PREFET => 4,
                 IT_SUPPORT => 4,

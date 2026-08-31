@@ -1,4 +1,5 @@
 using KelasiNaBiso.Models.DTOs.MokoAfrika;
+using KelasiNaBiso.Models.Enums;
 using KelasiNaBiso.Services.MokoAfrika;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -8,7 +9,7 @@ namespace KelasiNaBiso.Controllers
 {
     [ApiController]
     [Route("api/Ecole/{idEcole}/paiement-mobile")]
-    [Authorize(Roles = "Admin,Super-Admin,Directeur,Financier")]
+    [Authorize]
     public class EcolePaiementMobileController : ControllerBase
     {
         private readonly IEcolePaiementMobileService _service;
@@ -27,6 +28,7 @@ namespace KelasiNaBiso.Controllers
         /// Retourne 200 même si l'école n'est pas encore configurée (estConfigure=false).
         /// </summary>
         [HttpGet]
+        [Authorize(Roles = UserRoles.CashierGuichetRoles)]
         [ProducesResponseType(typeof(EcolePaiementMobileOverviewDto), 200)]
         [ProducesResponseType(503)]
         public async Task<ActionResult<EcolePaiementMobileOverviewDto>> GetOverview(int idEcole)
@@ -50,6 +52,7 @@ namespace KelasiNaBiso.Controllers
 
         /// <summary>Configuration paiement Mobile Money / carte MOKO de l'école.</summary>
         [HttpGet("config")]
+        [Authorize(Roles = UserRoles.FinanceTreasuryRoles)]
         [ProducesResponseType(typeof(EcoleInfoPaiementMobileDto), 200)]
         [ProducesResponseType(404)]
         public async Task<ActionResult<EcoleInfoPaiementMobileDto>> GetConfig(int idEcole)
@@ -113,6 +116,7 @@ namespace KelasiNaBiso.Controllers
 
         /// <summary>Transactions MOKO de l'école (PayIn / PayOut) avec filtres.</summary>
         [HttpGet("transactions")]
+        [Authorize(Roles = UserRoles.FinanceTreasuryRoles)]
         [ProducesResponseType(typeof(List<TransactionMokoListItemDto>), 200)]
         public async Task<ActionResult<List<TransactionMokoListItemDto>>> GetTransactions(
             int idEcole,
@@ -133,6 +137,7 @@ namespace KelasiNaBiso.Controllers
         }
 
         [HttpGet("wallet/mouvements")]
+        [Authorize(Roles = UserRoles.FinanceTreasuryRoles)]
         [ProducesResponseType(typeof(List<EcoleWalletMouvementDto>), 200)]
         public async Task<ActionResult<List<EcoleWalletMouvementDto>>> GetWalletMouvements(
             int idEcole,
@@ -151,6 +156,7 @@ namespace KelasiNaBiso.Controllers
 
         /// <summary>File d'attente PayOut (reversements vers bénéficiaires école).</summary>
         [HttpGet("payouts")]
+        [Authorize(Roles = UserRoles.FinanceTreasuryRoles)]
         [ProducesResponseType(typeof(List<FilePayoutMokoDto>), 200)]
         public async Task<ActionResult<List<FilePayoutMokoDto>>> GetPayouts(
             int idEcole,

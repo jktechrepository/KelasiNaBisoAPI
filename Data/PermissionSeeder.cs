@@ -24,6 +24,7 @@ namespace KelasiNaBiso.Data
                 // Même si les permissions existent : s'assurer qu'IT-Support a bien les siennes
                 await EnsureItSupportPermissionsAsync(context);
                 await EnsureEvaluationPermissionsAsync(context);
+                await EnsureCaissierPermissionsAsync(context);
                 return;
             }
 
@@ -54,6 +55,7 @@ namespace KelasiNaBiso.Data
                 ("Admin", "Administrateur d'école", 3),
                 ("Directeur", "Directeur d'école", 2),
                 ("Financier", "Gestion financière", 3),
+                (UserRoles.CAISSIER, "Encaissement guichet", 3),
                 ("Enseignant", "Enseignant", 4),
                 ("Parent", "Parent / tuteur", 5),
                 ("Eleve", "Élève", 6),
@@ -248,6 +250,7 @@ namespace KelasiNaBiso.Data
             var adminRole = await context.Roles.FirstOrDefaultAsync(r => r.Nom == "Admin");
             var directeurRole = await context.Roles.FirstOrDefaultAsync(r => r.Nom == "Directeur");
             var financierRole = await context.Roles.FirstOrDefaultAsync(r => r.Nom == "Financier"); // ✨ Changé de Comptable à Financier
+            var caissierRole = await context.Roles.FirstOrDefaultAsync(r => r.Nom == UserRoles.CAISSIER);
             var enseignantRole = await context.Roles.FirstOrDefaultAsync(r => r.Nom == "Enseignant");
             var parentRole = await context.Roles.FirstOrDefaultAsync(r => r.Nom == "Parent");
             var eleveRole = await context.Roles.FirstOrDefaultAsync(r => r.Nom == "Eleve");
@@ -416,6 +419,25 @@ namespace KelasiNaBiso.Data
             }
 
             // ═══════════════════════════════════════════════════════════════════
+            // 🟤 CAISSIER : Encaissement guichet uniquement (subset strict du Financier)
+            // ═══════════════════════════════════════════════════════════════════
+            if (caissierRole != null)
+            {
+                var caissierPermissions = GetCaissierPermissions(allPermissions);
+
+                foreach (var permission in caissierPermissions)
+                {
+                    context.RolePermissions.Add(new RolePermission
+                    {
+                        IdRole = caissierRole.IdRole,
+                        IdPermission = permission.IdPermission,
+                        DateAttribution = DateTime.UtcNow
+                    });
+                }
+                Console.WriteLine($"✅ {caissierPermissions.Count} permissions assignées à Caissier (guichet uniquement)");
+            }
+
+            // ═══════════════════════════════════════════════════════════════════
             // 🟣 PARENT : Consultation des données de ses enfants uniquement
             // ═══════════════════════════════════════════════════════════════════
             if (parentRole != null)
@@ -461,6 +483,7 @@ namespace KelasiNaBiso.Data
             // 🖥️ IT-SUPPORT : Cartes scolaires (lecture élèves/agents) + change MDP
             // ═══════════════════════════════════════════════════════════════════
             await EnsureItSupportPermissionsAsync(context);
+            await EnsureCaissierPermissionsAsync(context);
 
             await context.SaveChangesAsync();
         }
@@ -525,6 +548,69 @@ namespace KelasiNaBiso.Data
 
             await context.SaveChangesAsync();
             Console.WriteLine($"✅ {toAdd.Count} permission(s) ajoutée(s) au rôle IT-Support (total cible: {itSupportPermissions.Count})");
+        }
+
+        /// <summary>
+        /// Permissions guichet pour le rôle Caissier (encaissement + lecture contexte).
+        /// </summary>
+        private static List<Permission> GetCaissierPermissions(IEnumerable<Permission> allPermissions) =>
+            allPermissions.Where(p =>
+                (p.Categorie == "Paiement" && p.Action != "Update" && p.Action != "Delete") ||
+                (p.Categorie == "Frais" && (p.Action == "Read" || p.Action == "ReadAll")) ||
+                (p.Categorie == "Eleve" && (p.Action == "Read" || p.Action == "ReadAll")) ||
+                (p.Categorie == "Classe" && (p.Action == "Read" || p.Action == "ReadAll")) ||
+                (p.Categorie == "Inscription" && (p.Action == "Read" || p.Action == "ReadAll"))
+            ).ToList();
+
+        /// <summary>
+        /// Assigne (idempotent) les permissions guichet au rôle Caissier.
+        /// Appelé au démarrage même si le catalogue Permissions existe déjà.
+        /// </summary>
+        public static async Task EnsureCaissierPermissionsAsync(KelasiNaBisoDbContext context)
+        {
+            var caissierRole = await context.Roles.FirstOrDefaultAsync(r => r.Nom == UserRoles.CAISSIER);
+            if (caissierRole == null)
+            {
+                Console.WriteLine("⚠️ Le rôle Caissier n'existe pas. Impossible d'assigner les permissions.");
+                return;
+            }
+
+            var allPermissions = await context.Permissions.ToListAsync();
+            if (!allPermissions.Any())
+            {
+                Console.WriteLine("⚠️ Aucune permission en base. Initialise d'abord le catalogue Permissions.");
+                return;
+            }
+
+            var caissierPermissions = GetCaissierPermissions(allPermissions);
+
+            var existingIds = await context.RolePermissions
+                .Where(rp => rp.IdRole == caissierRole.IdRole)
+                .Select(rp => rp.IdPermission)
+                .ToListAsync();
+
+            var toAdd = caissierPermissions
+                .Where(p => !existingIds.Contains(p.IdPermission))
+                .ToList();
+
+            if (!toAdd.Any())
+            {
+                Console.WriteLine($"✅ Le rôle Caissier a déjà {existingIds.Count} permission(s) assignée(s).");
+                return;
+            }
+
+            foreach (var permission in toAdd)
+            {
+                context.RolePermissions.Add(new RolePermission
+                {
+                    IdRole = caissierRole.IdRole,
+                    IdPermission = permission.IdPermission,
+                    DateAttribution = DateTime.UtcNow
+                });
+            }
+
+            await context.SaveChangesAsync();
+            Console.WriteLine($"✅ {toAdd.Count} permission(s) ajoutée(s) au rôle Caissier (total cible: {caissierPermissions.Count})");
         }
 
         /// <summary>

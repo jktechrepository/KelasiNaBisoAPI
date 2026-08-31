@@ -7,9 +7,9 @@ namespace KelasiNaBiso.Services.Repositories
     public interface IPaiementRepository
     {
         Task<ElevesAnneeScopedResult<PagedResult<Paiement>>> GetAllPagedAsync(
-            int idEcole, PagedRequest request, int? idAnneeScolaire = null);
+            int idEcole, PagedRequest request, int? idAnneeScolaire = null, int? idUtilisateur = null);
         Task<ElevesAnneeScopedResult<CursorPaginatedResult<Paiement>>> GetAllCursorPagedAsync(
-            int idEcole, CursorPaginationRequest request, int? idAnneeScolaire = null);
+            int idEcole, CursorPaginationRequest request, int? idAnneeScolaire = null, int? idUtilisateur = null);
         Task<ElevesAnneeScopedResult<PagedResult<Paiement>>> GetByElevePagedAsync(
             int idEleve, PagedRequest request, int? idAnneeScolaire = null);
         Task<ElevesAnneeScopedResult<PagedResult<Paiement>>> GetByEcolePagedAsync(
