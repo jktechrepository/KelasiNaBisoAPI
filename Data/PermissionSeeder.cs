@@ -25,6 +25,7 @@ namespace KelasiNaBiso.Data
                 await EnsureItSupportPermissionsAsync(context);
                 await EnsureEvaluationPermissionsAsync(context);
                 await EnsureCaissierPermissionsAsync(context);
+                await EnsureControleurPermissionsAsync(context);
                 return;
             }
 
@@ -56,6 +57,7 @@ namespace KelasiNaBiso.Data
                 ("Directeur", "Directeur d'école", 2),
                 ("Financier", "Gestion financière", 3),
                 (UserRoles.CAISSIER, "Encaissement guichet", 3),
+                (UserRoles.CONTROLEUR, "Contrôle présence et frais (lecture)", 4),
                 ("Enseignant", "Enseignant", 4),
                 ("Parent", "Parent / tuteur", 5),
                 ("Eleve", "Élève", 6),
@@ -438,6 +440,26 @@ namespace KelasiNaBiso.Data
             }
 
             // ═══════════════════════════════════════════════════════════════════
+            // 🟢 CONTROLEUR : Pointage présence + contrôle frais (lecture seule)
+            // ═══════════════════════════════════════════════════════════════════
+            var controleurRole = await context.Roles.FirstOrDefaultAsync(r => r.Nom == UserRoles.CONTROLEUR);
+            if (controleurRole != null)
+            {
+                var controleurPermissions = GetControleurPermissions(allPermissions);
+
+                foreach (var permission in controleurPermissions)
+                {
+                    context.RolePermissions.Add(new RolePermission
+                    {
+                        IdRole = controleurRole.IdRole,
+                        IdPermission = permission.IdPermission,
+                        DateAttribution = DateTime.UtcNow
+                    });
+                }
+                Console.WriteLine($"✅ {controleurPermissions.Count} permissions assignées à Controleur");
+            }
+
+            // ═══════════════════════════════════════════════════════════════════
             // 🟣 PARENT : Consultation des données de ses enfants uniquement
             // ═══════════════════════════════════════════════════════════════════
             if (parentRole != null)
@@ -484,6 +506,7 @@ namespace KelasiNaBiso.Data
             // ═══════════════════════════════════════════════════════════════════
             await EnsureItSupportPermissionsAsync(context);
             await EnsureCaissierPermissionsAsync(context);
+            await EnsureControleurPermissionsAsync(context);
 
             await context.SaveChangesAsync();
         }
@@ -611,6 +634,69 @@ namespace KelasiNaBiso.Data
 
             await context.SaveChangesAsync();
             Console.WriteLine($"✅ {toAdd.Count} permission(s) ajoutée(s) au rôle Caissier (total cible: {caissierPermissions.Count})");
+        }
+
+        /// <summary>
+        /// Permissions contrôle entrée : présence (create/read) + frais/paiements lecture.
+        /// </summary>
+        private static List<Permission> GetControleurPermissions(IEnumerable<Permission> allPermissions) =>
+            allPermissions.Where(p =>
+                (p.Categorie == "Presence" && p.Action != "Update" && p.Action != "Delete") ||
+                (p.Categorie == "Frais" && (p.Action == "Read" || p.Action == "ReadAll")) ||
+                (p.Categorie == "Paiement" && (p.Action == "Read" || p.Action == "ReadAll")) ||
+                (p.Categorie == "Eleve" && (p.Action == "Read" || p.Action == "ReadAll")) ||
+                (p.Categorie == "Classe" && (p.Action == "Read" || p.Action == "ReadAll")) ||
+                (p.Categorie == "Inscription" && (p.Action == "Read" || p.Action == "ReadAll"))
+            ).ToList();
+
+        /// <summary>
+        /// Assigne (idempotent) les permissions contrôle au rôle Controleur.
+        /// </summary>
+        public static async Task EnsureControleurPermissionsAsync(KelasiNaBisoDbContext context)
+        {
+            var controleurRole = await context.Roles.FirstOrDefaultAsync(r => r.Nom == UserRoles.CONTROLEUR);
+            if (controleurRole == null)
+            {
+                Console.WriteLine("⚠️ Le rôle Controleur n'existe pas. Impossible d'assigner les permissions.");
+                return;
+            }
+
+            var allPermissions = await context.Permissions.ToListAsync();
+            if (!allPermissions.Any())
+            {
+                Console.WriteLine("⚠️ Aucune permission en base. Initialise d'abord le catalogue Permissions.");
+                return;
+            }
+
+            var controleurPermissions = GetControleurPermissions(allPermissions);
+
+            var existingIds = await context.RolePermissions
+                .Where(rp => rp.IdRole == controleurRole.IdRole)
+                .Select(rp => rp.IdPermission)
+                .ToListAsync();
+
+            var toAdd = controleurPermissions
+                .Where(p => !existingIds.Contains(p.IdPermission))
+                .ToList();
+
+            if (!toAdd.Any())
+            {
+                Console.WriteLine($"✅ Le rôle Controleur a déjà {existingIds.Count} permission(s) assignée(s).");
+                return;
+            }
+
+            foreach (var permission in toAdd)
+            {
+                context.RolePermissions.Add(new RolePermission
+                {
+                    IdRole = controleurRole.IdRole,
+                    IdPermission = permission.IdPermission,
+                    DateAttribution = DateTime.UtcNow
+                });
+            }
+
+            await context.SaveChangesAsync();
+            Console.WriteLine($"✅ {toAdd.Count} permission(s) ajoutée(s) au rôle Controleur (total cible: {controleurPermissions.Count})");
         }
 
         /// <summary>

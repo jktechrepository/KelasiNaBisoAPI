@@ -53,6 +53,11 @@ namespace KelasiNaBiso.Models.Enums
         /// </summary>
         public const string CAISSIER = "Caissier";
 
+        /// <summary>
+        /// Controleur - Contrôle présence à l'entrée et vérification des frais (lecture seule)
+        /// </summary>
+        public const string CONTROLEUR = "Controleur";
+
         // ═══════════════════════════════════════════════════════════════════
         // 🟢 NIVEAU 4 : PÉDAGOGIE (Enseignement et éducation)
         // ═══════════════════════════════════════════════════════════════════
@@ -151,10 +156,17 @@ namespace KelasiNaBiso.Models.Enums
             SECRETAIRE,
             FINANCIER,
             CAISSIER,
+            CONTROLEUR,
             ENSEIGNANT,
             PREFET,
             IT_SUPPORT
         };
+
+        /// <summary>
+        /// Rôles autorisés au pointage / feuille d'appel (create + read, sans update/delete).
+        /// </summary>
+        public const string ControleurPresenceRoles =
+            $"{SUPER_ADMIN},{ADMIN},{DIRECTEUR},{ENSEIGNANT},{PREFET},{CONTROLEUR}";
 
         /// <summary>
         /// Rôles autorisés à encaisser au guichet (PayIn Moko, création paiement).
@@ -300,6 +312,7 @@ namespace KelasiNaBiso.Models.Enums
                 SECRETAIRE,
                 FINANCIER,
                 CAISSIER,
+                CONTROLEUR,
                 ENSEIGNANT,
                 PREFET,
                 PARENT,
@@ -326,6 +339,7 @@ namespace KelasiNaBiso.Models.Enums
                 ADMIN => 3,
                 FINANCIER => 3,
                 CAISSIER => 3,
+                CONTROLEUR => 4,
                 ENSEIGNANT => 4,
                 PREFET => 4,
                 IT_SUPPORT => 4,

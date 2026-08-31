@@ -2,6 +2,7 @@ using KelasiNaBiso.Data;
 using KelasiNaBiso.Helpers;
 using KelasiNaBiso.Models;
 using KelasiNaBiso.Models.DTOs;
+using KelasiNaBiso.Models.Enums;
 using KelasiNaBiso.Services.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -1358,6 +1359,15 @@ namespace KelasiNaBiso.Services
                 "caissière" => "Caissier",
                 "trésorier" => "Financier",
                 "trésorière" => "Financier",
+
+                // 🚪 Contrôle entrée (présence + frais lecture)
+                "controlleur" => UserRoles.CONTROLEUR,
+                "contrôleur" => UserRoles.CONTROLEUR,
+                "controleur" => UserRoles.CONTROLEUR,
+                "contrôleur des frais" => UserRoles.CONTROLEUR,
+                "controleur des frais" => UserRoles.CONTROLEUR,
+                "contrôleur des entrées" => UserRoles.CONTROLEUR,
+                "controleur des entrees" => UserRoles.CONTROLEUR,
                 
                 // 🏢 Personnel de soutien (⚠️ Rôle "Personnel" doit exister en BDD)
                 "gardien" => "Personnel",

@@ -31,6 +31,10 @@ namespace KelasiNaBiso.Tests.Unit.Services
         [InlineData("Caissier", "Caissier")]
         [InlineData("comptable", "Financier")]
         [InlineData("financier", "Financier")]
+        [InlineData("controlleur", "Controleur")]
+        [InlineData("contrôleur", "Controleur")]
+        [InlineData("controleur", "Controleur")]
+        [InlineData("contrôleur des frais", "Controleur")]
         public void DetermineRoleFromFonction_ShouldMapFinanceFunctions(string fonction, string expectedRole)
         {
             var result = InvokeDetermineRoleFromFonction(fonction);

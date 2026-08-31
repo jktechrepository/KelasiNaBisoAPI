@@ -73,6 +73,8 @@
 |----------|-------------|--------------|
 | [`API_DOCUMENTATION_FRONTEND.md`](./API_DOCUMENTATION_FRONTEND.md) | Documentation complète de tous les endpoints avec exemples | Frontend Devs, QA, Product Owners |
 | [`DOCUMENTATION_FRONTEND_ROLE_CAISSIER.md`](./DOCUMENTATION_FRONTEND_ROLE_CAISSIER.md) | Écran guichet — endpoints et parcours métier (rôle Caissier) | Frontend Devs |
+| [`DOCUMENTATION_FRONTEND_ROLE_CONTROLEUR.md`](./DOCUMENTATION_FRONTEND_ROLE_CONTROLEUR.md) | Écran contrôle entrée — présence + frais lecture seule (rôle Controleur) | Frontend Devs |
+| [`DOCUMENTATION_INTEGRATION_FRONTEND_CONTROLEUR_VUE_FLUTTER.md`](./DOCUMENTATION_INTEGRATION_FRONTEND_CONTROLEUR_VUE_FLUTTER.md) | Intégration Vue 3 et Flutter — contrôle entrée, pointage, dashboard présence | Frontend Devs |
 | [`DOCUMENTATION_INTEGRATION_FRONTEND_CAISSIER_VUE_FLUTTER.md`](./DOCUMENTATION_INTEGRATION_FRONTEND_CAISSIER_VUE_FLUTTER.md) | Intégration Vue 3 et Flutter — client API, écrans, polling Moko | Frontend Devs |
 | [`GUIDE_FRONTEND_PERMISSIONS.md`](./GUIDE_FRONTEND_PERMISSIONS.md) | Intégration des permissions côté frontend | Frontend Devs |
 

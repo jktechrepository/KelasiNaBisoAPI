@@ -282,6 +282,7 @@ namespace KelasiNaBiso.Controllers
 
         // POST: api/Presence
         [HttpPost]
+        [Permission("Presence.Create")]
         public async Task<ActionResult<Presence>> CreatePresence(CreatePresenceDto presenceDto)
         {
             if (!ModelState.IsValid)
@@ -334,6 +335,7 @@ namespace KelasiNaBiso.Controllers
         // PUT: api/Presence/5
         [HttpPut("{id}")]
         [Authorize(Roles = "Admin,Super-Admin,Enseignant")]
+        [Permission("Presence.Update")]
         [ProducesResponseType(typeof(Presence), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(404)]

@@ -2,6 +2,7 @@ using KelasiNaBiso.Services.Repositories;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 
 namespace KelasiNaBiso.Attributes
@@ -39,7 +40,9 @@ namespace KelasiNaBiso.Attributes
             }
 
             // Récupérer l'ID de l'utilisateur
-            var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier);
+            var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier)
+                           ?? user.FindFirst("IdUtilisateur")
+                           ?? user.FindFirst(JwtRegisteredClaimNames.Sub);
             if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int userId))
             {
                 context.Result = new ForbidResult();
