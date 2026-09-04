@@ -144,7 +144,7 @@ GoRoute(
 | Écran | Route | Endpoints |
 |-------|-------|-----------|
 | Accueil | `/controle-entree` | Liens vers scan + dashboard |
-| Scan / pointage | `/controle-entree/scan` | `GET /api/Eleve/reinscription`, `GET /api/VuePaiementsFraisParEcole/eleve-matricule/{matricule}`, `POST /api/Presence` |
+| Scan / pointage | `/controle-entree/scan` | `GET /api/Eleve/reinscription`, `GET /api/Eleve/serial-number/{serial}`, `GET /api/VuePaiementsFraisParEcole/eleve-matricule/{matricule}`, `POST /api/Presence` |
 | Dashboard jour | `/controle-entree/dashboard` | `GET /api/Presence/dashboard/ecole/{idEcole}` |
 | Feuille d'appel | `/controle-entree/feuille-appel` | `GET /api/Presence/eleves/classe/{idClasse}/feuille-appel`, export xlsx |
 
@@ -152,6 +152,7 @@ GoRoute(
 
 **UX tablette (recommandé) :**
 - Champ matricule large, autofocus, compatible scan code-barres
+- Lookup badge : `GET /api/Eleve/serial-number/{serial}` (autorisé pour Controleur)
 - Carte élève + bandeau vert (frais OK) / rouge (impayés)
 - Bouton « Marquer présent » bien visible
 - Pas de bouton encaissement

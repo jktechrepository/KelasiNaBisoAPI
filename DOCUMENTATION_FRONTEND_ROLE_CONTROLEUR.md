@@ -44,6 +44,7 @@ Login (JWT Controleur)
     │
     ▼
 Recherche matricule ──► GET /api/Eleve/reinscription?matricule={matricule}
+    │                 (ou badge) GET /api/Eleve/serial-number/{serial}
     │
     ▼
 Solde / barèmes ──► GET /api/VuePaiementsFraisParEcole/eleve-matricule/{matricule}
@@ -74,6 +75,18 @@ GET /api/Eleve/reinscription?matricule={matricule}
 **Réponse attendue :** 200 avec fiche élève (nom, classe, photo, etc.) ou 404 si introuvable.
 
 **Permissions :** `Eleve.Read` / `Eleve.ReadAll`
+
+### Lookup badge (SerialNumber)
+
+En complément du matricule, le Controleur peut identifier un élève via son badge :
+
+```
+GET /api/Eleve/serial-number/{serialNumber}
+```
+
+**Rôles autorisés :** `Admin`, `Directeur`, `Super-Admin`, `IT-Support`, **`Controleur`**.  
+**Réponse :** 200 (fiche élève) ou 404 si le serial est inconnu — plus de 403 pour Controleur.  
+L’attribution (`PUT .../serial-number`) reste réservée aux rôles cartes / IT.
 
 ---
 

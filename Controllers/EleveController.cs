@@ -140,7 +140,7 @@ namespace KelasiNaBiso.Controllers
         // ✅ GET: api/Eleve/serial-number/{serialNumber}
         // Récupérer un élève par son numéro de série
         [HttpGet("serial-number/{serialNumber}")]
-        [Authorize(Roles = "Admin,Directeur,Super-Admin,IT-Support")]
+        [Authorize(Roles = "Admin,Directeur,Super-Admin,IT-Support,Controleur")]
         public async Task<IActionResult> GetEleveBySerialNumber(string serialNumber)
         {
             if (string.IsNullOrWhiteSpace(serialNumber))

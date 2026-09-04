@@ -134,6 +134,18 @@ namespace KelasiNaBiso.Tests.Integration.Controllers
         }
 
         [Fact]
+        public async Task GetEleveBySerialNumber_ShouldNotReturnForbidden_WhenControleur()
+        {
+            var token = CreateControleurToken(idEcole: 1);
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _client.GetAsync("/api/Eleve/serial-number/SN-TEST");
+
+            response.StatusCode.Should().NotBe(HttpStatusCode.Forbidden);
+            response.StatusCode.Should().NotBe(HttpStatusCode.Unauthorized);
+        }
+
+        [Fact]
         public async Task UpdatePresence_ShouldReturnForbidden_WhenControleur()
         {
             var token = CreateControleurToken(idEcole: 1);
