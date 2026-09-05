@@ -3,6 +3,7 @@ using KelasiNaBiso.Models;
 using KelasiNaBiso.Models.DTOs.MokoAfrika;
 using KelasiNaBiso.Models.Enums;
 using KelasiNaBiso.Services.Repositories;
+using KelasiNaBisoAPI.Services.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -24,6 +25,7 @@ namespace KelasiNaBiso.Services.MokoAfrika
         private readonly IMokoWalletService _walletService;
         private readonly IEcolePaiementMobileService _ecolePaiementService;
         private readonly IPaiementRepository _paiementRepository;
+        private readonly IDashboardHubService _dashboardHubService;
         private readonly MokoSettings _settings;
         private readonly ILogger<MokoAfrikaService> _logger;
 
@@ -34,6 +36,7 @@ namespace KelasiNaBiso.Services.MokoAfrika
             IMokoWalletService walletService,
             IEcolePaiementMobileService ecolePaiementService,
             IPaiementRepository paiementRepository,
+            IDashboardHubService dashboardHubService,
             IOptions<MokoSettings> settings,
             ILogger<MokoAfrikaService> logger)
         {
@@ -43,6 +46,7 @@ namespace KelasiNaBiso.Services.MokoAfrika
             _walletService = walletService;
             _ecolePaiementService = ecolePaiementService;
             _paiementRepository = paiementRepository;
+            _dashboardHubService = dashboardHubService;
             _settings = settings.Value;
             _logger = logger;
         }
@@ -66,15 +70,84 @@ namespace KelasiNaBiso.Services.MokoAfrika
             var tx = await _context.TransactionsMoko.FirstOrDefaultAsync(t => t.Reference == reference, cancellationToken);
             if (tx != null)
             {
+                var previousStatus = tx.Status;
                 tx.RawResponse = response.RawBody;
-                tx.Status = response.IsSuccess ? MokoTransactionStatuses.Success : MokoTransactionStatuses.Error;
                 tx.StatusDescription = response.Status ?? response.ErrorMessage;
                 tx.GatewayTransactionId = response.TransactionId ?? tx.GatewayTransactionId;
                 tx.DateModification = DateTime.Now;
+
+                var withinUssdWindow = previousStatus == MokoTransactionStatuses.Pending
+                    && (DateTime.Now - tx.DateCreation).TotalSeconds < _settings.PayInUssdWindowSeconds;
+
+                var softAmbiguous = false;
+                if (response.Parsed != null)
+                    softAmbiguous = MokoGatewayResponseParser.IsSoftAmbiguousFailure(response.Parsed.RootElement);
+
+                if (response.IsSuccess)
+                {
+                    tx.Status = MokoTransactionStatuses.Success;
+                }
+                else if (response.IsPending || softAmbiguous)
+                {
+                    tx.Status = MokoTransactionStatuses.Pending;
+                    if (softAmbiguous)
+                    {
+                        _logger.LogWarning(
+                            "MOKO check soft/ambiguous (Status Error/Failed sans resultCodeError) pour {Reference} — pending conservé. Body={Body}",
+                            reference, Truncate(response.RawBody, 500));
+                    }
+                }
+                else if (response.IsFailure)
+                {
+                    // Pendant la fenêtre USSD : n'accepter que les échecs durs déjà classés IsFailure.
+                    // Soft Error est déjà filtré ci-dessus ; ici resultCodeError / cancelled / etc.
+                    if (withinUssdWindow && softAmbiguous)
+                    {
+                        tx.Status = MokoTransactionStatuses.Pending;
+                        _logger.LogWarning(
+                            "MOKO check failure soft ignorée dans fenêtre USSD ({Seconds}s) pour {Reference}",
+                            _settings.PayInUssdWindowSeconds, reference);
+                    }
+                    else
+                    {
+                        if (previousStatus == MokoTransactionStatuses.Pending)
+                        {
+                            _logger.LogWarning(
+                                "MOKO check pending→error pour {Reference}. Description={Desc} Body={Body}",
+                                reference, tx.StatusDescription, Truncate(response.RawBody, 500));
+                        }
+
+                        tx.Status = MokoTransactionStatuses.Error;
+                        if (tx.IdPaiement.HasValue)
+                        {
+                            var paiement = await _context.Paiements.FindAsync(new object[] { tx.IdPaiement.Value }, cancellationToken);
+                            if (paiement != null)
+                                paiement.StatutPaiement = "Echoue";
+                        }
+                    }
+                }
+                else
+                {
+                    tx.Status = MokoTransactionStatuses.Pending;
+                    if (withinUssdWindow)
+                    {
+                        _logger.LogInformation(
+                            "MOKO check non classifié pour {Reference} — pending conservé (fenêtre USSD). Body={Body}",
+                            reference, Truncate(response.RawBody, 500));
+                    }
+                }
+
                 await _context.SaveChangesAsync(cancellationToken);
             }
 
             return tx == null ? null : MapTransaction(tx);
+        }
+
+        private static string Truncate(string? value, int max)
+        {
+            if (string.IsNullOrEmpty(value))
+                return string.Empty;
+            return value.Length <= max ? value : value[..max] + "…";
         }
 
         /// <summary>
@@ -143,6 +216,16 @@ namespace KelasiNaBiso.Services.MokoAfrika
 
             await _context.SaveChangesAsync(cancellationToken);
 
+            await _dashboardHubService.NotifyPayInConfirmedAsync(idEcole, new PayInSignalRNotification
+            {
+                Reference = mokoReference,
+                IdPaiement = idPaiement,
+                IdEleve = paiement.IdEleve,
+                MontantNet = montantNet,
+                StatutPaiement = "Confirme",
+                StatutGateway = MokoTransactionStatuses.Success
+            });
+
             await _paiementRepository.NotifierPaiementConfirmeAsync(idPaiement, cancellationToken);
         }
 
@@ -166,6 +249,10 @@ namespace KelasiNaBiso.Services.MokoAfrika
             Devise = tx.Devise,
             Method = tx.Method,
             Status = tx.Status,
+            StatusDescription = tx.StatusDescription,
+            IsDefinitive = tx.Status is MokoTransactionStatuses.Success
+                or MokoTransactionStatuses.Error
+                or MokoTransactionStatuses.Timeout,
             GatewayTransactionId = tx.GatewayTransactionId,
             DateCreation = tx.DateCreation
         };

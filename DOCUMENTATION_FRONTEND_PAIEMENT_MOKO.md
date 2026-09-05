@@ -34,7 +34,8 @@ Guide pour **Parent**, **personnel école** (Admin, Directeur, Financier,Caissie
 | Acteur | Rôle JWT | Peut lancer un PayIn ? | Contexte |
 |--------|----------|------------------------|----------|
 | **Parent** | `Parent` | Oui | Paie les frais de **son** enfant depuis l'app mobile |
-| **Personnel école (guichet)** | `Admin`, `Directeur`, `Financier`, **`Caissier`** | Oui | Encaisse au guichet : le parent est présent, saisie du **téléphone du payeur** (Mobile Money) |
+| **Personnel école (guichet)** | `Admin`, `Financier`, **`Caissier`** | Oui | Encaisse au guichet : le parent est présent, saisie du **téléphone du payeur** (Mobile Money) |
+| **Directeur** | `Directeur` | Non | Supervision guichet (lecture dashboard, journal) — pas d'encaissement |
 | **Super-Admin** | `Super-Admin` | Oui | Idem personnel école + relance PayOut échoué |
 
 **Règle clé :** Parent **et** école utilisent le **même endpoint** `POST /api/MokoAfrika/payin/frais-scolaire`. Seul le rôle JWT change.
@@ -141,7 +142,7 @@ Après mise à jour API, `GET /api/Ecole/{id}/paiement-mobile` retourne **503** 
 | `GET .../transactions` | — | ✅ | ✅ | ✅ | — | ✅ |
 | `GET .../wallet/mouvements` | — | ✅ | ✅ | ✅ | — | ✅ |
 | `GET .../payouts` | — | ✅ | ✅ | ✅ | — | ✅ |
-| `POST /api/MokoAfrika/payin/frais-scolaire` | ✅ | ✅ | ✅ | ✅ | **✅** | ✅ |
+| `POST /api/MokoAfrika/payin/frais-scolaire` | ✅ | ✅ | — | ✅ | **✅** | ✅ |
 | `GET /api/Dashboard/caissier` | — | ✅ | ✅ | ✅ | **✅** | ✅ |
 | `GET /api/Dashboard/caissier/cloture` | — | ✅ | ✅ | ✅ | **✅** | ✅ |
 | `GET /api/MokoAfrika/fees/estimate` | ✅ (public) | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -261,12 +262,14 @@ interface DashboardCaissierDto {
 
 ### Statuts transaction MOKO (`status`)
 
-| Valeur | Signification |
-|--------|---------------|
-| `pending` | Gateway en cours |
-| `success` | Succès |
-| `error` | Échec |
-| `timeout` | Timeout USSD |
+| Valeur | `isDefinitive` | Signification |
+|--------|----------------|---------------|
+| `pending` | `false` | Gateway / USSD en cours — **continuer** le poll |
+| `success` | `true` | Succès — arrêter |
+| `error` | `true` | Échec définitif — arrêter ; lire `statusDescription` |
+| `timeout` | `true` | Timeout USSD — arrêter |
+
+Champs utiles sur `POST .../status/{ref}/check` : `statusDescription`, `isDefinitive`.
 
 ### Actions transaction (`action`)
 
@@ -627,6 +630,8 @@ export interface TransactionMokoListItem {
   amountNet?: number;
   method?: string;
   status: 'pending' | 'success' | 'error' | 'timeout';
+  statusDescription?: string;
+  isDefinitive?: boolean;
   customerPhone?: string;
   statutPaiement?: string;
   nomEleve?: string;
@@ -798,15 +803,78 @@ const [overviewResult, dashboardResult] = await Promise.allSettled([
 
 ---
 
-## 12. Polling USSD
+## 12. SignalR (guichet / dashboard école)
 
-- Intervalle : **5–10 secondes**
-- Durée max : **120 secondes**
-- Endpoint : `POST /api/MokoAfrika/status/{reference}/check`
-- Succès quand `status === 'success'` ET `statutPaiement === 'Confirme'`
+Hub : `wss://{api}/hubs/dashboard` (JWT requis). À la connexion, le client rejoint le groupe `ecole_{idEcole}`.
+
+| Événement | Quand | `eventType` |
+|-----------|-------|-------------|
+| `DashboardUpdateNotification` | PayIn initié ou confirmé | `payin_pending` / `payin_confirmed` |
+| `PayInStatusUpdated` | Idem (payload enrichi) | `payin_pending` / `payin_confirmed` |
+
+Payload commun :
+
+```json
+{
+  "ecoleId": 1,
+  "dashboardType": "paiement",
+  "eventType": "payin_pending",
+  "reference": "MOKO_...",
+  "idPaiement": 42,
+  "idEleve": 10,
+  "montantNet": 50000,
+  "statutPaiement": "En attente",
+  "statutGateway": "pending",
+  "timestamp": "2026-09-02T11:00:00Z"
+}
+```
+
+**Recommandation front :** écouter `PayInStatusUpdated` pour rafraîchir le guichet sans polling agressif ; conserver le polling `status/check` comme filet de sécurité (timeout 120 s).
+
+```javascript
+connection.on('PayInStatusUpdated', (payload) => {
+  if (payload.eventType === 'payin_pending') {
+    ajouterPayInEnAttente(payload);
+  }
+  if (payload.eventType === 'payin_confirmed') {
+    retirerPayInEnAttente(payload.reference);
+    refreshDashboardCaissier();
+  }
+});
+```
+
+---
+
+## 13. Polling USSD
+
+### Règles obligatoires (Flutter / Vue)
+
+1. **Ne pas** utiliser `GET /api/MokoAfrika/status/{ref}` pour le polling USSD — lecture **DB seule** (ne rafraîchit pas la gateway).
+2. Poller uniquement : **`POST /api/MokoAfrika/status/{reference}/check`**
+3. **Délai avant le 1er check** : **3–5 secondes** (jamais immédiat après l’initiation)
+4. Intervalle : **5–10 secondes** ; durée max : **120 secondes**
+5. Arrêter seulement si `isDefinitive === true` **et** (`success` / `error` / `timeout`) **après** un `POST .../check`, ou via SignalR `PayInStatusUpdated`
+6. **Devise** : le backend utilise la devise configurée de l’école (souvent `CDF`). Ne pas poster `USD` si l’école est en `CDF` — sinon `montantNet: 10` est traité comme **10 CDF**, pas 10 USD.
+
+Succès quand `status === 'success'` (et `isDefinitive === true`).  
+Préférer SignalR `PayInStatusUpdated` ; le polling reste un filet de sécurité.
+
+**Statuts check :**
+
+| `status` | `isDefinitive` | Action front |
+|----------|----------------|--------------|
+| `pending` | `false` | Continuer le poll (USSD en cours — y compris si la gateway a renvoyé un `Status: Error` soft) |
+| `success` | `true` | Succès — arrêter |
+| `error` | `true` | Échec **définitif** — arrêter ; afficher `statusDescription` |
+| `timeout` | `true` | Timeout — arrêter |
+
+Le backend **ne passe plus** un PayIn `pending` en `error` sur un **check** ou un **callback** trop tôt avec seulement `Status: "Error"` (sans `resultCodeError`). Seuls les échecs durs (`resultCodeError`, `cancelled`, `rejected`, `declined`, `timeout`) marquent `Echoue`.
+
+**Anti-pattern observé (04 Sep 2026) :** initiation `pending` + USSD → front appelle immédiatement `GET .../status/{ref}` → lit `error` déjà en base (faux soft Error) → stop. Corriger : `POST .../check` + délai 3–5 s.
 
 ```javascript
 async function attendreConfirmation(reference, token, maxMs = 120000) {
+  await new Promise(r => setTimeout(r, 4000)); // délai initial USSD
   const debut = Date.now();
   while (Date.now() - debut < maxMs) {
     const res = await fetch(`/api/MokoAfrika/status/${reference}/check`, {
@@ -814,8 +882,10 @@ async function attendreConfirmation(reference, token, maxMs = 120000) {
       headers: { Authorization: `Bearer ${token}` }
     });
     const tx = await res.json();
-    if (tx.status === 'success') return { ok: true, tx };
-    if (tx.status === 'error' || tx.status === 'timeout') return { ok: false, tx };
+    if (tx.status === 'success')
+      return { ok: true, tx };
+    if (tx.isDefinitive && (tx.status === 'error' || tx.status === 'timeout'))
+      return { ok: false, tx, message: tx.statusDescription };
     await new Promise(r => setTimeout(r, 8000));
   }
   return { ok: false, timeout: true };
@@ -824,7 +894,7 @@ async function attendreConfirmation(reference, token, maxMs = 120000) {
 
 ---
 
-## 13. Gestion des erreurs
+## 14. Gestion des erreurs
 
 | HTTP | Code / message | Action UI |
 |------|----------------|-----------|
@@ -866,7 +936,7 @@ async function attendreConfirmation(reference, token, maxMs = 120000) {
 - [ ] Dashboard wallet + stats
 - [ ] Onglets transactions (réussies / en attente / échouées)
 - [ ] Mouvements wallet + PayOuts échoués (lecture seule)
-- [ ] Écran encaissement guichet (PayIn avec rôle Admin/Directeur/Financier/**Caissier**)
+- [ ] Écran encaissement guichet (PayIn avec rôle Admin/Financier/**Caissier** — pas Directeur)
 
 ### Frontend — Super-Admin
 - [ ] Bouton retry PayOut (`POST payout/retry`) **uniquement Super-Admin**

@@ -6,6 +6,7 @@ using KelasiNaBiso.Models;
 using KelasiNaBiso.Models.DTOs.MokoAfrika;
 using KelasiNaBiso.Models.Enums;
 using KelasiNaBiso.Services.Repositories;
+using KelasiNaBiso.Services;
 using KelasiNaBisoAPI.Services.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -34,6 +35,7 @@ namespace KelasiNaBiso.Services.MokoAfrika
         private readonly IMokoWalletService _walletService;
         private readonly IEcolePaiementMobileService _ecolePaiementService;
         private readonly IMokoAfrikaService _mokoService;
+        private readonly IDashboardHubService _dashboardHubService;
         private readonly IEmailService? _emailService;
         private readonly MokoSettings _settings;
         private readonly ILogger<PaiementMokoOrchestrator> _logger;
@@ -45,6 +47,7 @@ namespace KelasiNaBiso.Services.MokoAfrika
             IMokoWalletService walletService,
             IEcolePaiementMobileService ecolePaiementService,
             IMokoAfrikaService mokoService,
+            IDashboardHubService dashboardHubService,
             IOptions<MokoSettings> settings,
             ILogger<PaiementMokoOrchestrator> logger,
             IEmailService? emailService = null)
@@ -55,6 +58,7 @@ namespace KelasiNaBiso.Services.MokoAfrika
             _walletService = walletService;
             _ecolePaiementService = ecolePaiementService;
             _mokoService = mokoService;
+            _dashboardHubService = dashboardHubService;
             _settings = settings.Value;
             _logger = logger;
             _emailService = emailService;
@@ -91,17 +95,22 @@ namespace KelasiNaBiso.Services.MokoAfrika
                 ?? throw new InvalidOperationException("L'école de l'élève est indéfinie.");
 
             var frais = await _context.Frais
-                .Include(f => f.Direction)
+                .Include(f => f.FraisDirections)
+                .Include(f => f.FraisClasses)
                 .FirstOrDefaultAsync(f => f.IdFrais == request.IdFrais && f.Statut == true, cancellationToken)
                 ?? throw new KeyNotFoundException($"Frais {request.IdFrais} introuvable.");
 
-            if (frais.Direction.IdEcole != idEcole)
+            if (frais.IdEcole != idEcole)
                 throw new InvalidOperationException("Ce frais n'appartient pas à l'école de l'élève.");
 
             if (frais.IdAnneeScolaire != inscription.IdAnneeScolaire)
                 throw new InvalidOperationException("Ce frais n'appartient pas à l'année scolaire de l'élève.");
 
-            if (frais.IdClasse.HasValue && frais.IdClasse.Value != inscription.IdClasse)
+            var idDirection = inscription.Classe.IdDirection
+                ?? throw new InvalidOperationException("La direction de l'élève est indéfinie.");
+
+            if (!FraisEligibility.IsEligibleForInscription(
+                    frais, idEcole, idDirection, inscription.IdAnneeScolaire, inscription.IdClasse))
                 throw new InvalidOperationException("Ce frais n'est pas applicable à la classe de l'élève.");
 
             var infoPaiement = await _context.EcolesInfoPaiementMobile
@@ -196,7 +205,34 @@ namespace KelasiNaBiso.Services.MokoAfrika
                 GatewayTransactionId = response.TransactionId
             };
 
-            if (response.IsSuccess)
+            if (response.IsFailure || response.HttpStatusCode < 200 || response.HttpStatusCode >= 300)
+            {
+                tx.Status = MokoTransactionStatuses.Error;
+                paiement.StatutPaiement = "Echoue";
+                await _context.SaveChangesAsync(cancellationToken);
+
+                result.StatutPaiement = "Echoue";
+                result.StatutGateway = MokoTransactionStatuses.Error;
+                result.Message = response.ErrorMessage ?? "Échec PayIn.";
+                result.RequiresUssdConfirmation = false;
+            }
+            else if (!isCard)
+            {
+                // Mobile Money : confirmation uniquement via callback ou polling status/check
+                tx.Status = MokoTransactionStatuses.Pending;
+                paiement.ReferenceTransaction = reference;
+                await _context.SaveChangesAsync(cancellationToken);
+
+                result.StatutPaiement = "En attente";
+                result.StatutGateway = MokoTransactionStatuses.Pending;
+                result.Message = response.IsSuccess
+                    ? "Transaction initiée — validez sur votre téléphone (USSD)."
+                    : (response.ErrorMessage ?? "Transaction initiée — en attente de confirmation USSD/callback.");
+                result.RequiresUssdConfirmation = true;
+
+                await NotifierPayInPendingSignalRAsync(idEcole, reference, paiement, montantNet);
+            }
+            else if (response.IsSuccess)
             {
                 tx.Status = MokoTransactionStatuses.Success;
                 await _context.SaveChangesAsync(cancellationToken);
@@ -209,7 +245,7 @@ namespace KelasiNaBiso.Services.MokoAfrika
                 result.Message = "PayIn confirmé avec succès.";
                 result.RequiresUssdConfirmation = false;
             }
-            else if (response.HttpStatusCode >= 200 && response.HttpStatusCode < 300 && !response.IsSuccess)
+            else
             {
                 tx.Status = MokoTransactionStatuses.Pending;
                 paiement.ReferenceTransaction = reference;
@@ -217,22 +253,30 @@ namespace KelasiNaBiso.Services.MokoAfrika
 
                 result.StatutPaiement = "En attente";
                 result.StatutGateway = MokoTransactionStatuses.Pending;
-                result.Message = response.ErrorMessage ?? "Transaction initiée — en attente de confirmation USSD/callback.";
+                result.Message = response.ErrorMessage ?? "Transaction initiée — en attente de confirmation.";
                 result.RequiresUssdConfirmation = true;
-            }
-            else
-            {
-                tx.Status = MokoTransactionStatuses.Error;
-                paiement.StatutPaiement = "Echoue";
-                await _context.SaveChangesAsync(cancellationToken);
 
-                result.StatutPaiement = "Echoue";
-                result.StatutGateway = MokoTransactionStatuses.Error;
-                result.Message = response.ErrorMessage ?? "Échec PayIn.";
-                result.RequiresUssdConfirmation = false;
+                await NotifierPayInPendingSignalRAsync(idEcole, reference, paiement, montantNet);
             }
 
             return result;
+        }
+
+        private async Task NotifierPayInPendingSignalRAsync(
+            int idEcole,
+            string reference,
+            Paiement paiement,
+            decimal montantNet)
+        {
+            await _dashboardHubService.NotifyPayInPendingAsync(idEcole, new PayInSignalRNotification
+            {
+                Reference = reference,
+                IdPaiement = paiement.IdPaiement,
+                IdEleve = paiement.IdEleve,
+                MontantNet = montantNet,
+                StatutPaiement = "En attente",
+                StatutGateway = MokoTransactionStatuses.Pending
+            });
         }
 
         public async Task<bool> ExecuterPayOutFileAsync(int idFilePayoutMoko, CancellationToken cancellationToken = default)

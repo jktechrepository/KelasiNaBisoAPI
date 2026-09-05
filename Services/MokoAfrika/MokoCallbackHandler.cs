@@ -80,8 +80,10 @@ namespace KelasiNaBiso.Services.MokoAfrika
                 if (string.IsNullOrWhiteSpace(reference))
                     return new MokoCallbackResultDto { Accepted = false, Message = "Référence absente" };
 
-                var transStatus = MokoGatewayResponseParser.GetString(root, "trans_status", "Status", "status") ?? "";
-                var isSuccess = IsCallbackSuccess(transStatus, root);
+                var isSuccess = MokoGatewayResponseParser.IsDefinitiveSuccess(root);
+                var isSoftAmbiguous = MokoGatewayResponseParser.IsSoftAmbiguousFailure(root);
+                var isHardFailure = MokoGatewayResponseParser.IsDefinitiveFailure(root);
+                var isPendingLike = MokoGatewayResponseParser.IsPending(root) || isSoftAmbiguous;
 
                 var tx = await _context.TransactionsMoko
                     .FirstOrDefaultAsync(t => t.Reference == reference, cancellationToken);
@@ -96,15 +98,39 @@ namespace KelasiNaBiso.Services.MokoAfrika
                     return new MokoCallbackResultDto { Accepted = true, Reference = reference, Message = "Déjà traité" };
 
                 tx.RawCallback = rawBody;
-                tx.StatusDescription = MokoGatewayResponseParser.GetString(root, "trans_status_description", "Comment") ?? transStatus;
+                tx.StatusDescription = MokoGatewayResponseParser.GetString(root, "trans_status_description", "Comment", "Status", "trans_status", "status")
+                    ?? tx.StatusDescription;
                 tx.DateModification = DateTime.Now;
 
+                string outcomeMessage;
                 if (tx.Action == MokoActions.Debit)
-                    await HandlePayInCallbackAsync(tx, isSuccess, cancellationToken);
+                {
+                    outcomeMessage = await HandlePayInCallbackAsync(
+                        tx, isSuccess, isSoftAmbiguous, isHardFailure, isPendingLike, cancellationToken);
+                }
                 else if (tx.Action == MokoActions.Credit)
-                    await HandlePayOutCallbackAsync(tx, isSuccess, cancellationToken);
+                {
+                    outcomeMessage = await HandlePayOutCallbackAsync(
+                        tx, isSuccess, isSoftAmbiguous, isHardFailure, isPendingLike, cancellationToken);
+                }
                 else
-                    tx.Status = isSuccess ? MokoTransactionStatuses.Success : MokoTransactionStatuses.Error;
+                {
+                    if (isSuccess)
+                    {
+                        tx.Status = MokoTransactionStatuses.Success;
+                        outcomeMessage = "Callback traité (succès)";
+                    }
+                    else if (isPendingLike && !isHardFailure)
+                    {
+                        tx.Status = MokoTransactionStatuses.Pending;
+                        outcomeMessage = "Callback soft/pending — statut conservé";
+                    }
+                    else
+                    {
+                        tx.Status = MokoTransactionStatuses.Error;
+                        outcomeMessage = "Callback traité (échec)";
+                    }
+                }
 
                 await _context.SaveChangesAsync(cancellationToken);
 
@@ -112,14 +138,17 @@ namespace KelasiNaBiso.Services.MokoAfrika
                 {
                     Accepted = true,
                     Reference = reference,
-                    Message = isSuccess ? "Callback traité (succès)" : "Callback traité (échec)"
+                    Message = outcomeMessage
                 };
             }
         }
 
-        private async Task HandlePayInCallbackAsync(
+        private async Task<string> HandlePayInCallbackAsync(
             Models.TransactionMoko tx,
             bool isSuccess,
+            bool isSoftAmbiguous,
+            bool isHardFailure,
+            bool isPendingLike,
             CancellationToken cancellationToken)
         {
             if (isSuccess)
@@ -133,8 +162,21 @@ namespace KelasiNaBiso.Services.MokoAfrika
                         tx.GatewayTransactionId,
                         cancellationToken);
                 }
+
+                return "Callback traité (succès)";
             }
-            else
+
+            // Soft Error/Failed (sans resultCodeError) ou pending explicite : ne pas tuer un PayIn USSD.
+            if ((isPendingLike || isSoftAmbiguous) && !isHardFailure)
+            {
+                tx.Status = MokoTransactionStatuses.Pending;
+                _logger.LogWarning(
+                    "Callback MOKO PayIn soft/pending pour {Reference} (desc={Desc}) — pending conservé",
+                    tx.Reference, tx.StatusDescription);
+                return "Callback soft/pending — pending conservé (USSD)";
+            }
+
+            if (isHardFailure || !isPendingLike)
             {
                 tx.Status = MokoTransactionStatuses.Error;
                 if (tx.IdPaiement.HasValue)
@@ -143,12 +185,23 @@ namespace KelasiNaBiso.Services.MokoAfrika
                     if (paiement != null)
                         paiement.StatutPaiement = "Echoue";
                 }
+
+                _logger.LogWarning(
+                    "Callback MOKO PayIn échec définitif pour {Reference} (desc={Desc})",
+                    tx.Reference, tx.StatusDescription);
+                return "Callback traité (échec)";
             }
+
+            tx.Status = MokoTransactionStatuses.Pending;
+            return "Callback soft/pending — pending conservé (USSD)";
         }
 
-        private async Task HandlePayOutCallbackAsync(
+        private async Task<string> HandlePayOutCallbackAsync(
             Models.TransactionMoko tx,
             bool isSuccess,
+            bool isSoftAmbiguous,
+            bool isHardFailure,
+            bool isPendingLike,
             CancellationToken cancellationToken)
         {
             var file = await _context.FilePayoutsMoko
@@ -163,50 +216,52 @@ namespace KelasiNaBiso.Services.MokoAfrika
                     file.ErrorMessage = null;
                     file.DateModification = DateTime.Now;
                 }
+
+                return "Callback traité (succès)";
             }
-            else
+
+            if ((isPendingLike || isSoftAmbiguous) && !isHardFailure)
             {
-                tx.Status = MokoTransactionStatuses.Error;
-                if (file != null)
-                {
-                    try
-                    {
-                        await _walletService.RecrediterPayOutEchoueAsync(
-                            file.IdEcole,
-                            tx.IdTransactionMoko,
-                            file.MontantNet,
-                            tx.Reference,
-                            cancellationToken);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Recrédit wallet callback PayOut {Ref}", tx.Reference);
-                    }
-
-                    file.RetryCount++;
-                    file.ErrorMessage = tx.StatusDescription;
-                    if (file.RetryCount < 5)
-                    {
-                        file.Status = MokoPayoutQueueStatuses.Pending;
-                        file.ScheduledAt = DateTime.Now.AddMinutes(5 * file.RetryCount);
-                        file.PayOutReference = null;
-                    }
-                    else
-                    {
-                        file.Status = MokoPayoutQueueStatuses.Failed;
-                    }
-                    file.DateModification = DateTime.Now;
-                }
+                tx.Status = MokoTransactionStatuses.Pending;
+                _logger.LogWarning(
+                    "Callback MOKO PayOut soft/pending pour {Reference} — pending conservé",
+                    tx.Reference);
+                return "Callback soft/pending — pending conservé";
             }
-        }
 
-        private static bool IsCallbackSuccess(string transStatus, JsonElement root)
-        {
-            var status = transStatus.ToLowerInvariant();
-            if (status is "success" or "successful" or "approved" or "paid")
-                return true;
+            tx.Status = MokoTransactionStatuses.Error;
+            if (file != null)
+            {
+                try
+                {
+                    await _walletService.RecrediterPayOutEchoueAsync(
+                        file.IdEcole,
+                        tx.IdTransactionMoko,
+                        file.MontantNet,
+                        tx.Reference,
+                        cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Recrédit wallet callback PayOut {Ref}", tx.Reference);
+                }
 
-            return MokoGatewayResponseParser.IsSuccess(root);
+                file.RetryCount++;
+                file.ErrorMessage = tx.StatusDescription;
+                if (file.RetryCount < 5)
+                {
+                    file.Status = MokoPayoutQueueStatuses.Pending;
+                    file.ScheduledAt = DateTime.Now.AddMinutes(5 * file.RetryCount);
+                    file.PayOutReference = null;
+                }
+                else
+                {
+                    file.Status = MokoPayoutQueueStatuses.Failed;
+                }
+                file.DateModification = DateTime.Now;
+            }
+
+            return "Callback traité (échec)";
         }
     }
 }

@@ -15,6 +15,13 @@ namespace KelasiNaBiso.Services.MokoAfrika
         public string StaticCustomerEmail { get; set; } = string.Empty;
         public int PayoutSettlementDelayMinutes { get; set; } = 3;
 
+        /// <summary>
+        /// Fenêtre pendant laquelle un check PayIn MM ne doit pas tuer un pending
+        /// sur un échec gateway ambigu (Status Error sans resultCodeError).
+        /// Alignée sur le timeout polling front (120 s).
+        /// </summary>
+        public int PayInUssdWindowSeconds { get; set; } = 120;
+
         public string GatewayUrl => IsProduction ? ProductionUrl : TestUrl;
     }
 }

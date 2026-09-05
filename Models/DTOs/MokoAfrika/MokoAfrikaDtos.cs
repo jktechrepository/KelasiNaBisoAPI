@@ -109,6 +109,10 @@ namespace KelasiNaBiso.Models.DTOs.MokoAfrika
         public string Devise { get; set; } = "CDF";
         public string? Method { get; set; }
         public string Status { get; set; } = string.Empty;
+        /// <summary>Status gateway brut ou message d'erreur (utile pour l'UI / debug).</summary>
+        public string? StatusDescription { get; set; }
+        /// <summary>true si success / error / timeout — le front peut arrêter le poll.</summary>
+        public bool IsDefinitive { get; set; }
         public string? GatewayTransactionId { get; set; }
         public DateTime DateCreation { get; set; }
     }

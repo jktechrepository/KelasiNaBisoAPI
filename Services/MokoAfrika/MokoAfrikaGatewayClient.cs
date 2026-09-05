@@ -15,6 +15,8 @@ namespace KelasiNaBiso.Services.MokoAfrika
         public string RawBody { get; set; } = string.Empty;
         public JsonDocument? Parsed { get; set; }
         public bool IsSuccess { get; set; }
+        public bool IsPending { get; set; }
+        public bool IsFailure { get; set; }
         public string? Reference { get; set; }
         public string? Status { get; set; }
         public string? TransactionId { get; set; }
@@ -65,13 +67,16 @@ namespace KelasiNaBiso.Services.MokoAfrika
             try
             {
                 result.Parsed = JsonDocument.Parse(rawBody);
-                result.IsSuccess = MokoGatewayResponseParser.IsSuccess(result.Parsed.RootElement);
-                result.Reference = MokoGatewayResponseParser.GetString(result.Parsed.RootElement, "Reference", "reference");
-                result.Status = MokoGatewayResponseParser.GetString(result.Parsed.RootElement, "Status", "trans_status", "status");
-                result.TransactionId = MokoGatewayResponseParser.GetString(result.Parsed.RootElement, "Transaction_id", "transaction_id");
-                if (!result.IsSuccess)
+                var root = result.Parsed.RootElement;
+                result.IsSuccess = MokoGatewayResponseParser.IsDefinitiveSuccess(root);
+                result.IsPending = MokoGatewayResponseParser.IsPending(root);
+                result.IsFailure = MokoGatewayResponseParser.IsDefinitiveFailure(root);
+                result.Reference = MokoGatewayResponseParser.GetString(root, "Reference", "reference");
+                result.Status = MokoGatewayResponseParser.GetString(root, "Status", "trans_status", "status");
+                result.TransactionId = MokoGatewayResponseParser.GetString(root, "Transaction_id", "transaction_id");
+                if (result.IsFailure || (!result.IsSuccess && !result.IsPending))
                 {
-                    result.ErrorMessage = MokoGatewayResponseParser.GetString(result.Parsed.RootElement, "Comment", "trans_status_description", "resultCodeErrorDescription")
+                    result.ErrorMessage = MokoGatewayResponseParser.GetString(root, "Comment", "trans_status_description", "resultCodeErrorDescription")
                         ?? rawBody;
                 }
             }
@@ -86,23 +91,91 @@ namespace KelasiNaBiso.Services.MokoAfrika
         }
     }
 
-    internal static class MokoGatewayResponseParser
+    public static class MokoGatewayResponseParser
     {
-        public static bool IsSuccess(JsonElement root)
+        private static readonly HashSet<string> SuccessStatuses = new(StringComparer.OrdinalIgnoreCase)
         {
-            var resultCode = GetString(root, "resultCode");
-            if (resultCode == "0")
+            "success", "successful", "approved", "paid"
+        };
+
+        private static readonly HashSet<string> PendingStatuses = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "pending", "initiated", "processing", "in_progress"
+        };
+
+        /// <summary>
+        /// Statuts gateway ambigus sur un check précoce (USSD encore en cours).
+        /// Sans <c>resultCodeError</c>, ne constituent pas un échec définitif.
+        /// </summary>
+        private static readonly HashSet<string> SoftAmbiguousFailureStatuses = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "error", "failed"
+        };
+
+        /// <summary>Refus / annulation client ou timeout — échec définitif même sans resultCodeError.</summary>
+        private static readonly HashSet<string> HardFailureStatuses = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "cancelled", "rejected", "declined", "timeout"
+        };
+
+        /// <summary>Alias de IsDefinitiveSuccess — ne traite plus resultCode "0" seul comme succès.</summary>
+        public static bool IsSuccess(JsonElement root) => IsDefinitiveSuccess(root);
+
+        public static string? GetTransactionStatus(JsonElement root) =>
+            GetString(root, "Status", "trans_status", "status")?.ToLowerInvariant();
+
+        public static bool IsDefinitiveSuccess(JsonElement root)
+        {
+            if (HasResultCodeError(root))
+                return false;
+
+            var status = GetTransactionStatus(root);
+            return !string.IsNullOrEmpty(status) && SuccessStatuses.Contains(status);
+        }
+
+        public static bool IsPending(JsonElement root)
+        {
+            if (IsDefinitiveSuccess(root) || IsDefinitiveFailure(root))
+                return false;
+
+            var status = GetTransactionStatus(root);
+            if (!string.IsNullOrEmpty(status) && PendingStatuses.Contains(status))
                 return true;
 
+            // Status Error/Failed sans resultCodeError = souvent check trop tôt (USSD en cours)
+            if (!string.IsNullOrEmpty(status) && SoftAmbiguousFailureStatuses.Contains(status))
+                return true;
+
+            // resultCode "0" sans status explicite = requête acceptée (USSD envoyé), pas encore confirmée
+            var resultCode = GetString(root, "resultCode");
+            return resultCode == "0";
+        }
+
+        public static bool IsDefinitiveFailure(JsonElement root)
+        {
+            if (HasResultCodeError(root))
+                return true;
+
+            var status = GetTransactionStatus(root);
+            return !string.IsNullOrEmpty(status) && HardFailureStatuses.Contains(status);
+        }
+
+        /// <summary>
+        /// Échec « soft » : Status Error/Failed sans resultCodeError — ne doit pas tuer un PayIn pending USSD.
+        /// </summary>
+        public static bool IsSoftAmbiguousFailure(JsonElement root)
+        {
+            if (HasResultCodeError(root) || IsDefinitiveSuccess(root) || IsDefinitiveFailure(root))
+                return false;
+
+            var status = GetTransactionStatus(root);
+            return !string.IsNullOrEmpty(status) && SoftAmbiguousFailureStatuses.Contains(status);
+        }
+
+        public static bool HasResultCodeError(JsonElement root)
+        {
             var resultCodeError = GetString(root, "resultCodeError");
-            if (!string.IsNullOrEmpty(resultCodeError) && resultCodeError != "0")
-                return false;
-
-            var status = GetString(root, "Status", "trans_status", "status")?.ToLowerInvariant();
-            if (string.IsNullOrEmpty(status))
-                return false;
-
-            return status is "success" or "successful" or "approved" or "paid";
+            return !string.IsNullOrEmpty(resultCodeError) && resultCodeError != "0";
         }
 
         public static string? GetString(JsonElement root, params string[] names)
