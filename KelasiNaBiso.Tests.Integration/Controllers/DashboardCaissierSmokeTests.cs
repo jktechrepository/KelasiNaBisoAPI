@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using FluentAssertions;
 using KelasiNaBiso.Data;
 using KelasiNaBiso.Models;
@@ -33,6 +34,7 @@ namespace KelasiNaBiso.Tests.Integration.Controllers
             {
                 IdEcole = 1,
                 Nom = "Ecole Dashboard Caissier",
+                CodeDevisePrincipale = "CDF",
                 Statut = true,
                 DateCreation = now
             });
@@ -65,6 +67,151 @@ namespace KelasiNaBiso.Tests.Integration.Controllers
             var response = await _client.GetAsync("/api/Dashboard/caissier?idEcole=1&idAnneeScolaire=101");
 
             response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        [Fact]
+        public async Task GetDashboardCaissierAlias_ShouldReturnOk_WhenCaissier()
+        {
+            var token = CreateToken(UserRoles.CAISSIER, idEcole: 1, idUtilisateur: 506);
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _client.GetAsync("/api/Dashboard/DashbordCaissier?idEcole=1&idAnneeScolaire=101");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        [Fact]
+        public async Task GetDashboardPaiement_ShouldReturnConfiguredSchoolCurrency_WhenSchoolHasCustomCurrency()
+        {
+            var token = CreateToken(UserRoles.CAISSIER, idEcole: 1, idUtilisateur: 516);
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _client.GetAsync("/api/Dashboard/paiement?idEcole=1&idAnneeScolaire=101");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+            var content = await response.Content.ReadAsStringAsync();
+            content.Should().Contain("\"devisePrincipale\":\"CDF\"");
+        }
+
+        [Fact]
+        public async Task GetEcoleDevisePrincipale_ShouldReturnConfiguredCurrency_WhenSchoolExists()
+        {
+            var token = CreateToken(UserRoles.CAISSIER, idEcole: 1, idUtilisateur: 517);
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _client.GetAsync("/api/Ecole/1/devise-principale");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+            var content = await response.Content.ReadAsStringAsync();
+            content.Should().Contain("\"codeDevisePrincipale\":\"CDF\"");
+        }
+
+        [Fact]
+        public async Task GetDevisePreview_ShouldReturnConvertedAmount_WhenRateExists()
+        {
+            using (var scope = _factory.Services.CreateScope())
+            {
+                var context = scope.ServiceProvider.GetRequiredService<KelasiNaBisoDbContext>();
+                context.TauxChanges.Add(new TauxChange
+                {
+                    IdEcole = 1,
+                    CodeDeviseSource = "USD",
+                    CodeDeviseCible = "CDF",
+                    Taux = 2800m,
+                    DateEffet = DateTime.UtcNow.AddDays(-1),
+                    Statut = true,
+                    DateCreation = DateTime.UtcNow
+                });
+                context.SaveChanges();
+            }
+
+            var token = CreateToken(UserRoles.CAISSIER, idEcole: 1, idUtilisateur: 518);
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _client.GetAsync($"/api/Devise/preview-conversion?idEcole=1&codeDeviseSource=USD&montant=25&dateReference={DateTime.UtcNow:O}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+            var content = await response.Content.ReadAsStringAsync();
+            content.Should().Contain("\"codeDevisePrincipale\":\"CDF\"");
+            content.Should().Contain("\"taux\":2800");
+            content.Should().Contain("\"montantConverti\":70000");
+        }
+
+        [Fact]
+        public async Task CreatePaiement_ShouldConvertAmountToSchoolPrincipalCurrency_WhenSourceCurrencyDiffers()
+        {
+            using (var scope = _factory.Services.CreateScope())
+            {
+                var context = scope.ServiceProvider.GetRequiredService<KelasiNaBisoDbContext>();
+                var caissierRole = context.Roles.First(r => r.Nom == UserRoles.CAISSIER);
+                context.Utilisateurs.Add(new Utilisateur
+                {
+                    IdUtilisateur = 519,
+                    Email = "caissier-multidevise@test.com",
+                    NomUtilisateur = "Caissier",
+                    PostNomUtilisateur = "MultiDevise",
+                    PrenomUtilisateur = "Test",
+                    IdEcole = 1,
+                    Statut = true,
+                    UserRoles = new List<UserRole>
+                    {
+                        new UserRole
+                        {
+                            IdRole = caissierRole.IdRole,
+                            IdUtilisateur = 519,
+                            IsPrimary = true,
+                            Statut = true,
+                            Role = caissierRole
+                        }
+                    }
+                });
+                context.Frais.Add(new Frais
+                {
+                    IdFrais = 9001,
+                    LibelleFrais = "Frais MultiDevise",
+                    Montant = 25,
+                    Devise = "USD",
+                    IdEcole = 1,
+                    IdAnneeScolaire = 101,
+                    Portee = PorteeFrais.Direction,
+                    DateCreation = DateTime.Now,
+                    Statut = true
+                });
+                context.TauxChanges.Add(new TauxChange
+                {
+                    IdEcole = 1,
+                    CodeDeviseSource = "USD",
+                    CodeDeviseCible = "CDF",
+                    Taux = 2800m,
+                    DateEffet = DateTime.UtcNow.AddDays(-1),
+                    Statut = true,
+                    DateCreation = DateTime.UtcNow
+                });
+                context.SaveChanges();
+            }
+
+            var token = CreateToken(UserRoles.CAISSIER, idEcole: 1, idUtilisateur: 519);
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _client.PostAsJsonAsync("/api/Paiement", new
+            {
+                idFrais = 9001,
+                montant = 25,
+                devise = "USD",
+                modePaiement = "Cash",
+                statutPaiement = "Confirme"
+            });
+
+            response.StatusCode.Should().Be(HttpStatusCode.Created);
+
+            using var scopeAfter = _factory.Services.CreateScope();
+            var contextAfter = scopeAfter.ServiceProvider.GetRequiredService<KelasiNaBisoDbContext>();
+            var paiement = contextAfter.Paiements.Single(p => p.IdFrais == 9001);
+
+            paiement.CodeDevisePaiement.Should().Be("USD");
+            paiement.CodeDevisePrincipale.Should().Be("CDF");
+            paiement.TauxVersDevisePrincipale.Should().Be(2800m);
+            paiement.MontantPayeDevisePrincipale.Should().Be(70000m);
         }
 
         [Fact]
@@ -111,7 +258,133 @@ namespace KelasiNaBiso.Tests.Integration.Controllers
             response.StatusCode.Should().Be(HttpStatusCode.OK);
         }
 
-        private static string CreateToken(string role, int idEcole, int idUtilisateur)
+        [Fact]
+        public async Task GetDashboardDirecteur_ShouldReturnOk_WhenDirecteur()
+        {
+            var token = CreateToken(UserRoles.DIRECTEUR, idEcole: 1, idUtilisateur: 514);
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _client.GetAsync("/api/Dashboard/directeur?idEcole=1&idAnneeScolaire=101");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        [Fact]
+        public async Task GetDashboardDirecteurAlias_ShouldReturnOk_WhenDirecteur()
+        {
+            var token = CreateToken(UserRoles.DIRECTEUR, idEcole: 1, idUtilisateur: 515);
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _client.GetAsync("/api/Dashboard/DashbordDirecteur?idEcole=1&idAnneeScolaire=101");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        [Fact]
+        public async Task GetDashboardFinancier_ShouldReturnOk_WhenFinancier()
+        {
+            var token = CreateToken(UserRoles.FINANCIER, idEcole: 1, idUtilisateur: 504);
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _client.GetAsync("/api/Dashboard/financier?idEcole=1&idAnneeScolaire=101");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        [Fact]
+        public async Task GetDashboardFinancierAlias_ShouldReturnOk_WhenFinancier()
+        {
+            var token = CreateToken(UserRoles.FINANCIER, idEcole: 1, idUtilisateur: 507);
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _client.GetAsync("/api/Dashboard/DashbordFinancier?idEcole=1&idAnneeScolaire=101");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        [Fact]
+        public async Task GetDashboardFinancier_ShouldReturnForbidden_WhenCaissier()
+        {
+            var token = CreateToken(UserRoles.CAISSIER, idEcole: 1, idUtilisateur: 505);
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _client.GetAsync("/api/Dashboard/financier?idEcole=1&idAnneeScolaire=101");
+
+            response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        }
+
+        [Fact]
+        public async Task GetDashboardTuteur_ShouldReturnOk_WhenParent()
+        {
+            var token = CreateToken(UserRoles.PARENT, idEcole: 1, idUtilisateur: 508, idTuteur: 11);
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _client.GetAsync("/api/Dashboard/tuteur?idEcole=1&idAnneeScolaire=101");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        [Fact]
+        public async Task GetDashboardTuteurAlias_ShouldReturnOk_WhenParent()
+        {
+            var token = CreateToken(UserRoles.PARENT, idEcole: 1, idUtilisateur: 509, idTuteur: 12);
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _client.GetAsync("/api/Dashboard/DashbordTuteur?idEcole=1&idAnneeScolaire=101");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        [Fact]
+        public async Task GetDashboardControleur_ShouldReturnOk_WhenControleur()
+        {
+            var token = CreateToken(UserRoles.CONTROLEUR, idEcole: 1, idUtilisateur: 512);
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _client.GetAsync("/api/Dashboard/controleur?idEcole=1&idAnneeScolaire=101");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        [Fact]
+        public async Task GetDashboardControleurAlias_ShouldReturnOk_WhenControleur()
+        {
+            var token = CreateToken(UserRoles.CONTROLEUR, idEcole: 1, idUtilisateur: 513);
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _client.GetAsync("/api/Dashboard/DashbordControleur?idEcole=1&idAnneeScolaire=101");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        [Fact]
+        public async Task GetDashboardEnseignant_ShouldReturnOk_WhenEnseignant()
+        {
+            var token = CreateToken(UserRoles.ENSEIGNANT, idEcole: 1, idUtilisateur: 510, idAgent: 21);
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _client.GetAsync("/api/Dashboard/enseignant?idEcole=1&idAnneeScolaire=101");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        [Fact]
+        public async Task GetDashboardEnseignantAlias_ShouldReturnOk_WhenEnseignant()
+        {
+            var token = CreateToken(UserRoles.ENSEIGNANT, idEcole: 1, idUtilisateur: 511, idAgent: 22);
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _client.GetAsync("/api/Dashboard/DashbordEnseignant?idEcole=1&idAnneeScolaire=101");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        private static string CreateToken(
+            string role,
+            int idEcole,
+            int idUtilisateur,
+            int? idTuteur = null,
+            int? idAgent = null)
         {
             var config = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?>
@@ -133,6 +406,8 @@ namespace KelasiNaBiso.Tests.Integration.Controllers
                 PostNomUtilisateur = "Test",
                 PrenomUtilisateur = "Smoke",
                 IdEcole = idEcole,
+                IdTuteur = idTuteur,
+                IdAgent = idAgent,
                 Statut = true,
                 UserRoles = new List<UserRole>
                 {
@@ -147,7 +422,7 @@ namespace KelasiNaBiso.Tests.Integration.Controllers
                 }
             };
 
-            return jwtService.GenerateToken(utilisateur);
+            return jwtService.GenerateToken(utilisateur, idAgent, idTuteur);
         }
 
         public void Dispose()

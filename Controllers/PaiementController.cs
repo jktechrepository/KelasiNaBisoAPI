@@ -204,7 +204,7 @@ namespace KelasiNaBiso.Controllers
 
                 return Ok(new
                 {
-                    data = paiementsPaginated,
+                    data = paiementsPaginated.Select(PaiementListItemDto.FromEntity).ToList(),
                     idEcole = scoped.IdEcole,
                     idAnneeScolaire = scoped.IdAnneeScolaire,
                     pagination = new
@@ -315,7 +315,8 @@ namespace KelasiNaBiso.Controllers
         /// Télécharge un template Excel pour les paiements en lot
         /// </summary>
         [HttpGet("template-excel")]
-        [Authorize(Roles = "Admin,Super-Admin,Directeur")]
+        [Authorize(Roles = "Admin,Super-Admin,Financier,Caissier")]
+        [Permission("Paiement.Create")]
         [ProducesResponseType(typeof(FileResult), 200)]
         public IActionResult DownloadExcelTemplate()
         {
@@ -346,7 +347,7 @@ namespace KelasiNaBiso.Controllers
         /// L'ID de l'utilisateur et l'ID de l'école sont automatiquement extraits du token JWT
         /// </summary>
         [HttpPost("bulk-excel")]
-        [Authorize(Roles = "Admin,Super-Admin,Directeur")]
+        [Authorize(Roles = "Admin,Super-Admin,Financier,Caissier")]
         [Permission("Paiement.Create")]
         [ProducesResponseType(typeof(BulkPaiementResult), 200)]
         [ProducesResponseType(400)]

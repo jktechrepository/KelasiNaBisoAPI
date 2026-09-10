@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -16,6 +17,12 @@ namespace KelasiNaBiso.Models
         public DateTime DatePaiement { get; set; }
         public double Montant { get; set; }
         public string? Devise { get; set; } = "USD";
+        public string? CodeDevisePaiement { get; set; }
+        public string? CodeDevisePrincipale { get; set; }
+        [Column(TypeName = "decimal(18,8)")]
+        public decimal? TauxVersDevisePrincipale { get; set; }
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal? MontantPayeDevisePrincipale { get; set; }
         public string? ModePaiement { get; set; }  // Par defaut, "Cash, Carte, Mobile Money"
         
         // ✅ SOFT DELETE: Statut actif/inactif (true = actif, false = désactivé)

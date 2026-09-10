@@ -223,6 +223,7 @@ builder.Services.AddDbContext<KelasiNaBisoDbContext>(options =>
 // Enregistrement du service JWT
 builder.Services.AddScoped<ISimpleJwtService, SimpleJwtService>();
 builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>(); //  REFRESH TOKEN : Service de gestion des refresh tokens
+builder.Services.AddScoped<ICurrencyConversionService, CurrencyConversionService>();
 
 // AUDIT TRAIL: Service d'audit pour tracer toutes les modifications
 builder.Services.AddScoped<IAuditService, AuditService>();

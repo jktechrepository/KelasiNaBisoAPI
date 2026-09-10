@@ -28,6 +28,9 @@ namespace KelasiNaBiso.Models.DTOs
         
         [StringLength(200)]
         public string? EmailContact { get; set; }
+
+        [StringLength(10)]
+        public string? CodeDevisePrincipale { get; set; }
         
         [StringLength(200)]
         public string? SiteWeb { get; set; }

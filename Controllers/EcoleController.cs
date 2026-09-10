@@ -50,6 +50,28 @@ namespace KelasiNaBiso.Controllers
             return Ok(ecole);
         }
 
+        // GET: api/Ecole/5/devise-principale
+        [HttpGet("{id}/devise-principale")]
+        public async Task<ActionResult<object>> GetDevisePrincipale(int id)
+        {
+            var ecole = await _ecoleRepository.GetByIdAsync(id);
+            if (ecole == null)
+            {
+                return NotFound();
+            }
+
+            var codeDevisePrincipale = string.IsNullOrWhiteSpace(ecole.CodeDevisePrincipale)
+                ? "USD"
+                : ecole.CodeDevisePrincipale.Trim().ToUpperInvariant();
+
+            return Ok(new
+            {
+                idEcole = ecole.IdEcole,
+                nomEcole = ecole.Nom,
+                codeDevisePrincipale
+            });
+        }
+
         // GET: api/Ecole/nom/{nom}
         [HttpGet("nom/{nom}")]
         public async Task<ActionResult<Ecole>> GetEcoleByNom(string nom)
@@ -239,6 +261,7 @@ namespace KelasiNaBiso.Controllers
                 Type = existingEcole.Type,
                 Telephone = existingEcole.Telephone,
                 EmailContact = existingEcole.EmailContact,
+                CodeDevisePrincipale = existingEcole.CodeDevisePrincipale,
                 AcceptNotification = existingEcole.AcceptNotification
             };
 
@@ -251,6 +274,9 @@ namespace KelasiNaBiso.Controllers
             existingEcole.SiteWeb = dto.SiteWeb;
             existingEcole.Telephone = dto.Telephone;
             existingEcole.EmailContact = dto.EmailContact;
+            existingEcole.CodeDevisePrincipale = string.IsNullOrWhiteSpace(dto.CodeDevisePrincipale)
+                ? existingEcole.CodeDevisePrincipale
+                : dto.CodeDevisePrincipale.Trim().ToUpperInvariant();
             existingEcole.NomCompletResponsable = dto.NomCompletResponsable;
             existingEcole.GenreResponsable = dto.GenreResponsable;
             existingEcole.Ville = dto.Ville;
