@@ -1,5 +1,6 @@
 using KelasiNaBiso.Data;
 using KelasiNaBiso.Models;
+using KelasiNaBiso.Models.Enums;
 using KelasiNaBiso.Models.DTOs;
 using KelasiNaBiso.Services.Repositories;
 using Microsoft.AspNetCore.Http;
@@ -145,6 +146,7 @@ namespace KelasiNaBiso.Services
         {
             public int IdEleve { get; set; }
             public int? IdClasse { get; set; }
+            public int? IdDirection { get; set; }
             public string NomCompletOriginal { get; set; } = string.Empty;
             public string NomNormalise { get; set; } = string.Empty;
             public HashSet<string> MotsNormalises { get; set; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -172,6 +174,13 @@ namespace KelasiNaBiso.Services
                             && i.Statut == true
                             && (i.StatutInscription == "Confirmé" || i.StatutInscription == "Confirme" || i.StatutInscription.StartsWith("Confirm")))
                         .Select(i => (int?)i.IdClasse)
+                        .FirstOrDefault(),
+                    IdDirection = e.Inscriptions
+                        .Where(i => i.IdEcole == idEcole
+                            && i.IdAnneeScolaire == idAnnee
+                            && i.Statut == true
+                            && (i.StatutInscription == "Confirmé" || i.StatutInscription == "Confirme" || i.StatutInscription.StartsWith("Confirm")))
+                        .Select(i => i.Classe != null ? i.Classe.IdDirection : null)
                         .FirstOrDefault()
                 })
                 .ToListAsync();
@@ -194,6 +203,7 @@ namespace KelasiNaBiso.Services
                 {
                     IdEleve = eleve.IdEleve,
                     IdClasse = eleve.IdClasse,
+                    IdDirection = eleve.IdDirection,
                     NomCompletOriginal = eleve.NomComplet ?? string.Empty,
                     NomNormalise = nomNormalise,
                     MotsNormalises = motsNormalises
@@ -239,7 +249,9 @@ namespace KelasiNaBiso.Services
         private class FraisInfo
         {
             public int IdFrais { get; set; }
-            public int? IdClasse { get; set; }
+            public PorteeFrais Portee { get; set; }
+            public HashSet<int> IdClasses { get; set; } = new();
+            public HashSet<int> IdDirections { get; set; } = new();
             public string LibelleFraisOriginal { get; set; } = string.Empty;
             public string LibelleNormalise { get; set; } = string.Empty;
             public HashSet<string> MotsNormalises { get; set; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -252,10 +264,17 @@ namespace KelasiNaBiso.Services
         {
             var idAnnee = await _scope.ResolveIdAnneeScolaireAsync(idEcole, null);
             var frais = await _context.Frais
-                .Where(f => f.Direction.IdEcole == idEcole
+                .Where(f => f.IdEcole == idEcole
                     && f.IdAnneeScolaire == idAnnee
                     && f.Statut == true)
-                .Select(f => new { f.IdFrais, f.LibelleFrais, f.IdClasse })
+                .Select(f => new
+                {
+                    f.IdFrais,
+                    f.LibelleFrais,
+                    f.Portee,
+                    IdClasses = f.FraisClasses.Select(fc => fc.IdClasse).ToList(),
+                    IdDirections = f.FraisDirections.Select(fd => fd.IdDirection).ToList()
+                })
                 .ToListAsync();
 
             // Dictionnaire pour recherche exacte (libellé normalisé sans espaces)
@@ -275,7 +294,9 @@ namespace KelasiNaBiso.Services
                 var info = new FraisInfo
                 {
                     IdFrais = fraisItem.IdFrais,
-                    IdClasse = fraisItem.IdClasse,
+                    Portee = fraisItem.Portee,
+                    IdClasses = fraisItem.IdClasses.ToHashSet(),
+                    IdDirections = fraisItem.IdDirections.ToHashSet(),
                     LibelleFraisOriginal = fraisItem.LibelleFrais ?? string.Empty,
                     LibelleNormalise = libelleNormalise,
                     MotsNormalises = motsNormalises
@@ -283,8 +304,6 @@ namespace KelasiNaBiso.Services
                 
                 fraisInfo[fraisItem.IdFrais] = info;
                 
-                // Dictionnaire exact : préfère le frais direction-wide (IdClasse null) en index.
-                // La résolution finale privilégie la classe de l'élève via PickBestFrais.
                 if (!dictionaryExact.ContainsKey(libelleNormalise))
                 {
                     dictionaryExact[libelleNormalise] = fraisItem.IdFrais;
@@ -298,14 +317,14 @@ namespace KelasiNaBiso.Services
                     collisions[libelleNormalise].Add(fraisItem.IdFrais);
 
                     var current = fraisInfo[dictionaryExact[libelleNormalise]];
-                    if (current.IdClasse.HasValue && !fraisItem.IdClasse.HasValue)
+                    if (current.Portee == PorteeFrais.Classe && fraisItem.Portee == PorteeFrais.Direction)
                     {
                         dictionaryExact[libelleNormalise] = fraisItem.IdFrais;
                     }
                     
                     _logger.LogWarning(
                         "⚠️ Collision de libellé normalisé détectée : '{LibelleNormalise}' pour les frais ID {Ids}. " +
-                        "Résolution par classe élève (sinon IdClasse null).",
+                        "Résolution par portée classe élève.",
                         libelleNormalise, 
                         string.Join(", ", collisions[libelleNormalise]));
                 }
@@ -490,7 +509,8 @@ namespace KelasiNaBiso.Services
             string libelleRecherche,
             Dictionary<string, int> fraisEcoleDict,
             Dictionary<int, FraisInfo> fraisEcoleInfo,
-            int? idClasseEleve = null)
+            int? idClasseEleve = null,
+            int? idDirectionEleve = null)
         {
             if (string.IsNullOrWhiteSpace(libelleRecherche))
                 return null;
@@ -502,7 +522,7 @@ namespace KelasiNaBiso.Services
 
             if (exactMatches.Count > 0)
             {
-                var picked = PickBestFrais(exactMatches, idClasseEleve);
+                var picked = PickBestFrais(exactMatches, idClasseEleve, idDirectionEleve);
                 _logger.LogDebug("✅ Frais trouvé (recherche exacte) : '{LibelleRecherche}' → ID {IdFrais}", libelleRecherche, picked.IdFrais);
                 return picked.IdFrais;
             }
@@ -529,36 +549,34 @@ namespace KelasiNaBiso.Services
                 return null;
             }
 
-            var best = PickBestFrais(correspondances, idClasseEleve);
+            var best = PickBestFrais(correspondances, idClasseEleve, idDirectionEleve);
             _logger.LogInformation(
                 "✅ Frais trouvé (recherche par mots) : '{LibelleRecherche}' → ID {IdFrais} (Libellé BDD: '{LibelleBDD}')",
                 libelleRecherche, best.IdFrais, best.LibelleFraisOriginal);
             return best.IdFrais;
         }
 
-        /// <summary>
-        /// Préférence : frais spécifique à la classe de l'élève, sinon frais direction-wide (IdClasse null).
-        /// </summary>
-        private static FraisInfo PickBestFrais(List<FraisInfo> candidats, int? idClasseEleve)
+        private static FraisInfo PickBestFrais(List<FraisInfo> candidats, int? idClasseEleve, int? idDirectionEleve)
         {
-            IEnumerable<FraisInfo> eligible = candidats;
-            if (idClasseEleve.HasValue && idClasseEleve.Value > 0)
+            bool Eligible(FraisInfo f)
             {
-                eligible = candidats.Where(f => f.IdClasse == null || f.IdClasse == idClasseEleve.Value);
+                if (f.Portee == PorteeFrais.Classe)
+                    return idClasseEleve.HasValue && f.IdClasses.Contains(idClasseEleve.Value);
+                return idDirectionEleve.HasValue && f.IdDirections.Contains(idDirectionEleve.Value);
             }
 
-            var list = eligible.ToList();
-            if (list.Count == 0)
-                list = candidats;
+            var eligible = candidats.Where(Eligible).ToList();
+            if (eligible.Count == 0)
+                eligible = candidats;
 
-            if (idClasseEleve.HasValue && idClasseEleve.Value > 0)
-            {
-                var classSpecific = list.FirstOrDefault(f => f.IdClasse == idClasseEleve.Value);
-                if (classSpecific != null)
-                    return classSpecific;
-            }
+            var classSpecific = eligible.FirstOrDefault(f =>
+                f.Portee == PorteeFrais.Classe
+                && idClasseEleve.HasValue
+                && f.IdClasses.Contains(idClasseEleve.Value));
+            if (classSpecific != null)
+                return classSpecific;
 
-            return list.FirstOrDefault(f => f.IdClasse == null) ?? list[0];
+            return eligible.FirstOrDefault(f => f.Portee == PorteeFrais.Direction) ?? eligible[0];
         }
 
         /// <summary>
@@ -599,10 +617,14 @@ namespace KelasiNaBiso.Services
                 }
 
                 int? idClasseEleve = null;
+                int? idDirectionEleve = null;
                 if (idEleve.HasValue && elevesEcoleInfo.TryGetValue(idEleve.Value, out var eleveInfo))
+                {
                     idClasseEleve = eleveInfo.IdClasse;
+                    idDirectionEleve = eleveInfo.IdDirection;
+                }
 
-                var idFrais = FindFraisByName(raw.LibelleFrais, fraisEcoleDict, fraisEcoleInfo, idClasseEleve);
+                var idFrais = FindFraisByName(raw.LibelleFrais, fraisEcoleDict, fraisEcoleInfo, idClasseEleve, idDirectionEleve);
                 if (idFrais.HasValue)
                 {
                     paiement.IdFrais = idFrais.Value;

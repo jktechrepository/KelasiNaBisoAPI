@@ -1,3 +1,4 @@
+using KelasiNaBiso.Models.Enums;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
@@ -18,31 +19,29 @@ namespace KelasiNaBiso.Models
         [MaxLength(10)]
         public string Devise { get; set; }
 
-        public string? TypeFrais { get; set; }  // Inscription, Scolaires, Transport, Cantine, Uniforme
+        public string? TypeFrais { get; set; }
 
-        public string? Periodicite { get; set; }  // Unique, Mensuel, Trimestriel, Annuel
+        public string? Periodicite { get; set; }
 
-        public string? Description { get; set; } //(optionnel)
+        public string? Description { get; set; }
 
-        public bool? Statut { get; set; } = true; // Actif/Inactif
+        public bool? Statut { get; set; } = true;
 
-        public int IdDirection { get; set; }
+        [Required]
+        public int IdEcole { get; set; }
 
-        /// <summary>Année scolaire obligatoire (une grille tarifaire = une année).</summary>
         [Required]
         public int IdAnneeScolaire { get; set; }
 
-        /// <summary>Null = applicable à toute la direction ; sinon tarif spécifique à une classe.</summary>
-        public int? IdClasse { get; set; }
+        [Required]
+        public PorteeFrais Portee { get; set; }
 
-        // Attributs Technique
         [JsonIgnore]
         public DateTime DateCreation { get; set; }
 
-        // Navigation
         [JsonIgnore]
         [ValidateNever]
-        public Direction Direction { get; set; }
+        public Ecole Ecole { get; set; }
 
         [JsonIgnore]
         [ValidateNever]
@@ -50,9 +49,12 @@ namespace KelasiNaBiso.Models
 
         [JsonIgnore]
         [ValidateNever]
-        public Classe? Classe { get; set; }
-        
-        // Collections
+        public ICollection<FraisDirection> FraisDirections { get; set; } = new List<FraisDirection>();
+
+        [JsonIgnore]
+        [ValidateNever]
+        public ICollection<FraisClasse> FraisClasses { get; set; } = new List<FraisClasse>();
+
         [JsonIgnore]
         [ValidateNever]
         public ICollection<Paiement> Paiements { get; set; }

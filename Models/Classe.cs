@@ -53,6 +53,6 @@ namespace KelasiNaBiso.Models
 
         [JsonIgnore]
         [ValidateNever]
-        public ICollection<Frais> Frais { get; set; }
+        public ICollection<FraisClasse> FraisClasses { get; set; }
     }
 }

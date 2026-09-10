@@ -1,4 +1,3 @@
-using KelasiNaBiso.Models;
 using KelasiNaBiso.Models.DTOs;
 using KelasiNaBiso.Services.Repositories;
 using KelasiNaBiso.Attributes;
@@ -22,14 +21,14 @@ namespace KelasiNaBiso.Controllers
 
         [HttpGet]
         [RequireGlobalAccess]
-        public async Task<ActionResult<IEnumerable<Frais>>> GetFrais()
+        public async Task<ActionResult<IEnumerable<FraisDto>>> GetFrais()
         {
             var frais = await _fraisRepository.GetAllAsync();
             return Ok(frais);
         }
 
         [HttpGet("{id}")]
-        public async Task<ActionResult<Frais>> GetFrais(int id)
+        public async Task<ActionResult<FraisDto>> GetFrais(int id)
         {
             var frais = await _fraisRepository.GetByIdAsync(id);
             if (frais == null)
@@ -107,7 +106,7 @@ namespace KelasiNaBiso.Controllers
         }
 
         [HttpGet("annee/{idAnneeScolaire}")]
-        public async Task<ActionResult<IEnumerable<Frais>>> GetFraisByAnnee(int idAnneeScolaire)
+        public async Task<ActionResult<IEnumerable<FraisDto>>> GetFraisByAnnee(int idAnneeScolaire)
         {
             var frais = await _fraisRepository.GetByAnneeAsync(idAnneeScolaire);
             return Ok(frais);
@@ -122,14 +121,14 @@ namespace KelasiNaBiso.Controllers
 
         [HttpPost]
         [Permission("Frais.Create")]
-        public async Task<ActionResult<Frais>> CreateFrais(Frais frais)
+        public async Task<ActionResult<FraisDto>> CreateFrais([FromBody] CreateFraisDto dto)
         {
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
             try
             {
-                var createdFrais = await _fraisRepository.CreateAsync(frais);
+                var createdFrais = await _fraisRepository.CreateAsync(dto);
                 return CreatedAtAction(nameof(GetFrais), new { id = createdFrais.IdFrais }, createdFrais);
             }
             catch (InvalidOperationException ex)
@@ -141,7 +140,7 @@ namespace KelasiNaBiso.Controllers
         [HttpPut("{id}")]
         [Authorize(Roles = "Admin,Super-Admin")]
         [Permission("Frais.Update")]
-        public async Task<ActionResult<Frais>> UpdateFrais(int id, [FromBody] UpdateFraisDto dto)
+        public async Task<ActionResult<FraisDto>> UpdateFrais(int id, [FromBody] UpdateFraisDto dto)
         {
             if (id != dto.IdFrais)
                 return BadRequest(new { message = "L'ID ne correspond pas" });
@@ -149,26 +148,11 @@ namespace KelasiNaBiso.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            var existing = await _fraisRepository.GetByIdAsync(id);
-            if (existing == null)
-                return NotFound(new { message = "Frais non trouvé" });
-
-            existing.LibelleFrais = dto.LibelleFrais;
-            existing.Montant = dto.Montant;
-            existing.Devise = dto.Devise;
-            existing.TypeFrais = dto.TypeFrais;
-            existing.Periodicite = dto.Periodicite;
-            existing.Description = dto.Description;
-
-            if (dto.IdAnneeScolaire.HasValue && dto.IdAnneeScolaire.Value > 0)
-                existing.IdAnneeScolaire = dto.IdAnneeScolaire.Value;
-
-            if (dto.IdClasse.HasValue)
-                existing.IdClasse = dto.IdClasse.Value > 0 ? dto.IdClasse : null;
-
             try
             {
-                var updated = await _fraisRepository.UpdateAsync(existing);
+                var updated = await _fraisRepository.UpdateAsync(id, dto);
+                if (updated == null)
+                    return NotFound(new { message = "Frais non trouvé" });
                 return Ok(updated);
             }
             catch (InvalidOperationException ex)
@@ -201,8 +185,8 @@ namespace KelasiNaBiso.Controllers
                 return Ok(new
                 {
                     message = "Statut modifié avec succès",
-                    nouveauStatut = frais != null,
-                    frais = frais
+                    nouveauStatut = frais?.Statut,
+                    frais
                 });
             }
             catch (Exception ex)

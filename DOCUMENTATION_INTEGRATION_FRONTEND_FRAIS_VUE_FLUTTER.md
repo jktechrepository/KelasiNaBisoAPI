@@ -13,7 +13,7 @@ Guide d'intégration pour la **grille tarifaire** et la **consultation des barè
 **Swagger :** `/swagger/index.html`  
 **Auth :** `Authorization: Bearer {jwt_token}`
 
-**Note ops :** migration prod `IdAnneeScolaire` / `IdClasse` — voir [Scripts/BACKFILL_FRAIS_ANNEE_SCOLAIRE.sql](Scripts/BACKFILL_FRAIS_ANNEE_SCOLAIRE.sql).
+**Note ops :** migration prod portée Frais — [Scripts/BACKFILL_FRAIS_PORTEE.sql](Scripts/BACKFILL_FRAIS_PORTEE.sql) et EF `20260903120000_FraisPorteeDirectionsClasses`. Ancien backfill année : [Scripts/BACKFILL_FRAIS_ANNEE_SCOLAIRE.sql](Scripts/BACKFILL_FRAIS_ANNEE_SCOLAIRE.sql).
 
 ---
 
@@ -48,24 +48,32 @@ Avant le scoping **année + classe**, un frais était rattaché uniquement à un
 
 | Champ | Obligatoire | Signification |
 |-------|-------------|---------------|
+| `idEcole` | Oui | École du barème |
 | `idAnneeScolaire` | Oui | Une ligne de barème = **une année** |
-| `idDirection` | Oui | Direction scolaire (Primaire, Secondaire, …) |
-| `idClasse` | Non (`null`) | `null` = frais **direction-wide** ; valeur = frais **classe seule** |
+| `portee` | Oui | `1` = Direction, `2` = Classe (XOR) |
+| `directions` | Si portee Direction | Liste des directions concernées |
+| `classes` | Si portee Classe | Liste des classes concernées |
+
+Un frais a **soit** `idDirections[]`, **soit** `idClasses[]` — jamais les deux. Toute une direction = une ligne + une entrée dans `directions`. Plusieurs classes (ex. 6e A et 6e B) = une ligne + plusieurs `classes`.
 
 ### Exemples concrets
 
-| Libellé | IdClasse | Qui paie ? |
-|---------|----------|------------|
-| Inscription | `null` | Tous les élèves de la direction, année 2025-2026 |
-| Minerval 6e | `10` | Uniquement les élèves inscrits en classe 10 |
-| Transport | `null` | Toute la direction (montant unique) |
+| Libellé | Portée | Qui paie ? |
+|---------|--------|------------|
+| Inscription | Direction `[Primaire]` | Tous les élèves de cette direction |
+| Transport | Classe `[6e A, 6e B]` | Uniquement ces classes |
+| Minerval | Classe `[10]` | Uniquement la classe 10 |
 
 ### Éligibilité côté backend
 
 Lors d'un paiement ou d'un calcul de solde, le backend filtre via `FraisEligibility` :
 
 ```
-frais éligibles = direction + année inscription + (IdClasse null OU IdClasse = classe élève)
+frais.statut && frais.idEcole && frais.idAnneeScolaire
+&& (
+  portee Classe && classe élève ∈ frais.classes
+  || portee Direction && direction élève ∈ frais.directions
+)
 ```
 
 Le front **ne doit pas** filtrer manuellement sur `V_Eleve.IdClasse` pour les barèmes — utiliser les endpoints Frais avec `idClasse` ou `VuePaiementsFraisParEcole` pour le solde.
@@ -95,19 +103,21 @@ flowchart TB
 
 | Aspect | Avant | Après |
 |--------|-------|-------|
-| Modèle `Frais` | `idDirection` seul | + `idAnneeScolaire` (oblig.) + `idClasse` (opt.) |
-| `GET /api/Frais/ecole/{idEcole}` | Tableau `Frais[]` | `{ data: Frais[], idEcole, idAnneeScolaire }` |
+| Modèle `Frais` | 1 direction + 0..1 classe | `idEcole` + `portee` XOR (`directions[]` **ou** `classes[]`) |
+| `GET /api/Frais/ecole/{idEcole}` | Tableau `Frais[]` | `{ data: FraisDto[], idEcole, idAnneeScolaire }` |
+| `POST /api/Frais` | `idDirection` + `idClasse?` | `idEcole`, `portee`, `idDirections[]` **ou** `idClasses[]` |
+| `PUT /api/Frais/{id}` | DTO sans portée | `portee` + listes optionnelles (remplace la portée si fournies) |
 | `GET /api/Frais/ecole/{idEcole}/libelle` | Objet `Frais` ou 404 | Wrapper `{ data: Frais \| null, idEcole, idAnneeScolaire }` |
 | `GET /api/Frais/direction/{idDirection}` | Tableau | Wrapper identique |
 | Query params liste | Aucun | `idAnneeScolaire?`, `idClasse?` |
 | `POST /api/Frais` | Sans année explicite | `idAnneeScolaire <= 0` → année **courante** auto |
-| `PUT /api/Frais/{id}` | Corps `Frais` complet | DTO [`UpdateFraisDto`](Models/DTOs/UpdateFraisDto.cs) (+ année/classe optionnels) |
+| `PUT /api/Frais/{id}` | Corps `Frais` complet | DTO [`UpdateFraisDto`](Models/DTOs/UpdateFraisDto.cs) (`portee` + listes si changement de portée) |
 
 ### Actions migration front
 
 1. **Parser le wrapper** — ne plus traiter la réponse liste comme un tableau racine.
 2. **Conserver `idAnneeScolaire` résolu** — afficher l'année active dans l'UI (badge, sélecteur).
-3. **Formulaire création** — envoyer `idAnneeScolaire` (ou `0` pour défaut) + `idClasse` optionnel.
+3. **Formulaire création** — `idEcole`, `idAnneeScolaire` (ou `0`), `portee` (1\|2), puis **multi-select** `idDirections[]` **ou** `idClasses[]`.
 4. **Listes guichet** — si vous chargez `/api/Frais/ecole/...` pour peupler un select, passer `idClasse` de l'élève quand connu.
 5. **Solde élève** — `VuePaiementsFraisParEcole` reste la source recommandée ; pas de changement obligatoire si déjà utilisé.
 
@@ -165,7 +175,7 @@ GET /api/Frais/ecole/{idEcole}?idAnneeScolaire=&idClasse=
 |-----------|------|-------------|
 | `idEcole` | path | École (doit correspondre au JWT sauf Super-Admin) |
 | `idAnneeScolaire` | query, opt. | Année cible ; défaut = **année courante** |
-| `idClasse` | query, opt. | Si fourni : frais `IdClasse == null` **+** frais de cette classe |
+| `idClasse` | query, opt. | Si fourni : frais dont la portée couvre cette classe (direction de la classe **ou** classe listée) |
 
 **Réponse `200` :**
 
@@ -177,13 +187,11 @@ GET /api/Frais/ecole/{idEcole}?idAnneeScolaire=&idClasse=
       "libelleFrais": "Inscription",
       "montant": 50,
       "devise": "USD",
-      "typeFrais": "Inscription",
-      "periodicite": "Unique",
-      "description": null,
-      "statut": true,
-      "idDirection": 1,
+      "idEcole": 1,
       "idAnneeScolaire": 100,
-      "idClasse": null
+      "portee": 1,
+      "directions": [{ "idDirection": 1, "nomDirection": "Primaire" }],
+      "classes": []
     },
     {
       "idFrais": 2,
@@ -194,9 +202,11 @@ GET /api/Frais/ecole/{idEcole}?idAnneeScolaire=&idClasse=
       "periodicite": "Annuel",
       "description": null,
       "statut": true,
-      "idDirection": 1,
+      "idEcole": 1,
       "idAnneeScolaire": 100,
-      "idClasse": 10
+      "portee": 2,
+      "directions": [],
+      "classes": [{ "idClasse": 10, "nomClasse": "6e A", "idDirection": 1 }]
     }
   ],
   "idEcole": 1,
@@ -214,10 +224,10 @@ GET /api/Frais/ecole/{idEcole}?idAnneeScolaire=&idClasse=
 GET /api/Frais/ecole/{idEcole}/libelle?libelleFrais={texte}&idAnneeScolaire=&idClasse=
 ```
 
-Résolution du libellé (insensible à la casse) avec **priorité classe** :
+Résolution du libellé (insensible à la casse) :
 
-- Si `idClasse` fourni → frais spécifique classe, sinon frais direction-wide (`IdClasse null`).
-- Sinon → frais direction-wide en priorité.
+- Si `idClasse` fourni → frais éligible pour cette inscription (classe listée, sinon direction).
+- Sinon → priorité portée Direction.
 
 **Réponse `200` :** wrapper avec `data` = un seul `Frais` ou `null`.  
 **Réponse `404` :** aucun frais pour ce libellé.
@@ -270,18 +280,21 @@ Permission: Frais.Create
   "typeFrais": "Transport",
   "periodicite": "Mensuel",
   "description": "Bus scolaire",
-  "idDirection": 1,
+  "idEcole": 1,
   "idAnneeScolaire": 0,
-  "idClasse": null,
+  "portee": 2,
+  "idClasses": [10, 11],
   "statut": true
 }
 ```
 
+`portee` : `1` = Direction (`idDirections` requis), `2` = Classe (`idClasses` requis). `idAnneeScolaire` ≤ 0 → année courante.
+
 | Règle | Comportement |
 |-------|--------------|
-| `idAnneeScolaire <= 0` | Résolu sur **année courante** de l'école de la direction |
-| `idClasse` absent ou `null` | Frais direction-wide |
-| `idClasse > 0` | Frais classe ; doit appartenir à `idDirection` |
+| `idAnneeScolaire <= 0` | Résolu sur **année courante** de `idEcole` |
+| `portee = 1` | `idDirections` obligatoire, `idClasses` interdit |
+| `portee = 2` | `idClasses` obligatoire, `idDirections` interdit |
 
 **Réponse `201` :** frais créé avec `idFrais` assigné.
 
@@ -307,12 +320,14 @@ Permission: Frais.Update
   "periodicite": "Annuel",
   "description": null,
   "idAnneeScolaire": 100,
-  "idClasse": 10
+  "portee": 2,
+  "idClasses": [10]
 }
 ```
 
 - `idAnneeScolaire` : appliqué seulement si `> 0`.
-- `idClasse` : `null` ou `0` → remet le frais en direction-wide.
+- Si `portee` **ou** `idDirections` **ou** `idClasses` est fourni, la portée est **remplacée** (XOR : une liste, l'autre vide).
+- Pour passer de classes à « toute la direction » : `portee: 1` + `idDirections: [id]`.
 
 ---
 
@@ -332,18 +347,44 @@ Toggle retourne `{ message, nouveauStatut, frais }`.
 ### Interface TypeScript (référence)
 
 ```typescript
+export interface FraisDirectionItem {
+  idDirection: number;
+  nomDirection?: string | null;
+}
+
+export interface FraisClasseItem {
+  idClasse: number;
+  nomClasse?: string | null;
+  idDirection?: number | null;
+}
+
 export interface Frais {
   idFrais: number;
   libelleFrais: string;
   montant: number;
   devise: string;
-  typeFrais?: string | null;      // Inscription, Scolaires, Transport, Cantine, Uniforme
-  periodicite?: string | null;    // Unique, Mensuel, Trimestriel, Annuel
+  typeFrais?: string | null;
+  periodicite?: string | null;
   description?: string | null;
   statut?: boolean | null;
-  idDirection: number;
+  idEcole: number;
+  nomEcole?: string | null;
   idAnneeScolaire: number;
-  idClasse?: number | null;
+  libelleAnneeScolaire?: string | null;
+  portee: 1 | 2; // 1 Direction, 2 Classe
+  directions: FraisDirectionItem[];
+  classes: FraisClasseItem[];
+}
+
+export interface CreateFraisDto {
+  libelleFrais: string;
+  montant: number;
+  devise: string;
+  idEcole: number;
+  idAnneeScolaire: number;
+  portee: 1 | 2;
+  idDirections?: number[];
+  idClasses?: number[];
 }
 
 export interface UpdateFraisDto {
@@ -355,7 +396,9 @@ export interface UpdateFraisDto {
   periodicite?: string | null;
   description?: string | null;
   idAnneeScolaire?: number | null;
-  idClasse?: number | null;
+  portee?: 1 | 2;
+  idDirections?: number[];
+  idClasses?: number[];
 }
 
 export interface ElevesAnneeScopedResult<T> {
@@ -367,10 +410,10 @@ export interface ElevesAnneeScopedResult<T> {
 
 ### Labels UI suggérés
 
-| `idClasse` | Affichage liste |
-|------------|-----------------|
-| `null` | « Toute la direction » |
-| `10` | Nom de la classe (charger via API Classes) |
+| `portee` | Affichage liste |
+|----------|-----------------|
+| `1` | Noms dans `directions` (ex. « Primaire, Maternelle ») |
+| `2` | Noms dans `classes` (ex. « 6e A, 6e B ») |
 
 ---
 
@@ -390,9 +433,11 @@ export interface ElevesAnneeScopedResult<T> {
 | Libellé | Input text | Requis, max 200 |
 | Montant | Number | >= 0 |
 | Devise | Select | USD, CDF, … |
-| Direction | Select | Requis |
-| Année | Select | Requis ; défaut année courante |
-| Classe | Select optionnel | « Toute la direction » = null ; sinon classes de la direction |
+| École | Select / JWT | Requis (`idEcole`) |
+| Année | Select | Requis ; défaut année courante (`0`) |
+| Portée | Radio / select | `1` Direction **ou** `2` Classe |
+| Directions | Multi-select | Requis si portée Direction ; mêmes école |
+| Classes | Multi-select | Requis si portée Classe ; mêmes école, n'importe quelle direction |
 | Type / Périodicité | Select | Valeurs métier |
 
 ### Duplication année N → N+1
@@ -406,7 +451,8 @@ Workflow recommandé (non automatisé côté API v1) :
 ### Anti-patterns
 
 - Ne pas créer deux frais direction-wide avec le **même libellé** même année (confusion import Excel / guichet).
-- Ne pas mélanger des `idAnneeScolaire` de deux écoles sur une même direction (validation backend → 400).
+- Ne pas envoyer `idDirections` et `idClasses` ensemble (XOR, 400).
+- Ne pas mélanger des `idAnneeScolaire` d'une autre école (validation backend → 400).
 
 ---
 
@@ -416,6 +462,15 @@ Fichier suggéré : `src/types/frais.ts`
 
 ```typescript
 // src/types/frais.ts
+export interface FraisDirectionItem {
+  idDirection: number;
+  nomDirection?: string | null;
+}
+export interface FraisClasseItem {
+  idClasse: number;
+  nomClasse?: string | null;
+  idDirection?: number | null;
+}
 export interface Frais {
   idFrais: number;
   libelleFrais: string;
@@ -425,9 +480,22 @@ export interface Frais {
   periodicite?: string | null;
   description?: string | null;
   statut?: boolean | null;
-  idDirection: number;
+  idEcole: number;
   idAnneeScolaire: number;
-  idClasse?: number | null;
+  portee: 1 | 2;
+  directions: FraisDirectionItem[];
+  classes: FraisClasseItem[];
+}
+
+export interface CreateFraisDto {
+  libelleFrais: string;
+  montant: number;
+  devise: string;
+  idEcole: number;
+  idAnneeScolaire: number;
+  portee: 1 | 2;
+  idDirections?: number[];
+  idClasses?: number[];
 }
 
 export interface UpdateFraisDto {
@@ -439,7 +507,9 @@ export interface UpdateFraisDto {
   periodicite?: string | null;
   description?: string | null;
   idAnneeScolaire?: number | null;
-  idClasse?: number | null;
+  portee?: 1 | 2;
+  idDirections?: number[];
+  idClasses?: number[];
 }
 
 export interface ElevesAnneeScopedResult<T> {
@@ -457,7 +527,7 @@ export interface FraisListFilters {
 export type FraisScopeLabel = 'direction' | 'classe';
 
 export function fraisScopeLabel(frais: Frais): FraisScopeLabel {
-  return frais.idClasse != null && frais.idClasse > 0 ? 'classe' : 'direction';
+  return frais.portee === 2 ? 'classe' : 'direction';
 }
 ```
 
@@ -565,14 +635,18 @@ export function useFraisGrille(options = {}) {
   );
 
   const fraisDirectionWide = computed(() =>
-    fraisActifs.value.filter(f => !f.idClasse)
+    fraisActifs.value.filter(f => f.portee === 1)
   );
 
   const fraisParClasse = computed(() => {
     const map = new Map();
     fraisActifs.value
-      .filter(f => f.idClasse)
-      .forEach(f => map.set(f.idClasse, [...(map.get(f.idClasse) ?? []), f]));
+      .filter(f => f.portee === 2)
+      .forEach(f => {
+        for (const c of f.classes ?? []) {
+          map.set(c.idClasse, [...(map.get(c.idClasse) ?? []), f]);
+        }
+      });
     return map;
   });
 
@@ -651,9 +725,11 @@ const form = ref({
   libelleFrais: '',
   montant: 0,
   devise: 'USD',
-  idDirection: null,
+  idEcole: null,
   idAnneeScolaire: 0,
-  idClasse: null,
+  portee: 1,
+  idDirections: [],
+  idClasses: [],
   typeFrais: 'Scolaires',
   periodicite: 'Annuel'
 });
@@ -694,7 +770,7 @@ async function onToggle(f) {
         <tr v-for="f in fraisActifs" :key="f.idFrais">
           <td>{{ f.libelleFrais }}</td>
           <td>{{ f.montant }} {{ f.devise }}</td>
-          <td>{{ f.idClasse ? `Classe ${f.idClasse}` : 'Direction' }}</td>
+          <td>{{ f.portee === 2 ? (f.classes || []).map(c => c.nomClasse).join(', ') : (f.directions || []).map(d => d.nomDirection).join(', ') }}</td>
           <td><button type="button" @click="onToggle(f)">Activer/Désactiver</button></td>
         </tr>
       </tbody>
@@ -704,7 +780,7 @@ async function onToggle(f) {
     <form @submit.prevent="onSubmit">
       <input v-model="form.libelleFrais" placeholder="Libellé" required />
       <input v-model.number="form.montant" type="number" min="0" step="0.01" required />
-      <!-- direction / classe / année : selects alimentés par APIs existantes -->
+      <!-- portée + multi-select directions XOR classes ; année : selects alimentés par APIs existantes -->
       <button type="submit">Créer</button>
     </form>
   </div>
@@ -730,6 +806,33 @@ Fichier suggéré : `lib/models/frais.dart`
 
 ```dart
 // lib/models/frais.dart
+class FraisDirectionItem {
+  final int idDirection;
+  final String? nomDirection;
+  const FraisDirectionItem({required this.idDirection, this.nomDirection});
+  factory FraisDirectionItem.fromJson(Map<String, dynamic> json) =>
+      FraisDirectionItem(
+        idDirection: json['idDirection'] as int,
+        nomDirection: json['nomDirection'] as String?,
+      );
+}
+
+class FraisClasseItem {
+  final int idClasse;
+  final String? nomClasse;
+  final int? idDirection;
+  const FraisClasseItem({
+    required this.idClasse,
+    this.nomClasse,
+    this.idDirection,
+  });
+  factory FraisClasseItem.fromJson(Map<String, dynamic> json) => FraisClasseItem(
+        idClasse: json['idClasse'] as int,
+        nomClasse: json['nomClasse'] as String?,
+        idDirection: json['idDirection'] as int?,
+      );
+}
+
 class Frais {
   final int idFrais;
   final String libelleFrais;
@@ -739,9 +842,11 @@ class Frais {
   final String? periodicite;
   final String? description;
   final bool? statut;
-  final int idDirection;
+  final int idEcole;
   final int idAnneeScolaire;
-  final int? idClasse;
+  final int portee;
+  final List<FraisDirectionItem> directions;
+  final List<FraisClasseItem> classes;
 
   const Frais({
     required this.idFrais,
@@ -752,9 +857,11 @@ class Frais {
     this.periodicite,
     this.description,
     this.statut,
-    required this.idDirection,
+    required this.idEcole,
     required this.idAnneeScolaire,
-    this.idClasse,
+    required this.portee,
+    this.directions = const [],
+    this.classes = const [],
   });
 
   factory Frais.fromJson(Map<String, dynamic> json) => Frais(
@@ -766,9 +873,15 @@ class Frais {
         periodicite: json['periodicite'] as String?,
         description: json['description'] as String?,
         statut: json['statut'] as bool?,
-        idDirection: json['idDirection'] as int,
+        idEcole: json['idEcole'] as int,
         idAnneeScolaire: json['idAnneeScolaire'] as int,
-        idClasse: json['idClasse'] as int?,
+        portee: json['portee'] as int,
+        directions: (json['directions'] as List<dynamic>? ?? [])
+            .map((e) => FraisDirectionItem.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        classes: (json['classes'] as List<dynamic>? ?? [])
+            .map((e) => FraisClasseItem.fromJson(e as Map<String, dynamic>))
+            .toList(),
       );
 
   Map<String, dynamic> toCreateJson() => {
@@ -778,13 +891,16 @@ class Frais {
         'typeFrais': typeFrais,
         'periodicite': periodicite,
         'description': description,
-        'idDirection': idDirection,
+        'idEcole': idEcole,
         'idAnneeScolaire': idAnneeScolaire,
-        'idClasse': idClasse,
+        'portee': portee,
+        if (portee == 1)
+          'idDirections': directions.map((d) => d.idDirection).toList(),
+        if (portee == 2) 'idClasses': classes.map((c) => c.idClasse).toList(),
         'statut': statut ?? true,
       };
 
-  bool get isDirectionWide => idClasse == null || idClasse! <= 0;
+  bool get isDirectionWide => portee == 1;
 }
 
 class ElevesAnneeScopedResult<T> {
@@ -816,7 +932,9 @@ class UpdateFraisDto {
   final double montant;
   final String? devise;
   final int? idAnneeScolaire;
-  final int? idClasse;
+  final int? portee;
+  final List<int>? idDirections;
+  final List<int>? idClasses;
 
   UpdateFraisDto({
     required this.idFrais,
@@ -824,7 +942,9 @@ class UpdateFraisDto {
     required this.montant,
     this.devise,
     this.idAnneeScolaire,
-    this.idClasse,
+    this.portee,
+    this.idDirections,
+    this.idClasses,
   });
 
   Map<String, dynamic> toJson() => {
@@ -833,7 +953,9 @@ class UpdateFraisDto {
         'montant': montant,
         if (devise != null) 'devise': devise,
         if (idAnneeScolaire != null) 'idAnneeScolaire': idAnneeScolaire,
-        if (idClasse != null) 'idClasse': idClasse,
+        if (portee != null) 'portee': portee,
+        if (idDirections != null) 'idDirections': idDirections,
+        if (idClasses != null) 'idClasses': idClasses,
       };
 }
 ```
@@ -982,8 +1104,9 @@ Les frais éligibles à l'inscription suivent la même règle `FraisEligibility`
 ### Messages validation backend (exemples)
 
 - `Aucune année scolaire en cours pour l'école X. Précisez idAnneeScolaire…`
-- `L'année scolaire doit appartenir à la même école que la direction du frais.`
-- `La classe doit appartenir à la même direction que le frais.`
+- `L'année scolaire doit appartenir à la même école que le frais.`
+- `Toutes les directions / classes doivent appartenir à l'école du frais.`
+- `Un frais de portée Direction ne peut pas lister des classes.`
 
 ### Checklist intégration
 
@@ -991,7 +1114,7 @@ Les frais éligibles à l'inscription suivent la même règle `FraisEligibility`
 
 - [ ] Remplacer parsing `Frais[]` racine par `result.data` sur les listes école/direction
 - [ ] Afficher `idAnneeScolaire` résolu retourné par l'API
-- [ ] Formulaire création : champs `idAnneeScolaire`, `idClasse` optionnel
+- [ ] Formulaire création : `idEcole`, `portee`, multi-select `idDirections` XOR `idClasses`
 - [ ] `PUT` utilise `UpdateFraisDto` (plus le modèle complet si champs sensibles)
 
 #### Grille admin
@@ -1010,7 +1133,8 @@ Les frais éligibles à l'inscription suivent la même règle `FraisEligibility`
 - [ ] Liste sans param → année courante uniquement
 - [ ] `?idClasse=10` → frais partagés + frais classe 10
 - [ ] Création `idAnneeScolaire: 0` → année courante en base
-- [ ] Création avec classe d'une autre direction → 400
+- [ ] Création portée Classe avec classes d'une autre école → 400
+- [ ] Création XOR (directions + classes) → 400
 - [ ] Caissier : lecture OK, POST frais → 403
 
 ---

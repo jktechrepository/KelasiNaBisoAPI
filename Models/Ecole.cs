@@ -21,6 +21,10 @@ namespace KelasiNaBiso.Models
         public string? Logo { get; set; }
         public string? Telephone { get; set; }
         public string? EmailContact { get; set; }
+
+        [MaxLength(10)]
+        public string? CodeDevisePrincipale { get; set; } = "USD";
+
         public string? SiteWeb { get; set; }
         public string? ProvinceEducationnel { get; set; }
         public string? NomCompletResponsable { get; set; }
@@ -54,6 +58,9 @@ namespace KelasiNaBiso.Models
         [JsonIgnore]
         [ValidateNever]
         public ICollection<AnneeScolaire> AnneeScolaires { get; set; }
+        [JsonIgnore]
+        [ValidateNever]
+        public ICollection<Frais> Frais { get; set; }
         [JsonIgnore]
         [ValidateNever]
         public ICollection<Agent> Agents { get; set; }

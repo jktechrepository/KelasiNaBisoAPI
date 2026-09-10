@@ -97,7 +97,7 @@ LEFT JOIN Sections s ON c.IdSection = s.IdSection
 INNER JOIN Directions d ON c.IdDirection = d.IdDirection
 LEFT JOIN Options o ON c.IdOption = o.IdOption
 INNER JOIN Frais f ON p.IdFrais = f.IdFrais
-INNER JOIN Ecoles ec ON d.IdEcole = ec.IdEcole;
+INNER JOIN Ecoles ec ON f.IdEcole = ec.IdEcole;
 
 -- Vérification
 -- SHOW COLUMNS FROM VuePaiementsFraisParEcole LIKE 'NomCompletFormate';

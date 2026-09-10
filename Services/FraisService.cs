@@ -1,6 +1,7 @@
 using KelasiNaBiso.Data;
 using KelasiNaBiso.Models;
 using KelasiNaBiso.Models.DTOs;
+using KelasiNaBiso.Models.Enums;
 using KelasiNaBiso.Services.Repositories;
 using Microsoft.EntityFrameworkCore;
 
@@ -17,54 +18,68 @@ namespace KelasiNaBiso.Services
             _scope = scope;
         }
 
-        public async Task<IEnumerable<Frais>> GetAllAsync()
-        {
-            return await _context.Frais
+        private IQueryable<Frais> QueryWithPortee() =>
+            _context.Frais
                 .AsNoTracking()
+                .Include(f => f.Ecole)
+                .Include(f => f.AnneeScolaire)
+                .Include(f => f.FraisDirections).ThenInclude(fd => fd.Direction)
+                .Include(f => f.FraisClasses).ThenInclude(fc => fc.Classe);
+
+        public async Task<IEnumerable<FraisDto>> GetAllAsync()
+        {
+            var data = await QueryWithPortee()
                 .Where(f => f.Statut == true)
                 .OrderByDescending(f => f.DateCreation)
                 .ToListAsync();
+            return data.Select(FraisDto.FromEntity);
         }
 
-        public async Task<ElevesAnneeScopedResult<IEnumerable<Frais>>> GetByEcoleAsync(
+        public async Task<ElevesAnneeScopedResult<IEnumerable<FraisDto>>> GetByEcoleAsync(
             int idEcole,
             int? idAnneeScolaire = null,
             int? idClasse = null)
         {
             var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole, idAnneeScolaire);
-            var query = _context.Frais.AsNoTracking()
-                .Where(f => f.Direction.IdEcole == ecole
+            IQueryable<Frais> query = QueryWithPortee()
+                .Where(f => f.IdEcole == ecole
                     && f.IdAnneeScolaire == annee
                     && f.Statut == true);
 
             if (idClasse.HasValue && idClasse.Value > 0)
             {
-                query = query.Where(f => f.IdClasse == null || f.IdClasse == idClasse.Value);
+                var idDirection = await _context.Classes.AsNoTracking()
+                    .Where(c => c.IdClasse == idClasse.Value)
+                    .Select(c => c.IdDirection)
+                    .FirstOrDefaultAsync();
+
+                if (!idDirection.HasValue || idDirection.Value <= 0)
+                    throw new InvalidOperationException($"Classe {idClasse.Value} introuvable ou sans direction.");
+
+                query = FraisEligibility.FilterForInscription(
+                    query, ecole, idDirection.Value, annee, idClasse.Value);
             }
 
             var data = await query.OrderByDescending(f => f.DateCreation).ToListAsync();
-            return EleveAnneeScopeHelper.Wrap<IEnumerable<Frais>>(data, ecole, annee);
+            return EleveAnneeScopeHelper.Wrap<IEnumerable<FraisDto>>(
+                data.Select(FraisDto.FromEntity).ToList(), ecole, annee);
         }
 
-        public async Task<Frais?> GetByIdAsync(int id)
+        public async Task<FraisDto?> GetByIdAsync(int id)
         {
-            return await _context.Frais
-                .Include(f => f.Direction)
-                .Include(f => f.AnneeScolaire)
-                .Include(f => f.Classe)
-                .Include(f => f.Paiements)
+            var frais = await QueryWithPortee()
                 .FirstOrDefaultAsync(f => f.IdFrais == id);
+            return frais == null ? null : FraisDto.FromEntity(frais);
         }
 
-        public async Task<Frais?> GetByLibelleFraisAsync(string libelleFrais)
+        public async Task<FraisDto?> GetByLibelleFraisAsync(string libelleFrais)
         {
-            return await _context.Frais
-                .Include(f => f.Direction)
-                .Include(f => f.Paiements)
+            var frais = await QueryWithPortee()
                 .FirstOrDefaultAsync(f => f.LibelleFrais == libelleFrais);
+            return frais == null ? null : FraisDto.FromEntity(frais);
         }
 
-        public async Task<ElevesAnneeScopedResult<Frais?>> GetByEcoleAndLibelleAsync(
+        public async Task<ElevesAnneeScopedResult<FraisDto?>> GetByEcoleAndLibelleAsync(
             int idEcole,
             string libelleFrais,
             int? idAnneeScolaire = null,
@@ -73,30 +88,38 @@ namespace KelasiNaBiso.Services
             var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole, idAnneeScolaire);
             var libelle = libelleFrais.ToLower();
 
-            var candidats = await _context.Frais.AsNoTracking()
-                .Include(f => f.Direction)
-                .Where(f => f.Direction.IdEcole == ecole
+            var candidats = await QueryWithPortee()
+                .Where(f => f.IdEcole == ecole
                     && f.IdAnneeScolaire == annee
                     && f.LibelleFrais.ToLower() == libelle
                     && f.Statut == true)
                 .ToListAsync();
 
-            Frais? match = null;
+            Frais? match;
             if (idClasse.HasValue && idClasse.Value > 0)
             {
-                match = candidats.FirstOrDefault(f => f.IdClasse == idClasse.Value)
-                    ?? candidats.FirstOrDefault(f => f.IdClasse == null);
+                var idDirection = await _context.Classes.AsNoTracking()
+                    .Where(c => c.IdClasse == idClasse.Value)
+                    .Select(c => c.IdDirection)
+                    .FirstOrDefaultAsync();
+
+                match = idDirection.HasValue && idDirection.Value > 0
+                    ? candidats.FirstOrDefault(f =>
+                        FraisEligibility.IsEligibleForInscription(
+                            f, ecole, idDirection.Value, annee, idClasse.Value))
+                    : null;
             }
             else
             {
-                match = candidats.FirstOrDefault(f => f.IdClasse == null)
-                    ?? candidats.FirstOrDefault();
+                match = candidats.FirstOrDefault(f => f.Portee == PorteeFrais.Direction)
+                        ?? candidats.FirstOrDefault();
             }
 
-            return EleveAnneeScopeHelper.Wrap(match, ecole, annee);
+            return EleveAnneeScopeHelper.Wrap(
+                match == null ? null : FraisDto.FromEntity(match), ecole, annee);
         }
 
-        public async Task<ElevesAnneeScopedResult<IEnumerable<Frais>>> GetByDirectionAsync(
+        public async Task<ElevesAnneeScopedResult<IEnumerable<FraisDto>>> GetByDirectionAsync(
             int idDirection,
             int? idAnneeScolaire = null,
             int? idClasse = null)
@@ -104,53 +127,101 @@ namespace KelasiNaBiso.Services
             var idEcole = await _scope.ResolveIdEcoleForDirectionAsync(idDirection);
             var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole, idAnneeScolaire);
 
-            var query = _context.Frais.AsNoTracking()
-                .Where(f => f.IdDirection == idDirection
+            IQueryable<Frais> query = QueryWithPortee()
+                .Where(f => f.IdEcole == ecole
                     && f.IdAnneeScolaire == annee
                     && f.Statut == true);
 
             if (idClasse.HasValue && idClasse.Value > 0)
             {
-                query = query.Where(f => f.IdClasse == null || f.IdClasse == idClasse.Value);
+                query = FraisEligibility.FilterForInscription(
+                    query, ecole, idDirection, annee, idClasse.Value);
+            }
+            else
+            {
+                query = query.Where(f =>
+                    (f.Portee == PorteeFrais.Direction
+                        && f.FraisDirections.Any(fd => fd.IdDirection == idDirection))
+                    || (f.Portee == PorteeFrais.Classe
+                        && f.FraisClasses.Any(fc => fc.Classe.IdDirection == idDirection)));
             }
 
             var data = await query.OrderByDescending(f => f.DateCreation).ToListAsync();
-            return EleveAnneeScopeHelper.Wrap<IEnumerable<Frais>>(data, ecole, annee);
+            return EleveAnneeScopeHelper.Wrap<IEnumerable<FraisDto>>(
+                data.Select(FraisDto.FromEntity).ToList(), ecole, annee);
         }
 
-        public async Task<IEnumerable<Frais>> GetByAnneeAsync(int idAnneeScolaire)
+        public async Task<IEnumerable<FraisDto>> GetByAnneeAsync(int idAnneeScolaire)
         {
-            return await _context.Frais.AsNoTracking()
+            var data = await QueryWithPortee()
                 .Where(f => f.IdAnneeScolaire == idAnneeScolaire && f.Statut == true)
                 .OrderByDescending(f => f.DateCreation)
                 .ToListAsync();
+            return data.Select(FraisDto.FromEntity);
         }
 
-        public async Task<Frais> CreateAsync(Frais frais)
+        public async Task<FraisDto> CreateAsync(CreateFraisDto dto)
         {
-            if (frais.IdAnneeScolaire <= 0)
-            {
-                var idEcole = await _scope.ResolveIdEcoleForDirectionAsync(frais.IdDirection);
-                frais.IdAnneeScolaire = await _scope.ResolveIdAnneeScolaireAsync(idEcole, null);
-            }
+            var idAnnee = dto.IdAnneeScolaire;
+            if (idAnnee <= 0)
+                idAnnee = await _scope.ResolveIdAnneeScolaireAsync(dto.IdEcole, null);
 
-            await ValidateFraisRelationsAsync(frais);
-            frais.DateCreation = DateTime.Now;
+            var frais = new Frais
+            {
+                LibelleFrais = dto.LibelleFrais,
+                Montant = dto.Montant,
+                Devise = dto.Devise,
+                TypeFrais = dto.TypeFrais,
+                Periodicite = dto.Periodicite,
+                Description = dto.Description,
+                IdEcole = dto.IdEcole,
+                IdAnneeScolaire = idAnnee,
+                Portee = dto.Portee,
+                Statut = dto.Statut ?? true,
+                DateCreation = DateTime.Now
+            };
+
+            await ValidateAndAssignPorteeAsync(frais, dto.Portee, dto.IdDirections, dto.IdClasses);
             _context.Frais.Add(frais);
             await _context.SaveChangesAsync();
-            return frais;
+            return (await GetByIdAsync(frais.IdFrais))!;
         }
 
-        public async Task<Frais?> UpdateAsync(Frais frais)
+        public async Task<FraisDto?> UpdateAsync(int id, UpdateFraisDto dto)
         {
-            var existingFrais = await _context.Frais.FindAsync(frais.IdFrais);
-            if (existingFrais == null)
+            var existing = await _context.Frais
+                .Include(f => f.FraisDirections)
+                .Include(f => f.FraisClasses)
+                .FirstOrDefaultAsync(f => f.IdFrais == id);
+            if (existing == null)
                 return null;
 
-            await ValidateFraisRelationsAsync(frais);
-            _context.Entry(existingFrais).CurrentValues.SetValues(frais);
+            existing.LibelleFrais = dto.LibelleFrais ?? existing.LibelleFrais;
+            existing.Montant = dto.Montant;
+            existing.Devise = dto.Devise ?? existing.Devise;
+            existing.TypeFrais = dto.TypeFrais;
+            existing.Periodicite = dto.Periodicite;
+            existing.Description = dto.Description;
+
+            if (dto.IdAnneeScolaire.HasValue && dto.IdAnneeScolaire.Value > 0)
+                existing.IdAnneeScolaire = dto.IdAnneeScolaire.Value;
+
+            var portee = dto.Portee ?? existing.Portee;
+            var replacePortee = dto.Portee.HasValue
+                || dto.IdDirections != null
+                || dto.IdClasses != null;
+
+            if (replacePortee)
+            {
+                await ValidateAndAssignPorteeAsync(existing, portee, dto.IdDirections, dto.IdClasses);
+            }
+            else
+            {
+                await ValidateEcoleAnneeAsync(existing.IdEcole, existing.IdAnneeScolaire);
+            }
+
             await _context.SaveChangesAsync();
-            return existingFrais;
+            return await GetByIdAsync(id);
         }
 
         public async Task<bool> DeleteAsync(int id)
@@ -195,40 +266,83 @@ namespace KelasiNaBiso.Services
             return true;
         }
 
-        private async Task ValidateFraisRelationsAsync(Frais frais)
+        private async Task ValidateEcoleAnneeAsync(int idEcole, int idAnneeScolaire)
         {
-            if (frais.IdAnneeScolaire <= 0)
-                throw new InvalidOperationException("IdAnneeScolaire est obligatoire.");
-
-            var direction = await _context.Directions.AsNoTracking()
-                .FirstOrDefaultAsync(d => d.IdDirection == frais.IdDirection && d.Statut == true)
-                ?? throw new InvalidOperationException($"Direction {frais.IdDirection} introuvable.");
+            var ecole = await _context.Ecoles.AsNoTracking()
+                .FirstOrDefaultAsync(e => e.IdEcole == idEcole && e.Statut == true)
+                ?? throw new InvalidOperationException($"École {idEcole} introuvable.");
 
             var annee = await _context.AnneeScolaires.AsNoTracking()
-                .FirstOrDefaultAsync(a => a.IdAnneeScolaire == frais.IdAnneeScolaire && a.Statut == true)
-                ?? throw new InvalidOperationException($"Année scolaire {frais.IdAnneeScolaire} introuvable.");
+                .FirstOrDefaultAsync(a => a.IdAnneeScolaire == idAnneeScolaire && a.Statut == true)
+                ?? throw new InvalidOperationException($"Année scolaire {idAnneeScolaire} introuvable.");
 
-            if (annee.IdEcole != direction.IdEcole)
+            if (annee.IdEcole != idEcole)
             {
                 throw new InvalidOperationException(
-                    "L'année scolaire doit appartenir à la même école que la direction du frais.");
+                    "L'année scolaire doit appartenir à la même école que le frais.");
             }
+        }
 
-            if (frais.IdClasse.HasValue && frais.IdClasse.Value > 0)
+        private async Task ValidateAndAssignPorteeAsync(
+            Frais frais,
+            PorteeFrais portee,
+            List<int>? idDirections,
+            List<int>? idClasses)
+        {
+            await ValidateEcoleAnneeAsync(frais.IdEcole, frais.IdAnneeScolaire);
+            frais.Portee = portee;
+
+            var directions = (idDirections ?? new List<int>()).Where(id => id > 0).Distinct().ToList();
+            var classes = (idClasses ?? new List<int>()).Where(id => id > 0).Distinct().ToList();
+
+            if (portee == PorteeFrais.Direction)
             {
-                var classe = await _context.Classes.AsNoTracking()
-                    .FirstOrDefaultAsync(c => c.IdClasse == frais.IdClasse.Value && c.Statut == true)
-                    ?? throw new InvalidOperationException($"Classe {frais.IdClasse} introuvable.");
+                if (directions.Count == 0)
+                    throw new InvalidOperationException("Un frais de portée Direction doit avoir au moins une direction.");
+                if (classes.Count > 0)
+                    throw new InvalidOperationException("Un frais de portée Direction ne peut pas lister des classes.");
 
-                if (classe.IdDirection != frais.IdDirection)
-                {
-                    throw new InvalidOperationException(
-                        "La classe doit appartenir à la même direction que le frais.");
-                }
+                var found = await _context.Directions.AsNoTracking()
+                    .Where(d => directions.Contains(d.IdDirection) && d.Statut == true)
+                    .ToListAsync();
+                if (found.Count != directions.Count)
+                    throw new InvalidOperationException("Une ou plusieurs directions sont introuvables ou inactives.");
+                if (found.Any(d => d.IdEcole != frais.IdEcole))
+                    throw new InvalidOperationException("Toutes les directions doivent appartenir à l'école du frais.");
+
+                _context.FraisDirections.RemoveRange(frais.FraisDirections);
+                frais.FraisDirections = directions
+                    .Select(id => new FraisDirection { IdFrais = frais.IdFrais, IdDirection = id })
+                    .ToList();
+                _context.FraisClasses.RemoveRange(frais.FraisClasses);
+                frais.FraisClasses.Clear();
+            }
+            else if (portee == PorteeFrais.Classe)
+            {
+                if (classes.Count == 0)
+                    throw new InvalidOperationException("Un frais de portée Classe doit avoir au moins une classe.");
+                if (directions.Count > 0)
+                    throw new InvalidOperationException("Un frais de portée Classe ne peut pas lister des directions.");
+
+                var found = await _context.Classes.AsNoTracking()
+                    .Include(c => c.Direction)
+                    .Where(c => classes.Contains(c.IdClasse) && c.Statut == true)
+                    .ToListAsync();
+                if (found.Count != classes.Count)
+                    throw new InvalidOperationException("Une ou plusieurs classes sont introuvables ou inactives.");
+                if (found.Any(c => c.Direction?.IdEcole != frais.IdEcole))
+                    throw new InvalidOperationException("Toutes les classes doivent appartenir à l'école du frais.");
+
+                _context.FraisClasses.RemoveRange(frais.FraisClasses);
+                frais.FraisClasses = classes
+                    .Select(id => new FraisClasse { IdFrais = frais.IdFrais, IdClasse = id })
+                    .ToList();
+                _context.FraisDirections.RemoveRange(frais.FraisDirections);
+                frais.FraisDirections.Clear();
             }
             else
             {
-                frais.IdClasse = null;
+                throw new InvalidOperationException("Portée de frais invalide (Direction ou Classe).");
             }
         }
     }

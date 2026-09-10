@@ -25,6 +25,7 @@ namespace KelasiNaBiso.Services
         private readonly IDashboardHubService _dashboardHubService;
         private readonly IInscriptionActiveResolver _inscriptionResolver;
         private readonly EleveAnneeScopeHelper _scope;
+        private readonly ICurrencyConversionService? _currencyConversionService;
 
         public PaiementService(
             KelasiNaBisoDbContext context,
@@ -34,7 +35,8 @@ namespace KelasiNaBiso.Services
             INotificationJobQueue notificationJobQueue,
             IDashboardHubService dashboardHubService,
             IInscriptionActiveResolver inscriptionResolver,
-            EleveAnneeScopeHelper scope)
+            EleveAnneeScopeHelper scope,
+            ICurrencyConversionService? currencyConversionService = null)
         {
             _context = context;
             _cacheService = cacheService;
@@ -44,6 +46,7 @@ namespace KelasiNaBiso.Services
             _dashboardHubService = dashboardHubService;
             _inscriptionResolver = inscriptionResolver;
             _scope = scope;
+            _currencyConversionService = currencyConversionService;
         }
 
         private IQueryable<Paiement> ApplyAnneeEcoleFilter(
@@ -268,7 +271,6 @@ namespace KelasiNaBiso.Services
                         .Include(p => p.Eleve)
                         .Include(p => p.Utilisateur)
                         .Include(p => p.Frais)
-                        .ThenInclude(f => f.Direction)
                         .AsQueryable(),
                     ecole, annee)
                 .OrderByDescending(p => p.DatePaiement)
@@ -326,6 +328,7 @@ namespace KelasiNaBiso.Services
 
             paiement.DatePaiement = DateTime.Now;
             paiement.DateCreation = DateTime.Now;
+            await AppliquerConversionDeviseAsync(paiement);
             
             _context.Paiements.Add(paiement);
             await _context.SaveChangesAsync();
@@ -358,6 +361,7 @@ namespace KelasiNaBiso.Services
                     PaiementGatewayHelper.ValiderCreationManuelle(paiement);
                     paiement.DatePaiement = DateTime.Now;
                     paiement.DateCreation = DateTime.Now;
+                    await AppliquerConversionDeviseAsync(paiement);
                     
                     _context.Paiements.Add(paiement);
                     createdPaiements.Add(paiement);
@@ -396,6 +400,43 @@ namespace KelasiNaBiso.Services
             }
 
             return createdPaiements;
+        }
+
+        private async Task AppliquerConversionDeviseAsync(Paiement paiement)
+        {
+            if (_currencyConversionService == null)
+                return;
+
+            var idEcole = paiement.Frais?.IdEcole
+                ?? (paiement.IdFrais.HasValue
+                    ? await _context.Frais
+                        .AsNoTracking()
+                        .Where(f => f.IdFrais == paiement.IdFrais.Value)
+                        .Select(f => (int?)f.IdEcole)
+                        .FirstOrDefaultAsync()
+                    : null);
+
+            if (!idEcole.HasValue)
+                throw new InvalidOperationException("Impossible de déterminer l'école du paiement pour convertir sa devise.");
+
+            var codeDeviseSource = string.IsNullOrWhiteSpace(paiement.CodeDevisePaiement)
+                ? paiement.Devise
+                : paiement.CodeDevisePaiement;
+
+            var result = await _currencyConversionService.ConvertToPrincipalAsync(
+                idEcole.Value,
+                codeDeviseSource ?? "USD",
+                Convert.ToDecimal(paiement.Montant),
+                paiement.DatePaiement);
+
+            if (!result.Success)
+                throw new InvalidOperationException(result.ErrorMessage ?? "La conversion du paiement a échoué.");
+
+            paiement.CodeDevisePaiement = result.CodeDeviseSource;
+            paiement.Devise = result.CodeDeviseSource;
+            paiement.CodeDevisePrincipale = result.CodeDevisePrincipale;
+            paiement.TauxVersDevisePrincipale = result.Taux;
+            paiement.MontantPayeDevisePrincipale = result.MontantConverti;
         }
 
         public async Task<Paiement> UpdateAsync(Paiement paiement)
@@ -603,7 +644,7 @@ namespace KelasiNaBiso.Services
             decimal montantTotal = (decimal)paiements.Sum(p => p.Montant);
 
             var fraisEcole = await _context.Frais
-                .Where(f => f.Direction.IdEcole == idEcole
+                .Where(f => f.IdEcole == idEcole
                     && f.IdAnneeScolaire == idAnneeScolaire
                     && f.Statut == true)
                 .ToListAsync();
@@ -665,6 +706,10 @@ namespace KelasiNaBiso.Services
             var elevesEnRetard = nombreEleves - elevesAyantPaye;
             var tauxPaiementEleves = nombreEleves > 0 ? Math.Round(((decimal)elevesAyantPaye / nombreEleves) * 100, 2) : 0;
 
+            var devisePrincipale = string.IsNullOrWhiteSpace(ecole.CodeDevisePrincipale)
+                ? "USD"
+                : ecole.CodeDevisePrincipale.Trim().ToUpperInvariant();
+
             return new DashboardPaiementDto
             {
                 Ecole = new EcoleInfoPaiementDto
@@ -684,7 +729,7 @@ namespace KelasiNaBiso.Services
                     ElevesAyantPaye = elevesAyantPaye,
                     ElevesEnRetard = elevesEnRetard,
                     TauxPaiementEleves = tauxPaiementEleves,
-                    DevisePrincipale = "USD"
+                    DevisePrincipale = devisePrincipale
                 },
                 RepartitionParMode = new RepartitionModePaiementDto
                 {
@@ -733,10 +778,11 @@ namespace KelasiNaBiso.Services
             if (!idDirection.HasValue || idDirection.Value <= 0)
                 throw new InvalidOperationException($"Direction introuvable pour l'inscription de l'élève {idEleve}");
 
-            // Récupérer les frais attendus (direction + année + classe optionnelle)
+            // Frais éligibles (école + année + portée XOR)
             var fraisAttendus = await FraisEligibility
                 .FilterForInscription(
                     _context.Frais.AsNoTracking(),
+                    idEcole.Value,
                     idDirection.Value,
                     inscriptionActive.IdAnneeScolaire,
                     inscriptionActive.IdClasse)
@@ -854,7 +900,7 @@ namespace KelasiNaBiso.Services
             int effectifTotal = elevesClasse.Count;
 
             var fraisEcole = await FraisEligibility
-                .FilterForInscription(_context.Frais.AsNoTracking(), idDirection, idAnnee, idClasse)
+                .FilterForInscription(_context.Frais.AsNoTracking(), idEcole, idDirection, idAnnee, idClasse)
                 .ToListAsync();
 
             decimal montantAttendu = fraisEcole.Sum(f => (decimal)f.Montant) * effectifTotal;

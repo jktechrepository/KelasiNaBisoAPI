@@ -32,6 +32,8 @@ namespace KelasiNaBiso.Data
         // ❌ OBSOLÈTE: DbSet<Enseignant> supprimé - Remplacé par DbSet<Agent>
         public DbSet<AnneeScolaire> AnneeScolaires { get; set; }
         public DbSet<Frais> Frais { get; set; }
+        public DbSet<FraisDirection> FraisDirections { get; set; }
+        public DbSet<FraisClasse> FraisClasses { get; set; }
         public DbSet<Paiement> Paiements { get; set; }
         public DbSet<Role> Roles { get; set; }
         
@@ -62,6 +64,7 @@ namespace KelasiNaBiso.Data
         public DbSet<CommunicationTemplate> CommunicationTemplates { get; set; }
         public DbSet<CommunicationHistory> CommunicationHistory { get; set; }
         public DbSet<ParentCommunicationPreference> ParentCommunicationPreferences { get; set; }
+        public DbSet<TauxChange> TauxChanges { get; set; }
         public DbSet<V_Utilisateur> V_Utilisateurs { get; set; }
         public DbSet<V_Eleve> V_Eleves { get; set; }
         public DbSet<EleveParEcoleDTO> EleveParEcole { get; set; }
@@ -432,9 +435,9 @@ namespace KelasiNaBiso.Data
                 .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<Frais>()
-                .HasOne(f => f.Direction)
-                .WithMany(d => d.Frais)
-                .HasForeignKey(f => f.IdDirection)
+                .HasOne(f => f.Ecole)
+                .WithMany(e => e.Frais)
+                .HasForeignKey(f => f.IdEcole)
                 .OnDelete(DeleteBehavior.NoAction);
 
             modelBuilder.Entity<Frais>()
@@ -444,15 +447,38 @@ namespace KelasiNaBiso.Data
                 .OnDelete(DeleteBehavior.NoAction);
 
             modelBuilder.Entity<Frais>()
-                .HasOne(f => f.Classe)
-                .WithMany(c => c.Frais)
-                .HasForeignKey(f => f.IdClasse)
-                .IsRequired(false)
+                .HasIndex(f => new { f.IdEcole, f.IdAnneeScolaire, f.LibelleFrais })
+                .HasDatabaseName("IX_Frais_Ecole_Annee_Libelle");
+
+            modelBuilder.Entity<FraisDirection>()
+                .HasKey(fd => new { fd.IdFrais, fd.IdDirection });
+
+            modelBuilder.Entity<FraisDirection>()
+                .HasOne(fd => fd.Frais)
+                .WithMany(f => f.FraisDirections)
+                .HasForeignKey(fd => fd.IdFrais)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<FraisDirection>()
+                .HasOne(fd => fd.Direction)
+                .WithMany(d => d.FraisDirections)
+                .HasForeignKey(fd => fd.IdDirection)
                 .OnDelete(DeleteBehavior.NoAction);
 
-            modelBuilder.Entity<Frais>()
-                .HasIndex(f => new { f.IdDirection, f.IdAnneeScolaire, f.LibelleFrais, f.IdClasse })
-                .HasDatabaseName("IX_Frais_Direction_Annee_Libelle_Classe");
+            modelBuilder.Entity<FraisClasse>()
+                .HasKey(fc => new { fc.IdFrais, fc.IdClasse });
+
+            modelBuilder.Entity<FraisClasse>()
+                .HasOne(fc => fc.Frais)
+                .WithMany(f => f.FraisClasses)
+                .HasForeignKey(fc => fc.IdFrais)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<FraisClasse>()
+                .HasOne(fc => fc.Classe)
+                .WithMany(c => c.FraisClasses)
+                .HasForeignKey(fc => fc.IdClasse)
+                .OnDelete(DeleteBehavior.NoAction);
 
             modelBuilder.Entity<Paiement>()
                 .HasOne(p => p.Eleve)

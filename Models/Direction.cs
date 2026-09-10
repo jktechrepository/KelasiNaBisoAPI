@@ -35,7 +35,7 @@ namespace KelasiNaBiso.Models
 
         [JsonIgnore]
         [ValidateNever]
-        public ICollection<Frais>? Frais { get; set; }
+        public ICollection<FraisDirection>? FraisDirections { get; set; }
 
 
 

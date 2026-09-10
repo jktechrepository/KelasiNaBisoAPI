@@ -351,6 +351,8 @@ Recherche par mots :
 Résultat : ✅ Trouvé (recherche par mots)
 ```
 
+Pour les **frais**, si plusieurs lignes partagent le même libellé, `PickBestFrais` retient d'abord un barème **éligible** pour la classe/direction de l'élève (portée Classe contenant la classe, sinon portée Direction contenant la direction), puis un frais de portée Classe, sinon Direction.
+
 **Logs** :
 - `"✅ Élève trouvé (recherche exacte)"` : Trouvé via recherche exacte
 - `"✅ Élève trouvé (recherche par mots)"` : Trouvé via recherche par mots
