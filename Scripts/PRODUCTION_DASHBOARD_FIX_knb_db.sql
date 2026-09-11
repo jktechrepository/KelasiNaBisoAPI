@@ -243,5 +243,10 @@ WHERE NOT EXISTS (
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- =============================================================================
+-- PARTIE D — Portée Frais (IdEcole + jonctions) : Scripts/BACKFILL_FRAIS_PORTEE.sql
+-- Migration EF : 20260903120000_FraisPorteeDirectionsClasses
+-- =============================================================================
+
+-- =============================================================================
 -- FIN — Relancer PRODUCTION_DASHBOARD_VERIFY_knb_db.sql pour contrôle
 -- =============================================================================

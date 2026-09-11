@@ -106,6 +106,11 @@ namespace KelasiNaBiso.Services
             
             _context.Ecoles.Add(ecole);
             await _context.SaveChangesAsync();
+
+            await DeviseMonetaireSeedHelper.EnsureDefaultsAsync(
+                _context,
+                ecole.IdEcole,
+                ecole.CodeDevisePrincipale);
             
             // ? LOGIQUE CORRIG�E : Cr�er d'abord un Agent (directeur), puis un Utilisateur li� � cet Agent
             await CreateDefaultDirecteurAgentAsync(ecole);

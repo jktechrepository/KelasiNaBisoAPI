@@ -129,7 +129,7 @@ namespace KelasiNaBiso.Services
             return EleveAnneeScopeHelper.Wrap(paged, ecole, annee);
         }
 
-        public async Task<ElevesAnneeScopedResult<PagedResult<Paiement>>> GetByElevePagedAsync(
+        public async Task<ElevesAnneeScopedResult<PagedResult<PaiementElevePagedItemDto>>> GetByElevePagedAsync(
             int idEleve, PagedRequest request, int? idAnneeScolaire = null)
         {
             var idEcole = await _inscriptionResolver.GetEcoleCouranteAsync(idEleve, idAnneeScolaire);
@@ -144,7 +144,15 @@ namespace KelasiNaBiso.Services
                 query = query.Where(p => p.Statut == true);
 
             var paged = await query.ToPagedAsync(request, p => p.DatePaiement);
-            return EleveAnneeScopeHelper.Wrap(paged, ecole, annee);
+            var mapped = await PaiementEleveResteEnricher.MapAsync(_context, idEleve, paged.Data);
+
+            var result = new PagedResult<PaiementElevePagedItemDto>(
+                mapped,
+                paged.TotalRecords,
+                paged.PageNumber,
+                paged.PageSize);
+
+            return EleveAnneeScopeHelper.Wrap(result, ecole, annee);
         }
 
         public async Task<ElevesAnneeScopedResult<PagedResult<Paiement>>> GetByEcolePagedAsync(
@@ -226,7 +234,7 @@ namespace KelasiNaBiso.Services
                 .FirstOrDefaultAsync(p => p.ReferencePaiemenet == reference);
         }
 
-        public async Task<ElevesAnneeScopedResult<IEnumerable<Paiement>>> GetByEleveAsync(
+        public async Task<ElevesAnneeScopedResult<IEnumerable<PaiementElevePagedItemDto>>> GetByEleveAsync(
             int idEleve, int? idAnneeScolaire = null)
         {
             var idEcole = await _inscriptionResolver.GetEcoleCouranteAsync(idEleve, idAnneeScolaire);
@@ -239,7 +247,8 @@ namespace KelasiNaBiso.Services
             var data = await ApplyAnneeEleveFilter(_context.Paiements.AsQueryable(), idEleve, annee)
                 .OrderByDescending(p => p.DatePaiement)
                 .ToListAsync();
-            return EleveAnneeScopeHelper.Wrap<IEnumerable<Paiement>>(data, ecole, annee);
+            var mapped = await PaiementEleveResteEnricher.MapAsync(_context, idEleve, data);
+            return EleveAnneeScopeHelper.Wrap<IEnumerable<PaiementElevePagedItemDto>>(mapped, ecole, annee);
         }
 
         public async Task<IEnumerable<Paiement>> GetByUtilisateurAsync(int idUtilisateur)

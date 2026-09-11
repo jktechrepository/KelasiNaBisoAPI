@@ -125,20 +125,73 @@ namespace KelasiNaBiso.Services
             return await _context.Tuteurs.AnyAsync(t => t.Email == email);
         }
 
-        public async Task<ElevesAnneeScopedResult<IEnumerable<Eleve>>> GetElevesAsync(
+        public async Task<IEnumerable<TuteurEleveListItemDto>> GetElevesAsync(
             int idTuteur,
-            int idEcole,
-            int? idAnneeScolaire = null)
+            string? searchTerm = null,
+            string? libelleAnneeScolaire = null)
         {
-            var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole, idAnneeScolaire);
-            var data = await _inscriptionResolver
-                .FilterElevesInEcole(_context.Eleves.AsNoTracking(), ecole, annee)
-                .Where(e => e.IdTuteur == idTuteur)
-                .Include(e => e.Inscriptions).ThenInclude(i => i.Classe)
-                .OrderBy(e => e.NomComplet)
+            var query = _context.Inscriptions
+                .AsNoTracking()
+                .Include(i => i.Eleve)
+                .Include(i => i.Ecole)
+                .Include(i => i.Classe)
+                .Include(i => i.AnneeScolaire)
+                .Where(i => i.Eleve != null
+                    && i.Eleve.IdTuteur == idTuteur
+                    && i.Eleve.Statut == true
+                    && i.Statut == true
+                    && i.StatutInscription != null
+                    && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                        || i.StatutInscription == "Confirme"
+                        || i.StatutInscription.StartsWith("Confirm")));
+
+            if (!string.IsNullOrWhiteSpace(libelleAnneeScolaire))
+            {
+                var libelle = libelleAnneeScolaire.Trim().ToLower();
+                query = query.Where(i => i.AnneeScolaire != null
+                    && i.AnneeScolaire.LibelleAnneeScolaire.ToLower() == libelle);
+            }
+            else
+            {
+                var now = DateTime.Now;
+                query = query.Where(i => i.AnneeScolaire != null
+                    && i.AnneeScolaire.Statut == true
+                    && i.AnneeScolaire.DateDebut <= now
+                    && i.AnneeScolaire.DateFin >= now);
+            }
+
+            var inscriptions = await query
+                .OrderBy(i => i.Eleve!.NomComplet)
+                .ThenByDescending(i => i.DateInscription)
                 .ToListAsync();
 
-            return EleveAnneeScopeHelper.Wrap<IEnumerable<Eleve>>(data, ecole, annee);
+            var inscriptionByEleve = inscriptions
+                .GroupBy(i => new { i.IdEleve, i.IdEcole })
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderByDescending(i => i.DateInscription).First());
+
+            var mapped = inscriptionByEleve.Values
+                .Select(i => TuteurEleveListItemDto.FromEleve(
+                    i.Eleve!, i, i.IdEcole, i.Ecole?.Nom))
+                .ToList();
+
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                var term = searchTerm.Trim();
+                if (term.Length > 200)
+                    term = term[..200];
+
+                var searchLower = term.ToLower();
+                mapped = mapped.Where(e =>
+                    (e.NomComplet != null && e.NomComplet.ToLower().Contains(searchLower))
+                    || (e.Matricule != null && e.Matricule.ToLower().Contains(searchLower))
+                    || (e.NomClasse != null && e.NomClasse.ToLower().Contains(searchLower))
+                    || (e.NomEcole != null && e.NomEcole.ToLower().Contains(searchLower)))
+                    .ToList();
+            }
+
+            return mapped;
         }
 
         // ✅ SOFT DELETE: Toggle le statut d'un tuteur (actif <-> inactif)

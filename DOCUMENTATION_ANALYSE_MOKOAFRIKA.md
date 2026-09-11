@@ -174,12 +174,16 @@ sequenceDiagram
     Orch->>DB: Valide eleve, frais, config ecole
     Orch->>DB: Cree Paiement En attente + TransactionMoko
     Orch->>GW: action=debit montantCollecte
-    alt Succes synchrone
+    GW-->>Orch: resultCode 0 ou Status Pending
+    Orch->>DB: Reste En attente (Mobile Money)
+    Client->>Phone: Validation USSD
+    alt Callback ou poll status/check
+        GW->>API: trans_status Success
         Orch->>DB: Confirme PayIn + notifie
         Orch->>DB: Credite SoldeEnAttente wallet
         Orch->>DB: Queue FilePayoutMoko si payoutAutomatique
-    else USSD pending
-        Client->>API: Poll status/check ou callback
+    else Echec ou refus
+        Orch->>DB: Paiement Echoue
     end
 ```
 
@@ -188,7 +192,9 @@ sequenceDiagram
 1. Validation élève, frais, config école, absence de doublon pending
 2. Création `Paiement` + `TransactionMoko` (action `debit`)
 3. Appel gateway avec `MontantCollecte` (net + frais MOKO)
-4. Résultat : confirmation immédiate, USSD pending (`RequiresUssdConfirmation`), ou échec
+4. Résultat Mobile Money : **toujours** `En attente` + `RequiresUssdConfirmation` à l'initiation ; confirmation via callback ou `status/check` uniquement. Carte : confirmation synchrone si `Status` = success.
+
+> **Important :** `resultCode == "0"` à l'initiation signifie « requête acceptée / USSD envoyé », **pas** paiement confirmé. Ne pas créditer le wallet ni marquer le paiement confirmé tant que `trans_status` n'est pas en succès définitif.
 
 ### PayOut (vers école)
 

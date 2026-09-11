@@ -77,20 +77,63 @@ namespace KelasiNaBiso.Tests.Unit.Services
         [Fact]
         public async Task GetElevesAsync_WithoutAnnee_ReturnsOnlyCurrentYearChildren()
         {
-            var result = await _service.GetElevesAsync(1, 1, null);
+            var result = await _service.GetElevesAsync(1);
 
-            result.IdAnneeScolaire.Should().Be(100);
-            result.Data.Should().ContainSingle(e => e.IdEleve == 1);
-            result.Data.Should().NotContain(e => e.IdEleve == 2);
+            result.Should().ContainSingle(e => e.IdEleve == 1);
+            result.Should().NotContain(e => e.IdEleve == 2);
+            result.Single().IdAnneeScolaire.Should().Be(100);
+            result.Single().LibelleAnneeScolaire.Should().Be("Courante");
         }
 
         [Fact]
         public async Task GetElevesAsync_WithPastAnnee_ReturnsOnlyPastYearChildren()
         {
-            var result = await _service.GetElevesAsync(2, 1, 99);
+            var result = await _service.GetElevesAsync(2, libelleAnneeScolaire: "Precedente");
 
-            result.IdAnneeScolaire.Should().Be(99);
-            result.Data.Should().ContainSingle(e => e.IdEleve == 2);
+            result.Should().ContainSingle(e => e.IdEleve == 2);
+            result.Single().IdAnneeScolaire.Should().Be(99);
+            result.Single().LibelleAnneeScolaire.Should().Be("Precedente");
+        }
+
+        [Fact]
+        public async Task GetElevesAsync_ShouldIncludeEcoleAndClasseFields()
+        {
+            var result = await _service.GetElevesAsync(1);
+
+            var eleve = result.Should().ContainSingle().Subject;
+            eleve.IdEcole.Should().Be(1);
+            eleve.NomEcole.Should().Be("Ecole Test");
+            eleve.IdClasse.Should().Be(10);
+            eleve.NomClasse.Should().Be("6e A");
+            eleve.IdAnneeScolaire.Should().Be(100);
+            eleve.LibelleAnneeScolaire.Should().Be("Courante");
+        }
+
+        [Fact]
+        public async Task GetElevesAsync_WithLibelleAnneeScolaire_ReturnsMatchingYear()
+        {
+            var result = await _service.GetElevesAsync(
+                2, libelleAnneeScolaire: "Precedente");
+
+            result.Should().ContainSingle(e => e.IdEleve == 2);
+            result.Single().IdAnneeScolaire.Should().Be(99);
+            result.Single().LibelleAnneeScolaire.Should().Be("Precedente");
+        }
+
+        [Fact]
+        public async Task GetElevesAsync_ShouldFilterBySearchTerm()
+        {
+            var result = await _service.GetElevesAsync(1, searchTerm: "Courant");
+
+            result.Should().ContainSingle(e => e.IdEleve == 1);
+        }
+
+        [Fact]
+        public async Task GetElevesAsync_SearchTermNoMatch_ReturnsEmpty()
+        {
+            var result = await _service.GetElevesAsync(1, searchTerm: "Inexistant");
+
+            result.Should().BeEmpty();
         }
 
         public void Dispose() => _context.Dispose();

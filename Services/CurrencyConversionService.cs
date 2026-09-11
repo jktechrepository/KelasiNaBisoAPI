@@ -79,6 +79,18 @@ namespace KelasiNaBiso.Services
                     "Le montant doit être positif ou nul.");
             }
 
+            if (!await IsActiveDeviseAsync(idEcole, source, ct))
+            {
+                return Failure(idEcole, source, cible, montant, dateReference,
+                    $"La devise source {source} est absente ou inactive pour l'école {idEcole}.");
+            }
+
+            if (!await IsActiveDeviseAsync(idEcole, cible, ct))
+            {
+                return Failure(idEcole, source, cible, montant, dateReference,
+                    $"La devise cible {cible} est absente ou inactive pour l'école {idEcole}.");
+            }
+
             if (source.Equals(cible, StringComparison.OrdinalIgnoreCase))
             {
                 return new ConversionResult(
@@ -112,6 +124,22 @@ namespace KelasiNaBiso.Services
                 montantConverti,
                 dateReference,
                 true);
+        }
+
+        public async Task<bool> IsActiveDeviseAsync(
+            int idEcole,
+            string codeDevise,
+            CancellationToken ct = default)
+        {
+            var code = NormalizeCode(codeDevise);
+            if (string.IsNullOrEmpty(code))
+            {
+                return false;
+            }
+
+            return await _context.DevisesMonetaires
+                .AsNoTracking()
+                .AnyAsync(d => d.IdEcole == idEcole && d.CodeDevise == code && d.Statut, ct);
         }
 
         private async Task<decimal?> ResolveTauxAsync(

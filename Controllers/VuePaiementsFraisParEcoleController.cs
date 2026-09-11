@@ -61,12 +61,22 @@ namespace KelasiNaBiso.Controllers
             return Ok(paiements);
         }
 
-        // Filtres par �l�ve
+        // Filtres par élève
         [HttpGet("eleve/{idEleve}")]
-        public async Task<ActionResult<IEnumerable<VuePaiementsFraisParEcoleDTO>>> GetByEleve(int idEleve)
+        [ProducesResponseType(typeof(IEnumerable<VuePaiementsFraisParEcoleDTO>), 200)]
+        public async Task<ActionResult<IEnumerable<VuePaiementsFraisParEcoleDTO>>> GetByEleve(
+            int idEleve,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var paiements = await _vuePaiementsRepository.GetByEleveAsync(idEleve);
-            return Ok(paiements);
+            try
+            {
+                var paiements = await _vuePaiementsRepository.GetByEleveAsync(idEleve, idAnneeScolaire);
+                return Ok(paiements);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         [HttpGet("eleve-reference/{referenceEleve}")]
@@ -77,10 +87,19 @@ namespace KelasiNaBiso.Controllers
         }
 
         [HttpGet("eleve-matricule/{matricule}")]
-        public async Task<ActionResult<IEnumerable<VuePaiementsFraisParEcoleDTO>>> GetByEleveMatricule(string matricule)
+        public async Task<ActionResult<IEnumerable<VuePaiementsFraisParEcoleDTO>>> GetByEleveMatricule(
+            string matricule,
+            [FromQuery] int? idAnneeScolaire = null)
         {
-            var paiements = await _vuePaiementsRepository.GetByEleveMatriculeAsync(matricule);
-            return Ok(paiements);
+            try
+            {
+                var paiements = await _vuePaiementsRepository.GetByEleveMatriculeAsync(matricule, idAnneeScolaire);
+                return Ok(paiements);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         [HttpGet("eleve-name/{nomEleve}")]

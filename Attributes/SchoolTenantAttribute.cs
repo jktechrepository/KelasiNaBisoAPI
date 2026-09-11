@@ -1,5 +1,6 @@
 using KelasiNaBiso.Helpers;
 using KelasiNaBiso.Models.Enums;
+using KelasiNaBiso.Services.Repositories;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 
@@ -7,11 +8,19 @@ namespace KelasiNaBiso.Attributes
 {
     /// <summary>
     /// Filtre global : refuse l'accès cross-école sur les routes contenant idEcole / ecoleId.
-    /// Super-Admin et IT-Support restent autorisés sur toutes les écoles.
+    /// Super-Admin et IT-Support : toutes les écoles.
+    /// Parent : écoles où le tuteur a au moins un enfant inscrit (confirmé).
     /// </summary>
     public class SchoolTenantActionFilter : IAsyncActionFilter
     {
         private static readonly string[] SchoolRouteKeys = { "idEcole", "ecoleId", "IdEcole", "EcoleId" };
+
+        private readonly IInscriptionActiveResolver _inscriptionResolver;
+
+        public SchoolTenantActionFilter(IInscriptionActiveResolver inscriptionResolver)
+        {
+            _inscriptionResolver = inscriptionResolver;
+        }
 
         public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
         {
@@ -52,7 +61,10 @@ namespace KelasiNaBiso.Attributes
 
             if (targetEcoleId.HasValue)
             {
-                var deny = controller.ForbidIfWrongSchool(targetEcoleId);
+                var deny = await controller.ForbidIfWrongSchoolAsync(
+                    targetEcoleId,
+                    _inscriptionResolver,
+                    context.HttpContext.RequestAborted);
                 if (deny != null)
                 {
                     context.Result = deny;

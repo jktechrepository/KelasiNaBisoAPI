@@ -8,10 +8,17 @@ namespace KelasiNaBiso.Services
     public class VuePaiementsFraisParEcoleService : IVuePaiementsFraisParEcoleRepository
     {
         private readonly KelasiNaBisoDbContext _context;
+        private readonly EleveAnneeScopeHelper _anneeScope;
+        private readonly IInscriptionActiveResolver _inscriptionResolver;
 
-        public VuePaiementsFraisParEcoleService(KelasiNaBisoDbContext context)
+        public VuePaiementsFraisParEcoleService(
+            KelasiNaBisoDbContext context,
+            EleveAnneeScopeHelper anneeScope,
+            IInscriptionActiveResolver inscriptionResolver)
         {
             _context = context;
+            _anneeScope = anneeScope;
+            _inscriptionResolver = inscriptionResolver;
         }
 
         public async Task<IEnumerable<VuePaiementsFraisParEcoleDTO>> GetAllAsync()
@@ -27,7 +34,7 @@ namespace KelasiNaBiso.Services
                 .FirstOrDefaultAsync(p => p.IdPaiement == idPaiement);
         }
 
-        // Filtres par école
+        // Filtres par ï¿½cole
         public async Task<IEnumerable<VuePaiementsFraisParEcoleDTO>> GetByEcoleAsync(int idEcole)
         {
             return await _context.VuePaiementsFraisParEcole
@@ -52,13 +59,54 @@ namespace KelasiNaBiso.Services
                 .ToListAsync();
         }
 
-        // Filtres par élève
-        public async Task<IEnumerable<VuePaiementsFraisParEcoleDTO>> GetByEleveAsync(int idEleve)
+        // Filtres par Ã©lÃ¨ve
+        public async Task<IEnumerable<VuePaiementsFraisParEcoleDTO>> GetByEleveAsync(
+            int idEleve,
+            int? idAnneeScolaire = null)
         {
-            return await _context.VuePaiementsFraisParEcole
-                .Where(p => p.IdEleve == idEleve)
+            var idEcole = await _inscriptionResolver.GetEcoleCouranteAsync(idEleve, idAnneeScolaire);
+            if (!idEcole.HasValue)
+                idEcole = await _inscriptionResolver.GetEcoleCouranteAsync(idEleve, null);
+
+            if (!idEcole.HasValue || idEcole.Value <= 0)
+            {
+                var fromVue = await _context.VuePaiementsFraisParEcole
+                    .AsNoTracking()
+                    .Where(p => p.IdEleve == idEleve && p.IdEcole.HasValue && p.IdEcole > 0)
+                    .Select(p => p.IdEcole)
+                    .FirstOrDefaultAsync();
+                idEcole = fromVue;
+            }
+
+            if (!idEcole.HasValue || idEcole.Value <= 0)
+            {
+                throw new InvalidOperationException(
+                    $"Impossible de dÃ©terminer l'Ã©cole pour l'Ã©lÃ¨ve {idEleve} afin de rÃ©soudre l'annÃ©e scolaire.");
+            }
+
+            var idAnnee = await _anneeScope.ResolveIdAnneeScolaireAsync(idEcole.Value, idAnneeScolaire);
+
+            var fraisIds = await _context.Frais
+                .AsNoTracking()
+                .Where(f => f.IdEcole == idEcole.Value
+                    && f.IdAnneeScolaire == idAnnee
+                    && f.Statut == true)
+                .Select(f => f.IdFrais)
+                .ToListAsync();
+
+            if (fraisIds.Count == 0)
+                return Array.Empty<VuePaiementsFraisParEcoleDTO>();
+
+            var rows = await _context.VuePaiementsFraisParEcole
+                .AsNoTracking()
+                .Where(p => p.IdEleve == idEleve
+                    && p.IdFrais.HasValue
+                    && fraisIds.Contains(p.IdFrais.Value))
                 .OrderByDescending(p => p.DatePaiement)
                 .ToListAsync();
+
+            await PaiementEleveResteEnricher.EnrichVueAsync(_context, idEleve, rows);
+            return rows;
         }
 
         public async Task<IEnumerable<VuePaiementsFraisParEcoleDTO>> GetByEleveReferenceAsync(Guid referenceEleve)
@@ -69,10 +117,53 @@ namespace KelasiNaBiso.Services
                 .ToListAsync();
         }
 
-        public async Task<IEnumerable<VuePaiementsFraisParEcoleDTO>> GetByEleveMatriculeAsync(string matricule)
+        public async Task<IEnumerable<VuePaiementsFraisParEcoleDTO>> GetByEleveMatriculeAsync(
+            string matricule,
+            int? idAnneeScolaire = null)
         {
-            return await _context.VuePaiementsFraisParEcole
-                .Where(p => p.Matricule.Contains(matricule))
+            var baseQuery = _context.VuePaiementsFraisParEcole
+                .AsNoTracking()
+                .Where(p => p.Matricule != null && p.Matricule.Contains(matricule));
+
+            var sample = await baseQuery
+                .OrderByDescending(p => p.DatePaiement)
+                .FirstOrDefaultAsync();
+
+            if (sample == null)
+                return Array.Empty<VuePaiementsFraisParEcoleDTO>();
+
+            var idEcole = sample.IdEcole;
+            if (!idEcole.HasValue || idEcole.Value <= 0)
+            {
+                idEcole = await _context.Inscriptions
+                    .AsNoTracking()
+                    .Where(i => i.IdEleve == sample.IdEleve && i.Statut == true)
+                    .OrderByDescending(i => i.DateInscription)
+                    .Select(i => (int?)i.IdEcole)
+                    .FirstOrDefaultAsync();
+            }
+
+            if (!idEcole.HasValue || idEcole.Value <= 0)
+            {
+                throw new InvalidOperationException(
+                    $"Impossible de dï¿½terminer l'ï¿½cole pour le matricule '{matricule}' afin de rï¿½soudre l'annï¿½e scolaire.");
+            }
+
+            var idAnnee = await _anneeScope.ResolveIdAnneeScolaireAsync(idEcole.Value, idAnneeScolaire);
+
+            var fraisIds = await _context.Frais
+                .AsNoTracking()
+                .Where(f => f.IdEcole == idEcole.Value
+                    && f.IdAnneeScolaire == idAnnee
+                    && f.Statut == true)
+                .Select(f => f.IdFrais)
+                .ToListAsync();
+
+            if (fraisIds.Count == 0)
+                return Array.Empty<VuePaiementsFraisParEcoleDTO>();
+
+            return await baseQuery
+                .Where(p => p.IdFrais.HasValue && fraisIds.Contains(p.IdFrais.Value))
                 .OrderByDescending(p => p.DatePaiement)
                 .ToListAsync();
         }
@@ -309,7 +400,7 @@ namespace KelasiNaBiso.Services
                 .ToListAsync();
         }
 
-        // Recherche générale
+        // Recherche gï¿½nï¿½rale
         public async Task<IEnumerable<VuePaiementsFraisParEcoleDTO>> SearchAsync(string searchTerm)
         {
             return await _context.VuePaiementsFraisParEcole

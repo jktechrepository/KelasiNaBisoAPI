@@ -7,15 +7,15 @@ namespace KelasiNaBiso.Services.Repositories
         Task<IEnumerable<VuePaiementsFraisParEcoleDTO>> GetAllAsync();
         Task<VuePaiementsFraisParEcoleDTO?> GetByIdAsync(int idPaiement);
 
-        // Filtres par école
+        // Filtres par ï¿½cole
         Task<IEnumerable<VuePaiementsFraisParEcoleDTO>> GetByEcoleAsync(int idEcole);
         Task<IEnumerable<VuePaiementsFraisParEcoleDTO>> GetByEcoleNameAsync(string nomEcole);
         Task<IEnumerable<VuePaiementsFraisParEcoleDTO>> GetByTypeEcoleAsync(string typeEcole);
 
-        // Filtres par élève
-        Task<IEnumerable<VuePaiementsFraisParEcoleDTO>> GetByEleveAsync(int idEleve);
+        // Filtres par ï¿½lï¿½ve
+        Task<IEnumerable<VuePaiementsFraisParEcoleDTO>> GetByEleveAsync(int idEleve, int? idAnneeScolaire = null);
         Task<IEnumerable<VuePaiementsFraisParEcoleDTO>> GetByEleveReferenceAsync(Guid referenceEleve);
-        Task<IEnumerable<VuePaiementsFraisParEcoleDTO>> GetByEleveMatriculeAsync(string matricule);
+        Task<IEnumerable<VuePaiementsFraisParEcoleDTO>> GetByEleveMatriculeAsync(string matricule, int? idAnneeScolaire = null);
         Task<IEnumerable<VuePaiementsFraisParEcoleDTO>> GetByEleveNameAsync(string nomEleve);
         Task<IEnumerable<VuePaiementsFraisParEcoleDTO>> GetByEleveGenreAsync(string genre);
         Task<IEnumerable<VuePaiementsFraisParEcoleDTO>> GetByEleveStatutAsync(bool statut);
@@ -61,7 +61,7 @@ namespace KelasiNaBiso.Services.Repositories
         Task<IEnumerable<VuePaiementsFraisParEcoleDTO>> GetByVilleAsync(string ville);
         Task<IEnumerable<VuePaiementsFraisParEcoleDTO>> GetByCommuneAsync(string commune);
 
-        // Recherche générale
+        // Recherche gï¿½nï¿½rale
         Task<IEnumerable<VuePaiementsFraisParEcoleDTO>> SearchAsync(string searchTerm);
 
         // Comptages

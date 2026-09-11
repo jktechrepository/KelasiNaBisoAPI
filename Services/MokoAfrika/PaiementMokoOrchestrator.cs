@@ -36,6 +36,7 @@ namespace KelasiNaBiso.Services.MokoAfrika
         private readonly IEcolePaiementMobileService _ecolePaiementService;
         private readonly IMokoAfrikaService _mokoService;
         private readonly IDashboardHubService _dashboardHubService;
+        private readonly ICurrencyConversionService _currencyConversion;
         private readonly IEmailService? _emailService;
         private readonly MokoSettings _settings;
         private readonly ILogger<PaiementMokoOrchestrator> _logger;
@@ -48,6 +49,7 @@ namespace KelasiNaBiso.Services.MokoAfrika
             IEcolePaiementMobileService ecolePaiementService,
             IMokoAfrikaService mokoService,
             IDashboardHubService dashboardHubService,
+            ICurrencyConversionService currencyConversion,
             IOptions<MokoSettings> settings,
             ILogger<PaiementMokoOrchestrator> logger,
             IEmailService? emailService = null)
@@ -59,6 +61,7 @@ namespace KelasiNaBiso.Services.MokoAfrika
             _ecolePaiementService = ecolePaiementService;
             _mokoService = mokoService;
             _dashboardHubService = dashboardHubService;
+            _currencyConversion = currencyConversion;
             _settings = settings.Value;
             _logger = logger;
             _emailService = emailService;
@@ -136,8 +139,33 @@ namespace KelasiNaBiso.Services.MokoAfrika
             if (montantNet <= 0)
                 throw new ArgumentException("Le montant net doit être positif.");
 
-            var devise = infoPaiement.Devise;
-            var fees = _feeCalculator.Estimate(montantNet, method, devise);
+            var ecole = await _context.Ecoles
+                .AsNoTracking()
+                .FirstOrDefaultAsync(e => e.IdEcole == idEcole, cancellationToken);
+
+            var codePrincipale = NormalizeDeviseCode(ecole?.CodeDevisePrincipale)
+                ?? NormalizeDeviseCode(infoPaiement.Devise)
+                ?? "USD";
+            var deviseGateway = NormalizeDeviseCode(infoPaiement.Devise) ?? codePrincipale;
+
+            ValidateClientDevise(request.Devise ?? request.Currency, codePrincipale, deviseGateway);
+
+            if (!await _currencyConversion.IsActiveDeviseAsync(idEcole, codePrincipale, cancellationToken))
+            {
+                throw new InvalidOperationException(
+                    $"La devise principale {codePrincipale} est absente ou inactive pour l'école {idEcole}.");
+            }
+
+            if (!await _currencyConversion.IsActiveDeviseAsync(idEcole, deviseGateway, cancellationToken))
+            {
+                throw new InvalidOperationException(
+                    $"La devise Mobile Money {deviseGateway} est absente ou inactive pour l'école {idEcole}.");
+            }
+
+            var (montantGateway, tauxVersPrincipale) = await ConvertMontantNetVersGatewayAsync(
+                idEcole, codePrincipale, deviseGateway, montantNet, cancellationToken);
+
+            var fees = _feeCalculator.Estimate(montantGateway, method, deviseGateway);
             var reference = MokoReferenceGenerator.NewReference();
             var phone = NormaliserTelephone(request.TelephonePayeur);
             var modePaiement = isCard ? "Carte" : "Mobile Money";
@@ -150,7 +178,11 @@ namespace KelasiNaBiso.Services.MokoAfrika
                 Montant = (double)montantNet,
                 MontantNet = montantNet,
                 MontantCollecte = fees.MontantCollecte,
-                Devise = devise,
+                Devise = codePrincipale,
+                CodeDevisePaiement = deviseGateway,
+                CodeDevisePrincipale = codePrincipale,
+                TauxVersDevisePrincipale = tauxVersPrincipale,
+                MontantPayeDevisePrincipale = montantNet,
                 ModePaiement = modePaiement,
                 OperateurMobileMoney = method,
                 StatutPaiement = "En attente",
@@ -164,7 +196,7 @@ namespace KelasiNaBiso.Services.MokoAfrika
             _context.Paiements.Add(paiement);
             await _context.SaveChangesAsync(cancellationToken);
 
-            var payload = BuildGatewayPayload(MokoActions.Debit, reference, fees.MontantCollecte, devise, phone, method);
+            var payload = BuildGatewayPayload(MokoActions.Debit, reference, fees.MontantCollecte, deviseGateway, phone, method);
             var payloadJson = JsonSerializer.Serialize(payload);
 
             var tx = new TransactionMoko
@@ -174,10 +206,10 @@ namespace KelasiNaBiso.Services.MokoAfrika
                 IdEcole = idEcole,
                 Action = MokoActions.Debit,
                 Amount = fees.MontantCollecte,
-                AmountNet = montantNet,
+                AmountNet = montantGateway,
                 FraisCollecte = fees.FraisCollecte,
                 FraisDecaissement = fees.FraisDecaissement,
-                Devise = devise,
+                Devise = deviseGateway,
                 CustomerPhone = phone,
                 Method = method,
                 Status = MokoTransactionStatuses.Pending,
@@ -201,6 +233,10 @@ namespace KelasiNaBiso.Services.MokoAfrika
                 Reference = reference,
                 MontantNet = montantNet,
                 MontantCollecte = fees.MontantCollecte,
+                CodeDevisePrincipale = codePrincipale,
+                CodeDevisePaiement = deviseGateway,
+                TauxVersDevisePrincipale = tauxVersPrincipale,
+                MontantPayeDevisePrincipale = montantNet,
                 Frais = fees,
                 GatewayTransactionId = response.TransactionId
             };
@@ -529,6 +565,61 @@ namespace KelasiNaBiso.Services.MokoAfrika
             {
                 _logger.LogWarning(ex, "Impossible d'envoyer l'alerte email PayOut");
             }
+        }
+
+        private static string? NormalizeDeviseCode(string? code) =>
+            string.IsNullOrWhiteSpace(code) ? null : code.Trim().ToUpperInvariant();
+
+        private static void ValidateClientDevise(string? clientDeviseRaw, string codePrincipale, string deviseGateway)
+        {
+            var clientDevise = NormalizeDeviseCode(clientDeviseRaw);
+            if (string.IsNullOrEmpty(clientDevise))
+                return;
+
+            if (clientDevise == codePrincipale || clientDevise == deviseGateway)
+                return;
+
+            throw new InvalidOperationException(
+                $"Devise non supportée pour ce PayIn : {clientDevise}. " +
+                $"Utilisez la devise principale de l'école ({codePrincipale}) ou la devise Mobile Money ({deviseGateway}).");
+        }
+
+        private async Task<(decimal MontantGateway, decimal TauxVersPrincipale)> ConvertMontantNetVersGatewayAsync(
+            int idEcole,
+            string codePrincipale,
+            string deviseGateway,
+            decimal montantNet,
+            CancellationToken cancellationToken)
+        {
+            if (codePrincipale == deviseGateway)
+                return (montantNet, 1m);
+
+            var toGateway = await _currencyConversion.ConvertAsync(
+                idEcole,
+                codePrincipale,
+                deviseGateway,
+                montantNet,
+                DateTime.UtcNow,
+                cancellationToken);
+
+            if (!toGateway.Success)
+            {
+                throw new InvalidOperationException(
+                    toGateway.ErrorMessage
+                    ?? $"Impossible de convertir {codePrincipale} → {deviseGateway} pour le PayIn.");
+            }
+
+            var toPrincipal = await _currencyConversion.ConvertAsync(
+                idEcole,
+                deviseGateway,
+                codePrincipale,
+                1m,
+                DateTime.UtcNow,
+                cancellationToken);
+
+            var tauxVersPrincipale = toPrincipal.Success ? toPrincipal.Taux : (toGateway.Taux == 0 ? 0 : 1m / toGateway.Taux);
+
+            return (toGateway.MontantConverti, tauxVersPrincipale);
         }
 
         private Dictionary<string, object?> BuildGatewayPayload(

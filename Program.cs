@@ -355,6 +355,7 @@ Console.WriteLine("🔥 === FIN INITIALISATION FIREBASE ===\n");
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<ISignalRNotificationService, SignalRNotificationService>();
 builder.Services.AddScoped<IDashboardCaissierService, DashboardCaissierService>();
+builder.Services.AddScoped<IDashboardFinancierService, DashboardFinancierService>();
 builder.Services.AddScoped<IDashboardHubService, DashboardHubService>(); // ✨ Service pour dashboards en temps réel
 builder.Services.AddScoped<IUsernameGeneratorService, UsernameGeneratorService>(); // Service de génération de noms d'utilisateur
 

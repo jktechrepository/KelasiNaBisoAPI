@@ -333,6 +333,7 @@ Content-Type: application/json
   "montantNet": 50000,
   "method": "airtel",
   "telephonePayeur": "243970000000",
+  "devise": "CDF",
   "commentaire": "Paiement frais inscription — guichet"
 }
 ```
@@ -341,10 +342,18 @@ Content-Type: application/json
 |-------|-------------|-------|
 | `idEleve` | Oui | Élève concerné |
 | `idFrais` | Oui | Doit appartenir à l'école de l'élève |
-| `montantNet` | Non | Défaut = montant du frais |
+| `montantNet` | Non | Défaut = montant du frais — **toujours en devise principale école** |
 | `method` | Oui | Opérateur ou `card` |
 | `telephonePayeur` | Oui | **Téléphone qui recevra l'USSD** (parent ou payeur présent au guichet) |
+| `devise` / `currency` | Non | Doit être la devise principale **ou** la devise MM gateway ; sinon 400 |
 | `commentaire` | Non | Recommandé pour paiements guichet |
+
+**MultiDevise (obligatoire côté front) :**
+
+1. Lire `GET /api/Ecole/{idEcole}/devise-principale` et afficher cette devise pour `montantNet`.
+2. Poster `devise` = code principale (ou omettre le champ).
+3. Ne **pas** poster `USD` si l’école est en `CDF` : le backend convertit principale → devise MM (`infoPaiement.Devise`) via `TauxChanges` avant l’appel gateway.
+4. Preview optionnelle : `GET /api/Devise/preview-conversion?idEcole=…&codeDeviseSource=USD&codeDeviseCible=CDF&montant=10`.
 
 **Réponse 200 (en attente USSD) :**
 
@@ -355,8 +364,12 @@ Content-Type: application/json
   "reference": "MOKO_20260704143022_7841",
   "statutPaiement": "En attente",
   "statutGateway": "pending",
-  "montantNet": 50000,
-  "montantCollecte": 51250,
+  "montantNet": 10,
+  "montantCollecte": 28045,
+  "codeDevisePrincipale": "USD",
+  "codeDevisePaiement": "CDF",
+  "tauxVersDevisePrincipale": 0.00035714,
+  "montantPayeDevisePrincipale": 10,
   "requiresUssdConfirmation": true,
   "message": "Validez le paiement sur votre téléphone."
 }
@@ -367,6 +380,8 @@ Content-Type: application/json
 - « Paiement mobile non configuré pour l'école X » → configurer l'école d'abord
 - « Un paiement est déjà en attente pour ce frais et cet élève »
 - « Paiement Mobile Money désactivé pour cette école »
+- « Devise non supportée pour ce PayIn : EUR… » → utiliser principale ou devise MM
+- « Aucun taux de change trouvé pour USD→CDF… » → saisir un taux (`POST /api/Devise/taux-change`)
 
 ### 6.3 Vérifier le statut (polling)
 

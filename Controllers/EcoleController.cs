@@ -3,6 +3,7 @@ using KelasiNaBiso.Models;
 using KelasiNaBiso.Models.DTOs;
 using KelasiNaBiso.Models.Enums;
 using KelasiNaBiso.Models.DTOs.Pagination;
+using KelasiNaBiso.Services;
 using KelasiNaBiso.Services.Repositories;
 using KelasiNaBiso.Attributes;
 using KelasiNaBiso.Helpers;
@@ -19,15 +20,18 @@ namespace KelasiNaBiso.Controllers
         private readonly IEcoleRepository _ecoleRepository;
         private readonly IAuditService _auditService;
         private readonly ICurrentUserService _currentUserService;
+        private readonly ICurrencyConversionService _currencyConversionService;
 
         public EcoleController(
             IEcoleRepository ecoleRepository,
             IAuditService auditService,
-            ICurrentUserService currentUserService)
+            ICurrentUserService currentUserService,
+            ICurrencyConversionService currencyConversionService)
         {
             _ecoleRepository = ecoleRepository;
             _auditService = auditService;
             _currentUserService = currentUserService;
+            _currencyConversionService = currencyConversionService;
         }
 
         // GET: api/Ecole
@@ -274,9 +278,21 @@ namespace KelasiNaBiso.Controllers
             existingEcole.SiteWeb = dto.SiteWeb;
             existingEcole.Telephone = dto.Telephone;
             existingEcole.EmailContact = dto.EmailContact;
-            existingEcole.CodeDevisePrincipale = string.IsNullOrWhiteSpace(dto.CodeDevisePrincipale)
-                ? existingEcole.CodeDevisePrincipale
-                : dto.CodeDevisePrincipale.Trim().ToUpperInvariant();
+
+            if (!string.IsNullOrWhiteSpace(dto.CodeDevisePrincipale))
+            {
+                var codePrincipale = dto.CodeDevisePrincipale.Trim().ToUpperInvariant();
+                if (!await _currencyConversionService.IsActiveDeviseAsync(id, codePrincipale))
+                {
+                    return BadRequest(new
+                    {
+                        message = $"La devise principale {codePrincipale} est absente ou inactive pour cette école. Ajoutez-la d'abord via /api/Devise."
+                    });
+                }
+
+                existingEcole.CodeDevisePrincipale = codePrincipale;
+            }
+
             existingEcole.NomCompletResponsable = dto.NomCompletResponsable;
             existingEcole.GenreResponsable = dto.GenreResponsable;
             existingEcole.Ville = dto.Ville;

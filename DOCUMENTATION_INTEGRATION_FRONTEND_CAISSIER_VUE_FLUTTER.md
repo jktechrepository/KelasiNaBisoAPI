@@ -41,7 +41,7 @@ Guide d'implémentation pour l'**écran guichet** côté **Vue 3** (web) et **Fl
 | `idEcole` | Id école — **obligatoire** sur tous les appels guichet |
 | `role` (plusieurs) | `Caissier`, `Directeur`, `Financier`, etc. |
 
-**Rôles autorisés sur le guichet :** `Caissier`, `Directeur`, `Financier`, `Admin`, `Super-Admin`.
+**Rôles autorisés sur le guichet :** `Caissier`, `Directeur`, `Financier`, `Admin`, `Super-Admin` (lecture / supervision pour Directeur ; encaissement réservé à `Caissier`, `Financier`, `Admin`, `Super-Admin`).
 
 **Reconnexion obligatoire** après migration prod du rôle Caissier (nouveau claim JWT).
 
@@ -50,6 +50,7 @@ Guide d'implémentation pour l'**écran guichet** côté **Vue 3** (web) et **Fl
 ```javascript
 // router/index.js
 const GUICHET_ROLES = ['Caissier', 'Directeur', 'Financier', 'Admin', 'Super-Admin'];
+const ENCAISSEMENT_ROLES = ['Caissier', 'Financier', 'Admin', 'Super-Admin'];
 
 router.beforeEach((to, from, next) => {
   if (!to.meta.requiresGuichet) return next();
@@ -103,6 +104,7 @@ router.beforeEach((to, from, next) => {
 ```dart
 // lib/core/router/app_router.dart
 const guichetRoles = {'Caissier', 'Directeur', 'Financier', 'Admin', 'Super-Admin'};
+const encaissementRoles = {'Caissier', 'Financier', 'Admin', 'Super-Admin'};
 
 GoRoute(
   path: '/guichet',

@@ -74,7 +74,7 @@ namespace KelasiNaBiso.Controllers
 
         // ✅ GET: api/Paiement/eleve/5/paged?idAnneeScolaire=
         [HttpGet("eleve/{idEleve}/paged")]
-        [ProducesResponseType(typeof(ElevesAnneeScopedResult<PagedResult<Paiement>>), 200)]
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<PagedResult<PaiementElevePagedItemDto>>), 200)]
         public async Task<IActionResult> GetPaiementsByElevePaged(
             int idEleve,
             [FromQuery] PagedRequest request,
@@ -151,6 +151,7 @@ namespace KelasiNaBiso.Controllers
 
         // GET: api/Paiement/eleve/5?idAnneeScolaire=
         [HttpGet("eleve/{idEleve}")]
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<IEnumerable<PaiementElevePagedItemDto>>), 200)]
         public async Task<IActionResult> GetPaiementsByEleve(
             int idEleve,
             [FromQuery] int? idAnneeScolaire = null)

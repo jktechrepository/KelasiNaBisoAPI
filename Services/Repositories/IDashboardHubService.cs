@@ -1,5 +1,6 @@
 using KelasiNaBiso.Models.DTOs.Reporting;
 using KelasiNaBiso.Models.DTOs.Paiement;
+using KelasiNaBiso.Models.DTOs.MokoAfrika;
 
 namespace KelasiNaBisoAPI.Services.Repositories
 {
@@ -38,6 +39,16 @@ namespace KelasiNaBisoAPI.Services.Repositories
         /// Notifier une mise à jour de paiement
         /// </summary>
         Task NotifyPaiementUpdateAsync(int idEcole);
+
+        /// <summary>
+        /// PayIn Moko initié — en attente USSD (temps réel guichet).
+        /// </summary>
+        Task NotifyPayInPendingAsync(int idEcole, PayInSignalRNotification notification);
+
+        /// <summary>
+        /// PayIn Moko confirmé (callback ou polling).
+        /// </summary>
+        Task NotifyPayInConfirmedAsync(int idEcole, PayInSignalRNotification notification);
     }
 }
 

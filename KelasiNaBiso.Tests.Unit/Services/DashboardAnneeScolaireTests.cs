@@ -57,7 +57,9 @@ namespace KelasiNaBiso.Tests.Unit.Services
                 Mock.Of<ICurrentUserService>(),
                 scope,
                 resolver,
-                Mock.Of<IDashboardCaissierService>());
+                Mock.Of<IDashboardCaissierService>(),
+                Mock.Of<IDashboardFinancierService>(),
+                Mock.Of<IPedagogieAuthorizationService>());
 
             SeedCurrentYearScenario();
         }
@@ -89,8 +91,9 @@ namespace KelasiNaBiso.Tests.Unit.Services
                     LibelleFrais = "Frais N-1",
                     Montant = 100,
                     Devise = "USD",
-                    IdDirection = 1,
+                    IdEcole = 1,
                     IdAnneeScolaire = 100,
+                    Portee = KelasiNaBiso.Models.Enums.PorteeFrais.Direction,
                     Statut = true,
                     DateCreation = DateTime.Now
                 },
@@ -100,8 +103,9 @@ namespace KelasiNaBiso.Tests.Unit.Services
                     LibelleFrais = "Frais N",
                     Montant = 120,
                     Devise = "USD",
-                    IdDirection = 1,
+                    IdEcole = 1,
                     IdAnneeScolaire = 101,
+                    Portee = KelasiNaBiso.Models.Enums.PorteeFrais.Direction,
                     Statut = true,
                     DateCreation = DateTime.Now
                 });
@@ -164,8 +168,9 @@ namespace KelasiNaBiso.Tests.Unit.Services
                 LibelleFrais = "Frais B",
                 Montant = 100,
                 Devise = "USD",
-                IdDirection = 1,
+                IdEcole = 1,
                 IdAnneeScolaire = 101,
+                Portee = KelasiNaBiso.Models.Enums.PorteeFrais.Direction,
                 Statut = true,
                 DateCreation = DateTime.Now
             });
@@ -195,7 +200,9 @@ namespace KelasiNaBiso.Tests.Unit.Services
                 Mock.Of<ICurrentUserService>(),
                 scope,
                 resolver,
-                Mock.Of<IDashboardCaissierService>());
+                Mock.Of<IDashboardCaissierService>(),
+                Mock.Of<IDashboardFinancierService>(),
+                Mock.Of<IPedagogieAuthorizationService>());
 
             var actionResult = await controller.GetDashboardGlobal(1);
 

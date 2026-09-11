@@ -1,6 +1,8 @@
 using KelasiNaBiso.Models.Enums;
+using KelasiNaBiso.Services.Repositories;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 
@@ -71,8 +73,23 @@ namespace KelasiNaBiso.Helpers
         }
 
         /// <summary>
-        /// Super-Admin : toutes les écoles. IT-Support : toutes les écoles (élèves/agents/cartes).
-        /// Autres rôles (Admin, Directeur…) : uniquement leur IdEcole JWT.
+        /// Extrait l'IdTuteur du JWT (Parent).
+        /// </summary>
+        public static int? GetCurrentTuteurId(this ControllerBase controller)
+        {
+            var claim = controller.User.FindFirst("IdTuteur")
+                        ?? controller.User.FindFirst("TuteurId");
+
+            if (claim != null && int.TryParse(claim.Value, out int idTuteur) && idTuteur > 0)
+                return idTuteur;
+
+            return null;
+        }
+
+        /// <summary>
+        /// Super-Admin / IT-Support : toutes les écoles.
+        /// Autres rôles : uniquement leur IdEcole JWT (sync — sans exception Parent multi-écoles).
+        /// Préférer <see cref="ForbidIfWrongSchoolAsync"/> pour les routes accessibles aux Parents.
         /// </summary>
         public static IActionResult? ForbidIfWrongSchool(this ControllerBase controller, int? targetEcoleId)
         {
@@ -83,13 +100,56 @@ namespace KelasiNaBiso.Helpers
             var userEcole = controller.GetCurrentUserSchoolId();
             if (!userEcole.HasValue || !targetEcoleId.HasValue || userEcole.Value != targetEcoleId.Value)
             {
-                return controller.StatusCode(
-                    StatusCodes.Status403Forbidden,
-                    new { message = "Acces refuse a cette ecole." });
+                return ForbiddenSchool(controller);
             }
 
             return null;
         }
+
+        /// <summary>
+        /// Comme <see cref="ForbidIfWrongSchool"/>, plus exception Parent :
+        /// autorisé si IdTuteur JWT a au moins un enfant avec inscription confirmée dans l'école cible.
+        /// </summary>
+        public static async Task<IActionResult?> ForbidIfWrongSchoolAsync(
+            this ControllerBase controller,
+            int? targetEcoleId,
+            IInscriptionActiveResolver? inscriptionResolver = null,
+            CancellationToken cancellationToken = default)
+        {
+            if (controller.User.IsInRole(UserRoles.SUPER_ADMIN)
+                || controller.User.IsInRole(UserRoles.IT_SUPPORT))
+                return null;
+
+            if (!targetEcoleId.HasValue || targetEcoleId.Value <= 0)
+                return ForbiddenSchool(controller);
+
+            var userEcole = controller.GetCurrentUserSchoolId();
+            if (userEcole.HasValue && userEcole.Value == targetEcoleId.Value)
+                return null;
+
+            if (controller.User.IsInRole(UserRoles.PARENT))
+            {
+                var idTuteur = controller.GetCurrentTuteurId();
+                if (idTuteur.HasValue)
+                {
+                    var resolver = inscriptionResolver
+                        ?? controller.HttpContext.RequestServices.GetService<IInscriptionActiveResolver>();
+
+                    if (resolver != null
+                        && await resolver.IsTuteurInEcoleAsync(idTuteur.Value, targetEcoleId.Value, cancellationToken))
+                    {
+                        return null;
+                    }
+                }
+            }
+
+            return ForbiddenSchool(controller);
+        }
+
+        private static IActionResult ForbiddenSchool(ControllerBase controller) =>
+            controller.StatusCode(
+                StatusCodes.Status403Forbidden,
+                new { message = "Acces refuse a cette ecole." });
 
         /// <summary>
         /// Rôle effectif pour le contrôle d’accès multi-écoles (priorité Super-Admin / IT-Support).

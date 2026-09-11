@@ -1,4 +1,5 @@
 using KelasiNaBiso.Models;
+using KelasiNaBiso.Models.Enums;
 
 namespace KelasiNaBiso.Tests.Unit.Helpers
 {
@@ -174,6 +175,34 @@ namespace KelasiNaBiso.Tests.Unit.Helpers
                 DateCreation = DateTime.Now
             };
         }
+
+        public static Frais CreateFrais(
+            int id,
+            int idEcole,
+            int idAnneeScolaire,
+            string libelle,
+            PorteeFrais portee = PorteeFrais.Direction,
+            double montant = 100)
+        {
+            return new Frais
+            {
+                IdFrais = id,
+                LibelleFrais = libelle,
+                Montant = montant,
+                Devise = "USD",
+                IdEcole = idEcole,
+                IdAnneeScolaire = idAnneeScolaire,
+                Portee = portee,
+                Statut = true,
+                DateCreation = DateTime.Now
+            };
+        }
+
+        public static FraisDirection CreateFraisDirection(int idFrais, int idDirection) =>
+            new() { IdFrais = idFrais, IdDirection = idDirection };
+
+        public static FraisClasse CreateFraisClasse(int idFrais, int idClasse) =>
+            new() { IdFrais = idFrais, IdClasse = idClasse };
 
         public static Tuteur CreateTuteur(int id, string nom, string? telephone = null, string? email = null, bool statut = true)
         {

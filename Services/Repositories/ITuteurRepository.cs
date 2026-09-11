@@ -13,7 +13,10 @@ namespace KelasiNaBiso.Services.Repositories
         Task<bool> DeleteAsync(int id);
         Task<bool> ExistsAsync(int id);
         Task<bool> ExistsByEmailAsync(string email); // ✅ UNICITÉ EMAIL
-        Task<ElevesAnneeScopedResult<IEnumerable<Eleve>>> GetElevesAsync(int idTuteur, int idEcole, int? idAnneeScolaire = null);
+        Task<IEnumerable<TuteurEleveListItemDto>> GetElevesAsync(
+            int idTuteur,
+            string? searchTerm = null,
+            string? libelleAnneeScolaire = null);
         
         // ✅ SOFT DELETE
         Task<bool> ToggleStatutAsync(int id);

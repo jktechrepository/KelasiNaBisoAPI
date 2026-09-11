@@ -172,7 +172,7 @@ namespace KelasiNaBiso.Models.Enums
         /// Rôles autorisés à encaisser au guichet (PayIn Moko, création paiement).
         /// </summary>
         public const string CashierPayInRoles =
-            $"{PARENT},{SUPER_ADMIN},{ADMIN},{DIRECTEUR},{FINANCIER},{CAISSIER}";
+            $"{PARENT},{SUPER_ADMIN},{ADMIN},{FINANCIER},{CAISSIER}";
 
         /// <summary>
         /// Rôles autorisés à consulter l'overview paiement mobile (sans trésorerie).
@@ -189,7 +189,10 @@ namespace KelasiNaBiso.Models.Enums
         /// <summary>
         /// Rôles ayant accès à la gestion financière
         /// </summary>
-        public static string[] FinanceRoles => new[]
+        public const string FinanceRoles =
+            $"{SUPER_ADMIN},{DIRECTEUR},{FINANCIER}";
+
+        public static string[] FinanceRoleArray => new[]
         {
             SUPER_ADMIN,
             DIRECTEUR,
@@ -272,7 +275,7 @@ namespace KelasiNaBiso.Models.Enums
         /// </summary>
         public static bool HasFinanceAccess(string role)
         {
-            return FinanceRoles.Contains(role);
+            return FinanceRoleArray.Contains(role);
         }
 
         /// <summary>

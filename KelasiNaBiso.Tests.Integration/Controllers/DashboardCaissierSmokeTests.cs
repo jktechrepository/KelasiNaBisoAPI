@@ -38,6 +38,14 @@ namespace KelasiNaBiso.Tests.Integration.Controllers
                 Statut = true,
                 DateCreation = now
             });
+            context.Ecoles.Add(new Ecole
+            {
+                IdEcole = 2,
+                Nom = "Ecole Parent Multi",
+                CodeDevisePrincipale = "USD",
+                Statut = true,
+                DateCreation = now
+            });
             context.AnneeScolaires.Add(new AnneeScolaire
             {
                 IdAnneeScolaire = 101,
@@ -48,6 +56,85 @@ namespace KelasiNaBiso.Tests.Integration.Controllers
                 Statut = true,
                 DateCreation = now
             });
+            context.AnneeScolaires.Add(new AnneeScolaire
+            {
+                IdAnneeScolaire = 201,
+                IdEcole = 2,
+                LibelleAnneeScolaire = "2025-2026",
+                DateDebut = now.AddMonths(-3),
+                DateFin = now.AddMonths(6),
+                Statut = true,
+                DateCreation = now
+            });
+            context.Directions.Add(new Direction
+            {
+                IdDirection = 2,
+                IdEcole = 2,
+                NomDirection = "Dir Multi",
+                Statut = true
+            });
+            context.Classes.Add(new Classe
+            {
+                IdClasse = 20,
+                NomClasse = "6e B",
+                IdDirection = 2,
+                Statut = true,
+                DateCreation = now
+            });
+            context.Tuteurs.Add(new Tuteur
+            {
+                IdTuteur = 11,
+                NomComplet = "Parent Multi",
+                Genre = "M",
+                Telephone = "+243900000011",
+                Statut = true,
+                DateCreation = now
+            });
+            context.Eleves.Add(new Eleve
+            {
+                IdEleve = 110,
+                Nom = "Enfant",
+                Postnom = "Multi",
+                Prenom = "Jean",
+                NomComplet = "Enfant Multi Jean",
+                Genre = "M",
+                DateNaissance = new DateTime(2015, 1, 1),
+                Nationalite = "RDC",
+                IdTuteur = 11,
+                Statut = true,
+                DateCreation = now
+            });
+            context.Inscriptions.Add(new Inscription
+            {
+                IdInscription = 110,
+                IdEleve = 110,
+                IdEcole = 2,
+                IdClasse = 20,
+                IdAnneeScolaire = 201,
+                DateInscription = now,
+                Statut = true,
+                StatutInscription = "Confirmé",
+                Type = "Inscription"
+            });
+            context.DevisesMonetaires.AddRange(
+                new DeviseMonetaire
+                {
+                    IdEcole = 1,
+                    CodeDevise = "USD",
+                    Libelle = "Dollar américain",
+                    Symbole = "$",
+                    Statut = true,
+                    DateCreation = DateTime.UtcNow
+                },
+                new DeviseMonetaire
+                {
+                    IdEcole = 1,
+                    CodeDevise = "CDF",
+                    Libelle = "Franc congolais",
+                    Symbole = "FC",
+                    Statut = true,
+                    DateCreation = DateTime.UtcNow
+                });
             context.SaveChanges();
         }
 
@@ -319,7 +406,7 @@ namespace KelasiNaBiso.Tests.Integration.Controllers
             var token = CreateToken(UserRoles.PARENT, idEcole: 1, idUtilisateur: 508, idTuteur: 11);
             _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-            var response = await _client.GetAsync("/api/Dashboard/tuteur?idEcole=1&idAnneeScolaire=101");
+            var response = await _client.GetAsync("/api/Dashboard/tuteur?idEcole=1&libelleAnneeScolaire=2025-2026");
 
             response.StatusCode.Should().Be(HttpStatusCode.OK);
         }
@@ -330,7 +417,43 @@ namespace KelasiNaBiso.Tests.Integration.Controllers
             var token = CreateToken(UserRoles.PARENT, idEcole: 1, idUtilisateur: 509, idTuteur: 12);
             _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-            var response = await _client.GetAsync("/api/Dashboard/DashbordTuteur?idEcole=1&idAnneeScolaire=101");
+            var response = await _client.GetAsync("/api/Dashboard/DashbordTuteur?idEcole=1&libelleAnneeScolaire=2025-2026");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        [Fact]
+        public async Task GetDashboardTuteur_DefaultLibelle_ShouldReturnOk_WhenParent()
+        {
+            var token = CreateToken(UserRoles.PARENT, idEcole: 1, idUtilisateur: 510, idTuteur: 13);
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _client.GetAsync("/api/Dashboard/tuteur?idEcole=1");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        [Fact]
+        public async Task GetDashboardTuteur_MissingIdEcole_ShouldReturnBadRequest()
+        {
+            var token = CreateToken(UserRoles.PARENT, idEcole: 1, idUtilisateur: 520, idTuteur: 11);
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _client.GetAsync("/api/Dashboard/DashbordTuteur?libelleAnneeScolaire=2025-2026");
+
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            var body = await response.Content.ReadAsStringAsync();
+            body.Should().Contain("idEcole");
+        }
+
+        [Fact]
+        public async Task GetDashboardTuteur_ParentJwtOtherSchool_WithChildInTarget_ShouldReturnOk()
+        {
+            var token = CreateToken(UserRoles.PARENT, idEcole: 1, idUtilisateur: 521, idTuteur: 11);
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _client.GetAsync(
+                "/api/Dashboard/tuteur?idEcole=2&libelleAnneeScolaire=2025-2026");
 
             response.StatusCode.Should().Be(HttpStatusCode.OK);
         }

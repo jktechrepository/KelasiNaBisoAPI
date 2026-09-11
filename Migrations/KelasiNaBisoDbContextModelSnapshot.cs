@@ -728,6 +728,45 @@ namespace KelasiNaBiso.Migrations
                     b.ToTable("DevoirsADomicile");
                 });
 
+            modelBuilder.Entity("KelasiNaBiso.Models.DeviseMonetaire", b =>
+                {
+                    b.Property<int>("IdDeviseMonetaire")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    b.Property<string>("CodeDevise")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.Property<DateTime>("DateCreation")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("IdEcole")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Libelle")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("varchar(120)");
+
+                    b.Property<bool>("Statut")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Symbole")
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.HasKey("IdDeviseMonetaire");
+
+                    b.HasIndex("IdEcole");
+
+                    b.HasIndex("IdEcole", "CodeDevise")
+                        .IsUnique();
+
+                    b.ToTable("DevisesMonetaires");
+                });
+
             modelBuilder.Entity("KelasiNaBiso.Models.Direction", b =>
                 {
                     b.Property<int>("IdDirection")

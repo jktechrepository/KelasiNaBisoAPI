@@ -186,11 +186,17 @@ Exemple : `MOKO_20260630151414_5569`
 
 ### Interprétation succès
 
-Considérer la transaction comme **réussie** si :
+**À l'initiation PayIn Mobile Money**, `resultCode == "0"` signifie que la requête a été **acceptée** (push USSD envoyé) — ce n'est **pas** une confirmation de paiement.
 
-- `resultCode == "0"`, **ou**
+Considérer la transaction comme **définitivement réussie** (crédit wallet, confirmation paiement) uniquement si :
+
 - `Status` / `trans_status` ∈ `success`, `successful`, `approved`, `paid`, `SUCCESS`, **et**
 - `resultCodeError` absent ou égal à `"0"`
+
+Cas **en attente** (ne pas confirmer) :
+
+- `Status` / `trans_status` ∈ `pending`, `initiated`, `processing`
+- `resultCode == "0"` sans status de succès explicite
 
 Exemple PayIn réussi :
 

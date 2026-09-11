@@ -627,7 +627,6 @@ namespace KelasiNaBiso.Controllers
         // ✅ GET: api/Agent/serial-number/{serialNumber}
         // Récupérer un agent par son numéro de série
         [HttpGet("serial-number/{serialNumber}")]
-        [Authorize(Roles = "Admin,Directeur,Super-Admin,IT-Support")]
         public async Task<IActionResult> GetAgentBySerialNumber(string serialNumber)
         {
             if (string.IsNullOrWhiteSpace(serialNumber))
@@ -650,7 +649,6 @@ namespace KelasiNaBiso.Controllers
         // ✅ PUT: api/Agent/{idAgent}/serial-number
         // Mise à jour du Serial Number par IdAgent
         [HttpPut("{idAgent}/serial-number")]
-        [Authorize(Roles = "Admin,Directeur,Super-Admin,IT-Support")]
         public async Task<IActionResult> UpdateSerialNumberById(int idAgent, [FromBody] UpdateSerialNumberDto dto)
         {
             if (!ModelState.IsValid)
@@ -693,7 +691,6 @@ namespace KelasiNaBiso.Controllers
         // ✅ PUT: api/Agent/matricule/{matricule}/serial-number
         // Mise à jour du Serial Number par Matricule
         [HttpPut("matricule/{matricule}/serial-number")]
-        [Authorize(Roles = "Admin,Directeur,Super-Admin,IT-Support")]
         public async Task<IActionResult> UpdateSerialNumberByMatricule(string matricule, [FromBody] UpdateSerialNumberDto dto)
         {
             if (!ModelState.IsValid)

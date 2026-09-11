@@ -8,5 +8,6 @@ namespace KelasiNaBiso.Models.DTOs
         public T Data { get; set; } = default!;
         public int IdEcole { get; set; }
         public int IdAnneeScolaire { get; set; }
+        public string? LibelleAnneeScolaire { get; set; }
     }
 }

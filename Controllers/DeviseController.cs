@@ -28,6 +28,146 @@ namespace KelasiNaBiso.Controllers
             _context = context;
         }
 
+        /// <summary>Liste les devises monétaires d'une école.</summary>
+        [HttpGet]
+        public async Task<IActionResult> GetDevises(
+            [FromQuery] int idEcole,
+            [FromQuery] bool? statut = null)
+        {
+            if (idEcole <= 0)
+            {
+                return BadRequest(new { message = "Le paramètre idEcole est obligatoire." });
+            }
+
+            var ecole = await _ecoleRepository.GetByIdAsync(idEcole);
+            if (ecole == null)
+            {
+                return NotFound(new { message = $"École {idEcole} introuvable." });
+            }
+
+            var query = _context.DevisesMonetaires
+                .AsNoTracking()
+                .Where(d => d.IdEcole == idEcole);
+
+            if (statut.HasValue)
+            {
+                query = query.Where(d => d.Statut == statut.Value);
+            }
+
+            var items = await query
+                .OrderBy(d => d.CodeDevise)
+                .Select(d => new DeviseMonetaireDto
+                {
+                    IdDeviseMonetaire = d.IdDeviseMonetaire,
+                    IdEcole = d.IdEcole,
+                    CodeDevise = d.CodeDevise,
+                    Libelle = d.Libelle,
+                    Symbole = d.Symbole,
+                    Statut = d.Statut,
+                    DateCreation = d.DateCreation
+                })
+                .ToListAsync();
+
+            return Ok(items);
+        }
+
+        /// <summary>Crée une devise monétaire pour une école.</summary>
+        [HttpPost]
+        public async Task<IActionResult> CreateDevise([FromBody] CreateDeviseMonetaireDto dto)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var ecole = await _ecoleRepository.GetByIdAsync(dto.IdEcole);
+            if (ecole == null)
+            {
+                return NotFound(new { message = $"École {dto.IdEcole} introuvable." });
+            }
+
+            var code = DeviseMonetaireSeedHelper.NormalizeCode(dto.CodeDevise);
+            if (string.IsNullOrEmpty(code))
+            {
+                return BadRequest(new { message = "Le code devise est obligatoire." });
+            }
+
+            if (string.IsNullOrWhiteSpace(dto.Libelle))
+            {
+                return BadRequest(new { message = "Le libellé est obligatoire." });
+            }
+
+            var exists = await _context.DevisesMonetaires
+                .AnyAsync(d => d.IdEcole == dto.IdEcole && d.CodeDevise == code);
+
+            if (exists)
+            {
+                return Conflict(new { message = $"La devise {code} existe déjà pour l'école {dto.IdEcole}." });
+            }
+
+            var entity = new DeviseMonetaire
+            {
+                IdEcole = dto.IdEcole,
+                CodeDevise = code,
+                Libelle = dto.Libelle.Trim(),
+                Symbole = string.IsNullOrWhiteSpace(dto.Symbole) ? null : dto.Symbole.Trim(),
+                Statut = dto.Statut,
+                DateCreation = DateTime.UtcNow
+            };
+
+            _context.DevisesMonetaires.Add(entity);
+            await _context.SaveChangesAsync();
+
+            return CreatedAtAction(nameof(GetDevises), new { idEcole = entity.IdEcole }, new DeviseMonetaireDto
+            {
+                IdDeviseMonetaire = entity.IdDeviseMonetaire,
+                IdEcole = entity.IdEcole,
+                CodeDevise = entity.CodeDevise,
+                Libelle = entity.Libelle,
+                Symbole = entity.Symbole,
+                Statut = entity.Statut,
+                DateCreation = entity.DateCreation
+            });
+        }
+
+        /// <summary>Met à jour libellé, symbole et statut d'une devise.</summary>
+        [HttpPut("{id:int}")]
+        public async Task<IActionResult> UpdateDevise(int id, [FromBody] UpdateDeviseMonetaireDto dto)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var entity = await _context.DevisesMonetaires.FirstOrDefaultAsync(d => d.IdDeviseMonetaire == id);
+            if (entity == null)
+            {
+                return NotFound(new { message = $"Devise {id} introuvable." });
+            }
+
+            if (string.IsNullOrWhiteSpace(dto.Libelle))
+            {
+                return BadRequest(new { message = "Le libellé est obligatoire." });
+            }
+
+            entity.Libelle = dto.Libelle.Trim();
+            entity.Symbole = string.IsNullOrWhiteSpace(dto.Symbole) ? null : dto.Symbole.Trim();
+            entity.Statut = dto.Statut;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new DeviseMonetaireDto
+            {
+                IdDeviseMonetaire = entity.IdDeviseMonetaire,
+                IdEcole = entity.IdEcole,
+                CodeDevise = entity.CodeDevise,
+                Libelle = entity.Libelle,
+                Symbole = entity.Symbole,
+                Statut = entity.Statut,
+                DateCreation = entity.DateCreation
+            });
+        }
+
         [HttpPost("taux-change")]
         public async Task<IActionResult> CreateTauxChange([FromBody] CreateTauxChangeDto dto)
         {
@@ -58,6 +198,16 @@ namespace KelasiNaBiso.Controllers
             if (dto.Taux <= 0)
             {
                 return BadRequest(new { message = "Le taux doit être strictement positif." });
+            }
+
+            if (!await _currencyConversionService.IsActiveDeviseAsync(dto.IdEcole, source))
+            {
+                return BadRequest(new { message = $"La devise source {source} est absente ou inactive pour l'école {dto.IdEcole}." });
+            }
+
+            if (!await _currencyConversionService.IsActiveDeviseAsync(dto.IdEcole, cible))
+            {
+                return BadRequest(new { message = $"La devise cible {cible} est absente ou inactive pour l'école {dto.IdEcole}." });
             }
 
             var existingTaux = await _context.TauxChanges

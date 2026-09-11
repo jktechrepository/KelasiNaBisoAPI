@@ -137,8 +137,9 @@ Content-Type: application/json
 
 | Claim | Usage |
 |-------|-------|
-| `idEcole` | Filtrage multi-tenant ; `GET /api/Frais/ecole/{idEcole}` vérifie l'école JWT |
-| `role` | Admin, Financier, Caissier, Controleur, … |
+| `idEcole` | Filtrage multi-tenant staff ; `GET /api/Frais/ecole/{idEcole}` vérifie l'école JWT (Admin, Caissier, …) |
+| `IdTuteur` | Parent : accès lecture frais des écoles où le tuteur a un enfant inscrit (confirmé), même si `idEcole` JWT diffère |
+| `role` | Admin, Financier, Caissier, Controleur, Parent, … |
 
 ### Permissions RBAC
 
@@ -158,6 +159,7 @@ Content-Type: application/json
 | Directeur | Partiel (selon permissions) | ✅ | Supervision |
 | Caissier | ❌ | ✅ lecture | ✅ |
 | Controleur | ❌ | ✅ lecture | ❌ |
+| Parent | ❌ | ✅ lecture (écoles de ses enfants) | PayIn Moko |
 
 `PUT /api/Frais/{id}` exige en plus le rôle JWT **`Admin`** ou **`Super-Admin`** (couche `[Authorize(Roles = ...)]`).
 
@@ -173,7 +175,7 @@ GET /api/Frais/ecole/{idEcole}?idAnneeScolaire=&idClasse=
 
 | Paramètre | Type | Description |
 |-----------|------|-------------|
-| `idEcole` | path | École (doit correspondre au JWT sauf Super-Admin) |
+| `idEcole` | path | École : staff = JWT `idEcole` (sauf Super-Admin / IT) ; **Parent** = école d’un enfant inscrit |
 | `idAnneeScolaire` | query, opt. | Année cible ; défaut = **année courante** |
 | `idClasse` | query, opt. | Si fourni : frais dont la portée couvre cette classe (direction de la classe **ou** classe listée) |
 
@@ -214,7 +216,7 @@ GET /api/Frais/ecole/{idEcole}?idAnneeScolaire=&idClasse=
 }
 ```
 
-**Erreurs :** `403` école JWT ; `400` année introuvable.
+**Erreurs :** `403` école non autorisée (JWT staff ou Parent sans enfant dans cette école) ; `400` année introuvable.
 
 ---
 
@@ -224,13 +226,14 @@ GET /api/Frais/ecole/{idEcole}?idAnneeScolaire=&idClasse=
 GET /api/Frais/ecole/{idEcole}/libelle?libelleFrais={texte}&idAnneeScolaire=&idClasse=
 ```
 
-Résolution du libellé (insensible à la casse) :
+`libelleFrais` est **optionnel** :
 
-- Si `idClasse` fourni → frais éligible pour cette inscription (classe listée, sinon direction).
-- Sinon → priorité portée Direction.
-
-**Réponse `200` :** wrapper avec `data` = un seul `Frais` ou `null`.  
-**Réponse `404` :** aucun frais pour ce libellé.
+- **Omise / vide** → même sémantique que `GET /api/Frais/ecole/{idEcole}` : wrapper avec `data` = **tableau** de frais (année courante ou `idAnneeScolaire`, filtre `idClasse` si fourni).
+- **Fournie** → résolution du libellé (insensible à la casse) :
+  - Si `idClasse` fourni → frais éligible pour cette inscription (classe listée, sinon direction).
+  - Sinon → priorité portée Direction.
+  - **Réponse `200` :** wrapper avec `data` = un seul `Frais`.
+  - **Réponse `404` :** aucun frais pour ce libellé.
 
 ---
 
@@ -570,7 +573,7 @@ export function fetchFraisByDirection(idDirection, { idAnneeScolaire, idClasse }
 }
 
 /**
- * Recherche par libellé (résolution classe prioritaire).
+ * Recherche par libellé (optionnel). Sans libelleFrais → liste année/classe (comme fetchFraisByEcole).
  */
 export function fetchFraisByLibelle(idEcole, libelleFrais, { idAnneeScolaire, idClasse } = {}) {
   const qs = buildQuery({ libelleFrais, idAnneeScolaire, idClasse });

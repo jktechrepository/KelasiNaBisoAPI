@@ -48,8 +48,9 @@ namespace KelasiNaBiso.Tests.Unit.Services
                 LibelleFrais = "Minerval",
                 Montant = 100,
                 Devise = "USD",
-                IdDirection = 1,
+                IdEcole = 1,
                 IdAnneeScolaire = 101,
+                Portee = KelasiNaBiso.Models.Enums.PorteeFrais.Direction,
                 Statut = true,
                 DateCreation = DateTime.Now
             });

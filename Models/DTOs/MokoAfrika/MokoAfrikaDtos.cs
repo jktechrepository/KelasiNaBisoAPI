@@ -124,6 +124,10 @@ namespace KelasiNaBiso.Models.DTOs.MokoAfrika
         public decimal? MontantNet { get; set; }
         public string Method { get; set; } = "airtel";
         public string TelephonePayeur { get; set; } = string.Empty;
+        /// <summary>Devise attendue par le client (principale école ou devise gateway MM).</summary>
+        public string? Devise { get; set; }
+        /// <summary>Alias front de <see cref="Devise"/> (ex. Flutter <c>currency</c>).</summary>
+        public string? Currency { get; set; }
         public string? Commentaire { get; set; }
     }
 
@@ -136,6 +140,10 @@ namespace KelasiNaBiso.Models.DTOs.MokoAfrika
         public string StatutGateway { get; set; } = string.Empty;
         public decimal MontantNet { get; set; }
         public decimal MontantCollecte { get; set; }
+        public string? CodeDevisePrincipale { get; set; }
+        public string? CodeDevisePaiement { get; set; }
+        public decimal? TauxVersDevisePrincipale { get; set; }
+        public decimal? MontantPayeDevisePrincipale { get; set; }
         public MokoFeeEstimateDto Frais { get; set; } = new();
         public string? Message { get; set; }
         public string? GatewayTransactionId { get; set; }

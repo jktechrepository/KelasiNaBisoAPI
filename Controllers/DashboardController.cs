@@ -26,6 +26,8 @@ namespace KelasiNaBiso.Controllers
         private readonly EleveAnneeScopeHelper _scope;
         private readonly IInscriptionActiveResolver _inscriptionResolver;
         private readonly IDashboardCaissierService _dashboardCaissierService;
+        private readonly IDashboardFinancierService _dashboardFinancierService;
+        private readonly IPedagogieAuthorizationService _pedagogieAuthorizationService;
 
         public DashboardController(
             IPresenceReportingService presenceReportingService,
@@ -35,7 +37,9 @@ namespace KelasiNaBiso.Controllers
             ICurrentUserService currentUserService,
             EleveAnneeScopeHelper scope,
             IInscriptionActiveResolver inscriptionResolver,
-            IDashboardCaissierService dashboardCaissierService)
+            IDashboardCaissierService dashboardCaissierService,
+            IDashboardFinancierService dashboardFinancierService,
+            IPedagogieAuthorizationService pedagogieAuthorizationService)
         {
             _presenceReportingService = presenceReportingService;
             _paiementRepository = paiementRepository;
@@ -45,12 +49,15 @@ namespace KelasiNaBiso.Controllers
             _scope = scope;
             _inscriptionResolver = inscriptionResolver;
             _dashboardCaissierService = dashboardCaissierService;
+            _dashboardFinancierService = dashboardFinancierService;
+            _pedagogieAuthorizationService = pedagogieAuthorizationService;
         }
 
         /// <summary>
         /// Dashboard guichet — encaissements du jour (scope=moi par défaut ; scope=ecole pour direction/financier).
         /// </summary>
         [HttpGet("caissier")]
+        [HttpGet("DashbordCaissier")]
         [Authorize(Roles = UserRoles.CashierGuichetRoles)]
         [ProducesResponseType(typeof(DashboardCaissierDto), 200)]
         public async Task<IActionResult> GetDashboardCaissier(
@@ -93,6 +100,7 @@ namespace KelasiNaBiso.Controllers
         /// Clôture de caisse — rapport complet du jour (export / impression front).
         /// </summary>
         [HttpGet("caissier/cloture")]
+        [HttpGet("DashbordCaissier/cloture")]
         [Authorize(Roles = UserRoles.CashierGuichetRoles)]
         [ProducesResponseType(typeof(DashboardCaissierClotureDto), 200)]
         public async Task<IActionResult> GetClotureCaissier(
@@ -131,11 +139,506 @@ namespace KelasiNaBiso.Controllers
             }
         }
 
+        /// <summary>
+        /// Dashboard financier — synthèse financière d'une école pour le rôle Financier.
+        /// </summary>
+        [HttpGet("financier")]
+        [HttpGet("DashbordFinancier")]
+        [Authorize(Roles = UserRoles.FinanceRoles)]
+        [ProducesResponseType(typeof(DashboardFinancierDto), 200)]
+        public async Task<IActionResult> GetDashboardFinancier(
+            [FromQuery] int idEcole,
+            [FromQuery] int? idAnneeScolaire = null,
+            [FromQuery] DateTime? date = null,
+            [FromQuery] string? scope = null)
+        {
+            var deny = this.ForbidIfWrongSchool(idEcole);
+            if (deny != null)
+                return deny;
+
+            try
+            {
+                var idUtilisateur = _currentUserService.UserId;
+                if (idUtilisateur <= 0)
+                    return BadRequest(new { message = "Utilisateur non identifié." });
+
+                var result = await _dashboardFinancierService.GetDashboardFinancierAsync(
+                    idEcole, idUtilisateur, idAnneeScolaire, date,
+                    scope ?? DashboardCaissierScopes.Moi, AllowEcoleScope());
+                return Ok(result);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur dashboard financier pour école {IdEcole}", idEcole);
+                return StatusCode(500, new { message = "Erreur lors de la récupération du dashboard financier", error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Dashboard parent/tuteur — vue consolidée des enfants et de leurs paiements.
+        /// Filtre année par libellé (stable multi-écoles) ; défaut = année courante de l'école.
+        /// idEcole est obligatoire ; Parent multi-écoles autorisé si enfant inscrit dans l'école cible.
+        /// </summary>
+        [HttpGet("tuteur")]
+        [HttpGet("DashbordTuteur")]
+        [Authorize(Roles = UserRoles.PARENT)]
+        [ProducesResponseType(typeof(DashboardTuteurDto), 200)]
+        public async Task<IActionResult> GetDashboardTuteur(
+            [FromQuery] int? idEcole = null,
+            [FromQuery] string? libelleAnneeScolaire = null)
+        {
+            if (!idEcole.HasValue || idEcole.Value <= 0)
+            {
+                return BadRequest(new
+                {
+                    message = "Le paramètre idEcole est obligatoire."
+                });
+            }
+
+            var deny = await this.ForbidIfWrongSchoolAsync(idEcole.Value, _inscriptionResolver);
+            if (deny != null)
+                return deny;
+
+            var idTuteur = _currentUserService.TuteurId;
+            if (!idTuteur.HasValue)
+                return BadRequest(new { message = "Identité du tuteur non disponible dans le token." });
+
+            try
+            {
+                var resolvedEcole = idEcole.Value;
+                int idAnnee;
+                string? libelleAnnee;
+
+                if (string.IsNullOrWhiteSpace(libelleAnneeScolaire))
+                {
+                    idAnnee = await _scope.ResolveIdAnneeScolaireAsync(resolvedEcole, null);
+                    libelleAnnee = await _context.AnneeScolaires.AsNoTracking()
+                        .Where(a => a.IdAnneeScolaire == idAnnee)
+                        .Select(a => a.LibelleAnneeScolaire)
+                        .FirstOrDefaultAsync();
+                }
+                else
+                {
+                    var libelle = libelleAnneeScolaire.Trim().ToLower();
+                    var annee = await _context.AnneeScolaires.AsNoTracking()
+                        .Where(a => a.IdEcole == resolvedEcole
+                            && a.Statut == true
+                            && a.LibelleAnneeScolaire.ToLower() == libelle)
+                        .FirstOrDefaultAsync();
+
+                    if (annee == null)
+                    {
+                        return BadRequest(new
+                        {
+                            message = $"Aucune année scolaire active avec le libellé '{libelleAnneeScolaire.Trim()}' pour l'école {resolvedEcole}."
+                        });
+                    }
+
+                    idAnnee = annee.IdAnneeScolaire;
+                    libelleAnnee = annee.LibelleAnneeScolaire;
+                }
+
+                var ecole = await _context.Ecoles.AsNoTracking()
+                    .FirstOrDefaultAsync(e => e.IdEcole == resolvedEcole);
+
+                if (ecole == null)
+                    return NotFound(new { message = $"École avec l'ID {resolvedEcole} introuvable." });
+
+                var targetDate = DateTime.Now.Date;
+                var periode = BuildJourPeriode(targetDate);
+
+                var inscriptions = await _context.Inscriptions
+                    .AsNoTracking()
+                    .Include(i => i.Eleve)
+                    .Include(i => i.Classe)
+                    .Where(i => i.IdEcole == resolvedEcole
+                        && i.IdAnneeScolaire == idAnnee
+                        && i.Statut == true
+                        && i.Eleve != null
+                        && i.Eleve.IdTuteur == idTuteur.Value
+                        && i.Eleve.Statut == true
+                        && i.StatutInscription != null
+                        && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                            || i.StatutInscription == "Confirme"
+                            || i.StatutInscription.StartsWith("Confirm")))
+                    .OrderByDescending(i => i.DateInscription)
+                    .ToListAsync();
+
+                var dernieresInscriptionsParEleve = inscriptions
+                    .GroupBy(i => i.IdEleve)
+                    .ToDictionary(g => g.Key, g => g.OrderByDescending(i => i.DateInscription).First());
+
+                var enfants = new List<EnfantTuteurDto>();
+                var eleveIds = dernieresInscriptionsParEleve.Keys.ToList();
+
+                var paiements = await _context.Paiements
+                    .AsNoTracking()
+                    .Where(p => p.Statut == true
+                        && p.IdEleve != null
+                        && eleveIds.Contains(p.IdEleve.Value)
+                        && p.IdFrais != null)
+                    .ToListAsync();
+
+                var paiementsParEleve = paiements
+                    .GroupBy(p => p.IdEleve!.Value)
+                    .ToDictionary(g => g.Key, g => new
+                    {
+                        Nombre = g.Count(),
+                        Montant = g.Sum(p => (decimal)p.Montant)
+                    });
+
+                foreach (var pair in dernieresInscriptionsParEleve)
+                {
+                    var inscription = pair.Value;
+                    var eleve = inscription.Eleve;
+                    var elevePaiements = paiementsParEleve.TryGetValue(pair.Key, out var stats)
+                        ? stats
+                        : new { Nombre = 0, Montant = 0m };
+
+                    var statutPaiement = elevePaiements.Nombre > 0
+                        ? "Paiements enregistrés"
+                        : "Aucun paiement";
+
+                    enfants.Add(new EnfantTuteurDto
+                    {
+                        IdEleve = eleve.IdEleve,
+                        Matricule = eleve.Matricule,
+                        NomComplet = eleve.NomComplet,
+                        IdClasse = inscription.IdClasse,
+                        NomClasse = inscription.Classe?.NomClasse,
+                        StatutInscription = inscription.StatutInscription,
+                        NombrePaiements = elevePaiements.Nombre,
+                        MontantPaye = elevePaiements.Montant,
+                        AlertePaiement = statutPaiement
+                    });
+                }
+
+                var elevesAyantPaye = paiementsParEleve.Count;
+                var elevesEnRetardPaiement = enfants.Count(e => e.NombrePaiements == 0);
+                var alertes = new List<AlerteDto>();
+                if (elevesEnRetardPaiement > 0)
+                {
+                    alertes.Add(new AlerteDto
+                    {
+                        Type = "warning",
+                        Message = $"{elevesEnRetardPaiement} enfant(s) n'ont pas encore de paiement enregistré pour l'année scolaire.",
+                        Action = "Consulter les élèves concernés"
+                    });
+                }
+
+                var dashboard = new DashboardTuteurDto
+                {
+                    Ecole = new EcoleInfoDto
+                    {
+                        IdEcole = ecole.IdEcole,
+                        NomEcole = ecole.Nom ?? string.Empty,
+                        Logo = ecole.Logo
+                    },
+                    IdAnneeScolaire = idAnnee,
+                    LibelleAnneeScolaire = libelleAnnee,
+                    Periode = periode,
+                    Resume = new ResumeTuteurDto
+                    {
+                        NombreEnfants = enfants.Count,
+                        ElevesActifs = enfants.Count,
+                        ElevesAyantPaye = elevesAyantPaye,
+                        ElevesEnRetardPaiement = elevesEnRetardPaiement,
+                        MontantTotalPaye = enfants.Sum(e => e.MontantPaye),
+                        NombreClasses = enfants.Select(e => e.IdClasse).Distinct().Count()
+                    },
+                    Enfants = enfants,
+                    Alertes = alertes
+                };
+
+                return Ok(dashboard);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur dashboard tuteur pour école {IdEcole}", idEcole.Value);
+                return StatusCode(500, new { message = "Erreur lors de la récupération du dashboard tuteur", error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Dashboard contrôleur — synthèse rapide de présence et de vérification des frais pour le rôle Controleur.
+        /// </summary>
+        [HttpGet("controleur")]
+        [HttpGet("DashbordControleur")]
+        [Authorize(Roles = UserRoles.CONTROLEUR)]
+        [ProducesResponseType(typeof(DashboardPresenceDto), 200)]
+        public async Task<IActionResult> GetDashboardControleur(
+            [FromQuery] int idEcole,
+            [FromQuery] DateTime? date = null,
+            [FromQuery] DateTime? dateDebut = null,
+            [FromQuery] DateTime? dateFin = null,
+            [FromQuery] int? idAnneeScolaire = null)
+        {
+            var deny = this.ForbidIfWrongSchool(idEcole);
+            if (deny != null)
+                return deny;
+
+            try
+            {
+                var result = await _presenceReportingService.GetDashboardEcoleAsync(
+                    idEcole, date, dateDebut, dateFin, idAnneeScolaire);
+
+                return Ok(result);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur dashboard contrôleur pour école {IdEcole}", idEcole);
+                return StatusCode(500, new { message = "Erreur lors de la récupération du dashboard contrôleur", error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Dashboard enseignant — vue consolidée des classes suivies et de la présence.
+        /// </summary>
+        [HttpGet("enseignant")]
+        [HttpGet("DashbordEnseignant")]
+        [Authorize(Roles = UserRoles.ENSEIGNANT)]
+        [ProducesResponseType(typeof(DashboardEnseignantDto), 200)]
+        public async Task<IActionResult> GetDashboardEnseignant(
+            [FromQuery] int idEcole,
+            [FromQuery] int? idAnneeScolaire = null)
+        {
+            var deny = this.ForbidIfWrongSchool(idEcole);
+            if (deny != null)
+                return deny;
+
+            var idAgent = _currentUserService.AgentId;
+            if (!idAgent.HasValue)
+                return BadRequest(new { message = "Identité de l'agent non disponible dans le token." });
+
+            try
+            {
+                var (resolvedEcole, idAnnee) = await _scope.ResolveEcoleAnneeAsync(idEcole, idAnneeScolaire);
+                var ecole = await _context.Ecoles.AsNoTracking()
+                    .FirstOrDefaultAsync(e => e.IdEcole == resolvedEcole);
+
+                if (ecole == null)
+                    return NotFound(new { message = $"École avec l'ID {resolvedEcole} introuvable." });
+
+                var libelleAnnee = await _context.AnneeScolaires.AsNoTracking()
+                    .Where(a => a.IdAnneeScolaire == idAnnee)
+                    .Select(a => a.LibelleAnneeScolaire)
+                    .FirstOrDefaultAsync();
+
+                var targetDate = DateTime.Now.Date;
+                var periode = BuildJourPeriode(targetDate);
+                var classIds = await _pedagogieAuthorizationService.GetClassesEnseignantAsync(idAgent.Value, idAnnee, resolvedEcole);
+
+                var classes = await _context.Classes
+                    .AsNoTracking()
+                    .Where(c => classIds.Contains(c.IdClasse))
+                    .OrderBy(c => c.NomClasse)
+                    .ToListAsync();
+
+                var classesDto = new List<ClasseEnseignantDto>();
+                var alertes = new List<AlerteDto>();
+
+                foreach (var classe in classes)
+                {
+                    var inscriptions = await _context.Inscriptions
+                        .AsNoTracking()
+                        .Where(i => i.IdClasse == classe.IdClasse
+                            && i.IdEcole == resolvedEcole
+                            && i.IdAnneeScolaire == idAnnee
+                            && i.Statut == true
+                            && i.StatutInscription != null
+                            && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                                || i.StatutInscription == "Confirme"
+                                || i.StatutInscription.StartsWith("Confirm")))
+                        .Select(i => i.IdEleve)
+                        .Distinct()
+                        .ToListAsync();
+
+                    var eleveCount = inscriptions.Count;
+                    var presences = await _context.Presences
+                        .AsNoTracking()
+                        .Where(p => p.IdEleve != null
+                            && inscriptions.Contains(p.IdEleve.Value)
+                            && p.Statut == true
+                            && p.DateDuJour.Date == targetDate)
+                        .ToListAsync();
+
+                    var presencesCount = presences.Count(p => p.IsPresent == true);
+                    var absencesCount = presences.Count(p => p.IsPresent == false);
+                    var tauxPresence = eleveCount > 0
+                        ? Math.Round((decimal)presencesCount / eleveCount * 100, 2)
+                        : 0;
+
+                    var status = tauxPresence < 60 ? "critique" : tauxPresence < 75 ? "attention" : "normal";
+
+                    classesDto.Add(new ClasseEnseignantDto
+                    {
+                        IdClasse = classe.IdClasse,
+                        NomClasse = classe.NomClasse ?? string.Empty,
+                        NombreEleves = eleveCount,
+                        Presences = presencesCount,
+                        Absences = absencesCount,
+                        TauxPresence = tauxPresence,
+                        Status = status
+                    });
+                }
+
+                var classesCritiques = classesDto.Count(c => c.Status == "critique");
+                var tauxPresenceGeneral = classesDto.Count > 0
+                    ? Math.Round(classesDto.Average(c => c.TauxPresence), 2)
+                    : 0;
+
+                if (classesCritiques > 0)
+                {
+                    alertes.Add(new AlerteDto
+                    {
+                        Type = "danger",
+                        Message = $"{classesCritiques} classe(s) présentent un taux de présence critique.",
+                        Action = "Suivre les classes concernées"
+                    });
+                }
+
+                var dashboard = new DashboardEnseignantDto
+                {
+                    Ecole = new EcoleInfoDto
+                    {
+                        IdEcole = ecole.IdEcole,
+                        NomEcole = ecole.Nom ?? string.Empty,
+                        Logo = ecole.Logo
+                    },
+                    IdAnneeScolaire = idAnnee,
+                    LibelleAnneeScolaire = libelleAnnee,
+                    Periode = periode,
+                    Resume = new ResumeEnseignantDto
+                    {
+                        NombreClasses = classesDto.Count,
+                        ElevesSuivis = classesDto.Sum(c => c.NombreEleves),
+                        Presences = classesDto.Sum(c => c.Presences),
+                        Absences = classesDto.Sum(c => c.Absences),
+                        ClassesCritiques = classesCritiques,
+                        TauxPresenceGeneral = tauxPresenceGeneral
+                    },
+                    Classes = classesDto,
+                    Alertes = alertes
+                };
+
+                return Ok(dashboard);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur dashboard enseignant pour école {IdEcole}", idEcole);
+                return StatusCode(500, new { message = "Erreur lors de la récupération du dashboard enseignant", error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Clôture financière — rapport complet du jour pour le rôle Financier.
+        /// </summary>
+        [HttpGet("financier/cloture")]
+        [HttpGet("DashbordFinancier/cloture")]
+        [Authorize(Roles = UserRoles.FinanceRoles)]
+        [ProducesResponseType(typeof(DashboardFinancierClotureDto), 200)]
+        public async Task<IActionResult> GetClotureFinancier(
+            [FromQuery] int idEcole,
+            [FromQuery] int? idAnneeScolaire = null,
+            [FromQuery] DateTime? date = null,
+            [FromQuery] string? scope = null)
+        {
+            var deny = this.ForbidIfWrongSchool(idEcole);
+            if (deny != null)
+                return deny;
+
+            try
+            {
+                var idUtilisateur = _currentUserService.UserId;
+                if (idUtilisateur <= 0)
+                    return BadRequest(new { message = "Utilisateur non identifié." });
+
+                var result = await _dashboardFinancierService.GetClotureFinancierAsync(
+                    idEcole, idUtilisateur, idAnneeScolaire, date,
+                    scope ?? DashboardCaissierScopes.Moi, AllowEcoleScope());
+                return Ok(result);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur clôture financière pour école {IdEcole}", idEcole);
+                return StatusCode(500, new { message = "Erreur lors de la clôture financière", error = ex.Message });
+            }
+        }
+
         private bool AllowEcoleScope() =>
             User.IsInRole(UserRoles.SUPER_ADMIN)
             || User.IsInRole(UserRoles.ADMIN)
             || User.IsInRole(UserRoles.DIRECTEUR)
             || User.IsInRole(UserRoles.FINANCIER);
+
+        private static PeriodeDto BuildJourPeriode(DateTime targetDate)
+        {
+            var culture = new System.Globalization.CultureInfo("fr-FR");
+            return new PeriodeDto
+            {
+                Type = "jour",
+                Date = targetDate,
+                DateDebut = targetDate,
+                DateFin = targetDate,
+                JoursOuvrables = targetDate.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday ? 0 : 1,
+                Libelle = targetDate.ToString("dddd dd MMMM yyyy", culture)
+            };
+        }
+
+        /// <summary>
+        /// 📊 Dashboard directeur — synthèse globale de l'école (présence + paiement).
+        /// </summary>
+        [HttpGet("directeur")]
+        [HttpGet("DashbordDirecteur")]
+        [Authorize(Roles = UserRoles.DIRECTEUR)]
+        [ProducesResponseType(typeof(DashboardGlobalDto), 200)]
+        public async Task<IActionResult> GetDashboardDirecteur(
+            [FromQuery] int idEcole,
+            [FromQuery] int? idAnneeScolaire = null)
+        {
+            var deny = this.ForbidIfWrongSchool(idEcole);
+            if (deny != null)
+                return deny;
+
+            var dashboardResult = await GetDashboardGlobal(idEcole, idAnneeScolaire);
+
+            if (dashboardResult.Result != null)
+                return dashboardResult.Result;
+
+            return Ok(dashboardResult.Value);
+        }
 
         /// <summary>
         /// 📊 Dashboard global combiné (Présence + Paiement) pour une école

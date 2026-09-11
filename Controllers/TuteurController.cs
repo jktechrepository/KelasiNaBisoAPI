@@ -72,18 +72,17 @@ namespace KelasiNaBiso.Controllers
 
         // GET: api/Tuteur/5/eleves
         [HttpGet("{id}/eleves")]
+        [ProducesResponseType(typeof(IEnumerable<TuteurEleveListItemDto>), 200)]
+        [ProducesResponseType(400)]
         public async Task<IActionResult> GetTuteurEleves(
             int id,
-            [FromQuery] int? idEcole = null,
-            [FromQuery] int? idAnneeScolaire = null)
+            [FromQuery] string? searchTerm = null,
+            [FromQuery] string? libelleAnneeScolaire = null)
         {
-            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
-            if (resolveError != null)
-                return resolveError;
-
             try
             {
-                return Ok(await _tuteurRepository.GetElevesAsync(id, resolvedEcole, idAnneeScolaire));
+                return Ok(await _tuteurRepository.GetElevesAsync(
+                    id, searchTerm, libelleAnneeScolaire));
             }
             catch (InvalidOperationException ex)
             {

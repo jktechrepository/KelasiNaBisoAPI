@@ -27,13 +27,18 @@ namespace KelasiNaBiso.Services.Repositories
         Task<bool> ExistsBySerialNumberAsync(string serialNumber);
 
         Task<ElevesAnneeScopedResult<IReadOnlyList<Eleve>>> GetByClasseAsync(int idClasse, int? idAnneeScolaire = null);
-        Task<IEnumerable<Eleve>> GetByTuteurAsync(int idTuteur);
+        Task<IReadOnlyList<EleveParEcoleListItemDto>> GetByTuteurAsync(
+            int idTuteur,
+            string? libelleAnneeScolaire = null,
+            int? idEleve = null);
         Task<ElevesAnneeScopedResult<IReadOnlyList<EleveParEcoleListItemDto>>> GetByEcoleAsync(int idEcole, int? idAnneeScolaire = null);
         Task<IEnumerable<Eleve>> GetByStatutAsync(bool statut);
 
         Task<IEnumerable<Note>> GetNotesAsync(int idEleve);
         Task<IEnumerable<Inscription>> GetInscriptionsAsync(int idEleve);
-        Task<IEnumerable<Paiement>> GetPaiementsAsync(int idEleve);
+        Task<IEnumerable<PaiementElevePagedItemDto>> GetPaiementsAsync(
+            int idEleve,
+            string? libelleAnneeScolaire = null);
         Task<IEnumerable<Document>> GetDocumentsAsync(int idEleve);
 
         Task<bool> ToggleStatutAsync(int id);

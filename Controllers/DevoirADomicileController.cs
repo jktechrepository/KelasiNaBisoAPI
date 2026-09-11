@@ -1,3 +1,4 @@
+using KelasiNaBiso.Helpers;
 using KelasiNaBiso.Models;
 using KelasiNaBiso.Models.DTOs;
 using KelasiNaBiso.Models.DTOs.DevoirADomicile;
@@ -434,6 +435,45 @@ namespace KelasiNaBiso.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Erreur lors de la récupération des devoirs de la classe");
+                return StatusCode(500, new { message = "Erreur interne du serveur" });
+            }
+        }
+
+        /// <summary>
+        /// Devoirs des classes des enfants d'un tuteur (inscriptions confirmées, école + année).
+        /// Parent/Élève : uniquement leur propre IdTuteur.
+        /// </summary>
+        [HttpGet("tuteur/{idTuteur}")]
+        [Authorize(Roles = $"{UserRoles.PARENT},{UserRoles.ELEVE},{UserRoles.ENSEIGNANT},{UserRoles.DIRECTEUR},{UserRoles.ADMIN},{UserRoles.SUPER_ADMIN}")]
+        [ProducesResponseType(typeof(PagedResult<DevoirADomicilePourTuteurDto>), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(403)]
+        public async Task<IActionResult> GetDevoirsByTuteur(
+            int idTuteur,
+            [FromQuery] PagedRequest? request,
+            [FromQuery] string? libelleAnneeScolaire = null)
+        {
+            var role = _currentUserService.UserRole;
+            if (role == UserRoles.PARENT || role == UserRoles.ELEVE)
+            {
+                if (!_currentUserService.TuteurId.HasValue || _currentUserService.TuteurId.Value != idTuteur)
+                    return Forbid("Vous ne pouvez consulter que les devoirs de vos enfants");
+            }
+
+            try
+            {
+                var pagedRequest = request ?? new PagedRequest { PageNumber = 1, PageSize = 15 };
+                var result = await _devoirRepository.GetByTuteurPagedAsync(
+                    idTuteur, pagedRequest, libelleAnneeScolaire);
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur lors de la récupération des devoirs du tuteur {IdTuteur}", idTuteur);
                 return StatusCode(500, new { message = "Erreur interne du serveur" });
             }
         }

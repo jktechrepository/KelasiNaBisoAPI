@@ -38,6 +38,20 @@ CREATE TABLE IF NOT EXISTS TauxChanges (
     PRIMARY KEY (IdTauxChange)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 5) Catalogue DevisesMonetaires (détail + seed : Scripts/APPLY_DEVISES_MONETAIRES.sql)
+CREATE TABLE IF NOT EXISTS DevisesMonetaires (
+    IdDeviseMonetaire INT NOT NULL AUTO_INCREMENT,
+    IdEcole INT NOT NULL,
+    CodeDevise VARCHAR(10) NOT NULL,
+    Libelle VARCHAR(120) NOT NULL,
+    Symbole VARCHAR(10) NULL,
+    Statut TINYINT(1) NOT NULL DEFAULT 1,
+    DateCreation DATETIME(6) NOT NULL,
+    PRIMARY KEY (IdDeviseMonetaire),
+    UNIQUE KEY IX_DevisesMonetaires_IdEcole_CodeDevise (IdEcole, CodeDevise),
+    KEY IX_DevisesMonetaires_IdEcole (IdEcole)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 COMMIT;
 
 -- ==========================================================

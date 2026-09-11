@@ -504,14 +504,76 @@ namespace KelasiNaBiso.Services
             return Scoped((IReadOnlyList<Eleve>)eleves, idEcole, resolvedAnnee);
         }
 
-        public async Task<IEnumerable<Eleve>> GetByTuteurAsync(int idTuteur)
+        public async Task<IReadOnlyList<EleveParEcoleListItemDto>> GetByTuteurAsync(
+            int idTuteur,
+            string? libelleAnneeScolaire = null,
+            int? idEleve = null)
         {
-            return await _context.Eleves
-                .Include(e => e.Tuteur)
-                .Where(e => e.IdTuteur == idTuteur)
-                .Where(e => e.Statut == true)
-                .OrderBy(e => e.NomComplet)
+            var query = _context.Inscriptions
+                .AsNoTracking()
+                .Include(i => i.Eleve)
+                .Include(i => i.Ecole)
+                .Include(i => i.Classe)
+                .Include(i => i.AnneeScolaire)
+                .Where(i => i.Eleve != null
+                    && i.Eleve.IdTuteur == idTuteur
+                    && i.Eleve.Statut == true
+                    && i.Statut == true
+                    && i.StatutInscription != null
+                    && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                        || i.StatutInscription == "Confirme"
+                        || i.StatutInscription.StartsWith("Confirm")));
+
+            if (idEleve.HasValue && idEleve.Value > 0)
+                query = query.Where(i => i.IdEleve == idEleve.Value);
+
+            if (!string.IsNullOrWhiteSpace(libelleAnneeScolaire))
+            {
+                var libelle = libelleAnneeScolaire.Trim().ToLower();
+                query = query.Where(i => i.AnneeScolaire != null
+                    && i.AnneeScolaire.LibelleAnneeScolaire.ToLower() == libelle);
+            }
+            else
+            {
+                var now = DateTime.Now;
+                query = query.Where(i => i.AnneeScolaire != null
+                    && i.AnneeScolaire.Statut == true
+                    && i.AnneeScolaire.DateDebut <= now
+                    && i.AnneeScolaire.DateFin >= now);
+            }
+
+            var inscriptions = await query
+                .OrderBy(i => i.Eleve!.NomComplet)
+                .ThenByDescending(i => i.DateInscription)
                 .ToListAsync();
+
+            return inscriptions
+                .GroupBy(i => new { i.IdEleve, i.IdEcole })
+                .Select(g => g.OrderByDescending(i => i.DateInscription).First())
+                .Select(i => new EleveParEcoleListItemDto
+                {
+                    IdEleve = i.Eleve!.IdEleve,
+                    ReferenceEleve = i.Eleve.ReferenceEleve,
+                    Matricule = i.Eleve.Matricule,
+                    Nom = i.Eleve.Nom,
+                    Postnom = i.Eleve.Postnom,
+                    Prenom = i.Eleve.Prenom,
+                    NomComplet = i.Eleve.NomComplet,
+                    Genre = i.Eleve.Genre,
+                    DateNaissance = i.Eleve.DateNaissance,
+                    PhotoUrl = i.Eleve.PhotoUrl,
+                    Statut = i.Eleve.Statut,
+                    IdTuteur = i.Eleve.IdTuteur,
+                    NomCompletTuteur = i.Eleve.Tuteur?.NomComplet,
+                    TelephoneTuteur = i.Eleve.Tuteur?.Telephone,
+                    IdInscription = i.IdInscription,
+                    IdClasse = i.IdClasse,
+                    NomClasse = i.Classe?.NomClasse,
+                    IdAnneeScolaire = i.IdAnneeScolaire,
+                    LibelleAnneeScolaire = i.AnneeScolaire?.LibelleAnneeScolaire,
+                    IdEcole = i.IdEcole
+                })
+                .ToList();
         }
 
         public async Task<ElevesAnneeScopedResult<IReadOnlyList<EleveParEcoleListItemDto>>> GetByEcoleAsync(
@@ -558,14 +620,29 @@ namespace KelasiNaBiso.Services
                 .ToListAsync();
         }
 
-        public async Task<IEnumerable<Paiement>> GetPaiementsAsync(int idEleve)
+        public async Task<IEnumerable<PaiementElevePagedItemDto>> GetPaiementsAsync(
+            int idEleve,
+            string? libelleAnneeScolaire = null)
         {
-            return await _context.Paiements
+            var query = _context.Paiements
                 .Include(p => p.Utilisateur)
                 .Include(p => p.Frais)
-                .Where(p => p.IdEleve == idEleve)
+                .ThenInclude(f => f.AnneeScolaire)
+                .Where(p => p.IdEleve == idEleve);
+
+            if (!string.IsNullOrWhiteSpace(libelleAnneeScolaire))
+            {
+                var libelle = libelleAnneeScolaire.Trim().ToLower();
+                query = query.Where(p => p.Frais != null
+                    && p.Frais.AnneeScolaire != null
+                    && p.Frais.AnneeScolaire.LibelleAnneeScolaire.ToLower() == libelle);
+            }
+
+            var paiements = await query
                 .OrderByDescending(p => p.DatePaiement)
                 .ToListAsync();
+
+            return await PaiementEleveResteEnricher.MapAsync(_context, idEleve, paiements);
         }
 
         //public async Task<IEnumerable<Presence>> GetPresencesAsync(int idEleve)

@@ -168,12 +168,17 @@ namespace KelasiNaBiso.Services
                 .FilterElevesInDirection(_context.Eleves.AsNoTracking(), idDirection, idAnneeScolaire)
                 .Select(e => e.IdEleve);
 
-        public static ElevesAnneeScopedResult<T> Wrap<T>(T data, int idEcole, int idAnneeScolaire) =>
+        public static ElevesAnneeScopedResult<T> Wrap<T>(
+            T data,
+            int idEcole,
+            int idAnneeScolaire,
+            string? libelleAnneeScolaire = null) =>
             new()
             {
                 Data = data,
                 IdEcole = idEcole,
-                IdAnneeScolaire = idAnneeScolaire
+                IdAnneeScolaire = idAnneeScolaire,
+                LibelleAnneeScolaire = libelleAnneeScolaire
             };
     }
 }

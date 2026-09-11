@@ -18,11 +18,15 @@ namespace KelasiNaBiso.Tests.Unit.Services
         public DevoirAnneeScolaireTests()
         {
             _context = TestDbContextFactory.CreateInMemoryContext();
+            var inscriptionResolver = new InscriptionActiveResolver(_context);
+            var anneeRepo = new AnneeScolaireService(_context);
+            var scope = new EleveAnneeScopeHelper(_context, inscriptionResolver, anneeRepo);
             _service = new DevoirADomicileService(
                 _context,
                 Mock.Of<ICurrentUserService>(),
                 NullLogger<DevoirADomicileService>.Instance,
-                new InscriptionActiveResolver(_context));
+                inscriptionResolver,
+                scope);
             Seed();
         }
 

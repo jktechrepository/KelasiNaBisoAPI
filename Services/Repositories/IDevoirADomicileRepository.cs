@@ -1,4 +1,6 @@
 using KelasiNaBiso.Models;
+using KelasiNaBiso.Models.DTOs;
+using KelasiNaBiso.Models.DTOs.DevoirADomicile;
 using KelasiNaBiso.Models.DTOs.Pagination;
 
 namespace KelasiNaBiso.Services.Repositories
@@ -29,6 +31,9 @@ namespace KelasiNaBiso.Services.Repositories
         Task<PagedResult<DevoirADomicile>> GetByClassePagedAsync(int idClasse, PagedRequest request, int idAnneeScolaire);
         Task<PagedResult<DevoirADomicile>> GetByAgentPagedAsync(int idAgent, PagedRequest request, int idAnneeScolaire, int? idClasse = null); // Avec filtre classe optionnel
         Task<PagedResult<DevoirADomicile>> GetByEcolePagedAsync(int idEcole, PagedRequest request, int idAnneeScolaire, int? idClasse = null); // Avec filtre classe optionnel
+        Task<PagedResult<DevoirADomicilePourTuteurDto>> GetByTuteurPagedAsync(
+            int idTuteur, PagedRequest request,
+            string? libelleAnneeScolaire = null);
         
         // Vérifications d'accès (intégrées dans le service)
         Task<bool> AgentPeutPublierPourClasseAsync(int idAgent, int idClasse);

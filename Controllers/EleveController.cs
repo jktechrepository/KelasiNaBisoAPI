@@ -140,7 +140,6 @@ namespace KelasiNaBiso.Controllers
         // ✅ GET: api/Eleve/serial-number/{serialNumber}
         // Récupérer un élève par son numéro de série
         [HttpGet("serial-number/{serialNumber}")]
-        [Authorize(Roles = "Admin,Directeur,Super-Admin,IT-Support,Controleur")]
         public async Task<IActionResult> GetEleveBySerialNumber(string serialNumber)
         {
             if (string.IsNullOrWhiteSpace(serialNumber))
@@ -218,10 +217,23 @@ namespace KelasiNaBiso.Controllers
 
         // GET: api/Eleve/tuteur/5
         [HttpGet("tuteur/{idTuteur}")]
-        public async Task<ActionResult<IEnumerable<Eleve>>> GetElevesByTuteur(int idTuteur)
+        [ProducesResponseType(typeof(IReadOnlyList<EleveParEcoleListItemDto>), 200)]
+        [ProducesResponseType(400)]
+        public async Task<IActionResult> GetElevesByTuteur(
+            int idTuteur,
+            [FromQuery] string? libelleAnneeScolaire = null,
+            [FromQuery] int? idEleve = null)
         {
-            var eleves = await _eleveRepository.GetByTuteurAsync(idTuteur);
-            return Ok(eleves);
+            try
+            {
+                var result = await _eleveRepository.GetByTuteurAsync(
+                    idTuteur, libelleAnneeScolaire, idEleve);
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // GET: api/Eleve/ecole/5?page=1&pageSize=15&idAnneeScolaire=12
@@ -282,7 +294,6 @@ namespace KelasiNaBiso.Controllers
         /// <param name="statut">Filtrer par statut (true = actifs uniquement, false = inactifs uniquement, null = tous). Par défaut : true (actifs uniquement)</param>
         /// <returns>Liste complète des élèves de l'école de l'utilisateur connecté</returns>
         [HttpGet("ecole/all")]
-        [Authorize(Roles = "Admin,Super-Admin,Directeur")]
         [ProducesResponseType(typeof(IEnumerable<Eleve>), 200)]
         [ProducesResponseType(401)]
         [ProducesResponseType(500)]
@@ -359,7 +370,6 @@ namespace KelasiNaBiso.Controllers
         /// <param name="statut">Filtrer par statut (true = actifs uniquement, false = inactifs uniquement, null = tous). Par défaut : true (actifs uniquement)</param>
         /// <returns>Liste complète des élèves de l'école</returns>
         [HttpGet("ecole/{idEcole}/all")]
-        [Authorize(Roles = "Admin,Super-Admin,Directeur,IT-Support")]
         [ProducesResponseType(typeof(IEnumerable<Eleve>), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(401)]
@@ -549,9 +559,12 @@ namespace KelasiNaBiso.Controllers
 
         // GET: api/Eleve/5/paiements
         [HttpGet("{id}/paiements")]
-        public async Task<ActionResult<IEnumerable<Paiement>>> GetPaiementsByEleve(int id)
+        [ProducesResponseType(typeof(IEnumerable<PaiementElevePagedItemDto>), 200)]
+        public async Task<ActionResult<IEnumerable<PaiementElevePagedItemDto>>> GetPaiementsByEleve(
+            int id,
+            [FromQuery] string? libelleAnneeScolaire = null)
         {
-            var paiements = await _eleveRepository.GetPaiementsAsync(id);
+            var paiements = await _eleveRepository.GetPaiementsAsync(id, libelleAnneeScolaire);
             return Ok(paiements);
         }
 
@@ -662,7 +675,6 @@ namespace KelasiNaBiso.Controllers
         /// - Statut (endpoint toggle-statut)
         /// </remarks>
         [HttpPut("{id}")]
-        [Authorize(Roles = "Admin,Super-Admin")]
         [ProducesResponseType(typeof(Eleve), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(404)]
@@ -800,7 +812,6 @@ namespace KelasiNaBiso.Controllers
         // ✅ PUT: api/Eleve/{idEleve}/serial-number
         // Mise à jour du Serial Number par IdEleve
         [HttpPut("{idEleve}/serial-number")]
-        [Authorize(Roles = "Admin,Directeur,Super-Admin,IT-Support")]
         public async Task<IActionResult> UpdateSerialNumberById(int idEleve, [FromBody] UpdateSerialNumberDto dto)
         {
             if (!ModelState.IsValid)
@@ -844,7 +855,6 @@ namespace KelasiNaBiso.Controllers
         // ✅ PUT: api/Eleve/matricule/{matricule}/serial-number
         // Mise à jour du Serial Number par Matricule
         [HttpPut("matricule/{matricule}/serial-number")]
-        [Authorize(Roles = "Admin,Directeur,Super-Admin,IT-Support")]
         public async Task<IActionResult> UpdateSerialNumberByMatricule(string matricule, [FromBody] UpdateSerialNumberDto dto)
         {
             if (!ModelState.IsValid)

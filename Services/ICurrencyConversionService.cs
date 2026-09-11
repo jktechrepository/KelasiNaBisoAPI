@@ -16,6 +16,11 @@ namespace KelasiNaBiso.Services
             decimal montant,
             DateTime dateReference,
             CancellationToken ct = default);
+
+        Task<bool> IsActiveDeviseAsync(
+            int idEcole,
+            string codeDevise,
+            CancellationToken ct = default);
     }
 
     public record ConversionResult(

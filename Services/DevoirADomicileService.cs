@@ -1,5 +1,7 @@
 using KelasiNaBiso.Data;
 using KelasiNaBiso.Models;
+using KelasiNaBiso.Models.DTOs;
+using KelasiNaBiso.Models.DTOs.DevoirADomicile;
 using KelasiNaBiso.Models.DTOs.Pagination;
 using KelasiNaBiso.Models.Enums;
 using KelasiNaBiso.Services.Repositories;
@@ -17,17 +19,20 @@ namespace KelasiNaBiso.Services
         private readonly ICurrentUserService _currentUserService;
         private readonly ILogger<DevoirADomicileService> _logger;
         private readonly IInscriptionActiveResolver _inscriptionResolver;
+        private readonly EleveAnneeScopeHelper _scope;
 
         public DevoirADomicileService(
             KelasiNaBisoDbContext context,
             ICurrentUserService currentUserService,
             ILogger<DevoirADomicileService> logger,
-            IInscriptionActiveResolver inscriptionResolver)
+            IInscriptionActiveResolver inscriptionResolver,
+            EleveAnneeScopeHelper scope)
         {
             _context = context;
             _currentUserService = currentUserService;
             _logger = logger;
             _inscriptionResolver = inscriptionResolver;
+            _scope = scope;
         }
 
         // ═══════════════════════════════════════════════════════════════════
@@ -365,6 +370,153 @@ namespace KelasiNaBiso.Services
             }
 
             return await query.ToPagedAsync(request);
+        }
+
+        public async Task<PagedResult<DevoirADomicilePourTuteurDto>> GetByTuteurPagedAsync(
+            int idTuteur,
+            PagedRequest request,
+            string? libelleAnneeScolaire = null)
+        {
+            var pageNumber = Math.Max(1, request.PageNumber);
+            var pageSize = Math.Clamp(request.PageSize, 1, 100);
+
+            var now = DateTime.Now;
+            var inscriptions = await _context.Inscriptions
+                .AsNoTracking()
+                .Include(i => i.Eleve)
+                .Include(i => i.Ecole)
+                .Include(i => i.Classe)
+                .Include(i => i.AnneeScolaire)
+                .Where(i => i.Eleve != null
+                    && i.Eleve.IdTuteur == idTuteur
+                    && i.Eleve.Statut == true
+                    && i.Statut == true
+                    && i.StatutInscription != null
+                    && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                        || i.StatutInscription == "Confirme"
+                        || i.StatutInscription.StartsWith("Confirm")))
+                .Where(i => string.IsNullOrWhiteSpace(libelleAnneeScolaire)
+                    ? i.AnneeScolaire != null
+                        && i.AnneeScolaire.Statut == true
+                        && i.AnneeScolaire.DateDebut <= now
+                        && i.AnneeScolaire.DateFin >= now
+                    : i.AnneeScolaire != null
+                        && i.AnneeScolaire.LibelleAnneeScolaire.ToLower()
+                            == libelleAnneeScolaire.Trim().ToLower())
+                .ToListAsync();
+
+            var elevesParClasse = inscriptions
+                .GroupBy(i => new { i.IdEleve, i.IdEcole, i.IdAnneeScolaire, i.IdClasse })
+                .Select(g => g.OrderByDescending(i => i.DateInscription).First())
+                .Select(i =>
+                {
+                    return new EleveConcerneDevoirDto
+                    {
+                        IdEleve = i.IdEleve,
+                        NomComplet = i.Eleve!.NomComplet,
+                        IdClasse = i.IdClasse,
+                        NomClasse = i.Classe?.NomClasse
+                    };
+                })
+                .ToList();
+
+            if (inscriptions.Count == 0)
+                return new PagedResult<DevoirADomicilePourTuteurDto>(
+                    new List<DevoirADomicilePourTuteurDto>(), 0, pageNumber, pageSize);
+
+            var classeKeys = inscriptions
+                .Select(i => $"{i.IdEcole}:{i.IdAnneeScolaire}:{i.IdClasse}")
+                .ToHashSet();
+
+            var query = _context.DevoirsADomicile
+                .AsNoTracking()
+                .Include(d => d.Ecole)
+                .Include(d => d.Direction)
+                .Include(d => d.Agent)
+                .Include(d => d.Classe)
+                .Include(d => d.Cours)
+                .Include(d => d.AnneeScolaire)
+                .Where(d => d.Statut == true || request.IncludeInactive);
+
+            if (!request.IncludeInactive)
+                query = query.Where(d => d.Statut == true);
+
+            var devoirs = (await query
+                .OrderByDescending(d => d.DatePublication)
+                .ToListAsync())
+                .Where(d => classeKeys.Contains($"{d.IdEcole}:{d.IdAnneeScolaire}:{d.IdClasse}"))
+                .ToList();
+
+            var mapped = devoirs.Select(d =>
+            {
+                var dto = MapToTuteurDto(d);
+                dto.ElevesConcernes = elevesParClasse
+                    .Where(e => inscriptions.Any(i => i.IdEleve == e.IdEleve
+                        && i.IdEcole == d.IdEcole
+                        && i.IdAnneeScolaire == d.IdAnneeScolaire
+                        && i.IdClasse == d.IdClasse))
+                    .OrderBy(e => e.NomComplet)
+                    .ToList();
+                return dto;
+            }).ToList();
+
+            if (!string.IsNullOrWhiteSpace(request.SearchTerm))
+            {
+                var term = request.SearchTerm.Trim();
+                if (term.Length > 200)
+                    term = term[..200];
+                var searchLower = term.ToLower();
+
+                mapped = mapped.Where(d =>
+                    (d.Titre != null && d.Titre.ToLower().Contains(searchLower))
+                    || (d.Description != null && d.Description.ToLower().Contains(searchLower))
+                    || (d.NomClasse != null && d.NomClasse.ToLower().Contains(searchLower))
+                    || d.ElevesConcernes.Any(e =>
+                        e.NomComplet != null && e.NomComplet.ToLower().Contains(searchLower)))
+                    .ToList();
+            }
+
+            var total = mapped.Count;
+            var page = mapped
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
+
+            return new PagedResult<DevoirADomicilePourTuteurDto>(page, total, pageNumber, pageSize);
+        }
+
+        private static DevoirADomicilePourTuteurDto MapToTuteurDto(DevoirADomicile d)
+        {
+            var agentNom = d.Agent == null
+                ? null
+                : $"{d.Agent.Nom} {d.Agent.Postnom} {d.Agent.Prenom}".Trim();
+
+            return new DevoirADomicilePourTuteurDto
+            {
+                IdDevoirADomicile = d.IdDevoirADomicile,
+                Titre = d.Titre,
+                Description = d.Description,
+                Contenu = d.Contenu,
+                NomFichier = d.NomFichier,
+                TailleFichier = d.TailleFichier,
+                TypeMIME = d.TypeMIME,
+                IdEcole = d.IdEcole,
+                NomEcole = d.Ecole?.Nom,
+                IdDirection = d.IdDirection,
+                NomDirection = d.Direction?.NomDirection,
+                IdAgent = d.IdAgent,
+                NomAgent = string.IsNullOrWhiteSpace(agentNom) ? null : agentNom,
+                IdClasse = d.IdClasse,
+                NomClasse = d.Classe?.NomClasse,
+                IdAnneeScolaire = d.IdAnneeScolaire,
+                LibelleAnneeScolaire = d.AnneeScolaire?.LibelleAnneeScolaire,
+                IdCours = d.IdCours,
+                NomCours = d.Cours?.NomCours,
+                DatePublication = d.DatePublication,
+                DateLimite = d.DateLimite,
+                NombreTelechargements = d.NombreTelechargements,
+                Statut = d.Statut
+            };
         }
 
         // ═══════════════════════════════════════════════════════════════════

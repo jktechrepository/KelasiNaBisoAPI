@@ -92,6 +92,13 @@ namespace KelasiNaBiso.Models.DTOs
         public string? DeviseFrais { get; set; }
         public DateTime? DateCreationFrais { get; set; }
 
+        /// <summary>Calculé en mémoire (hors vue SQL) : total confirmé sur le frais.</summary>
+        public decimal? TotalPayeSurFrais { get; set; }
+        /// <summary>Calculé en mémoire (hors vue SQL) : reste à payer sur le frais.</summary>
+        public decimal? ResteAPayer { get; set; }
+        /// <summary>Devise du reste (= DeviseFrais).</summary>
+        public string? CodeDeviseReste { get; set; }
+
         // Tuteur
         public int? IdTuteur { get; set; }
         public string? NomTuteur { get; set; }

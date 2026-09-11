@@ -122,6 +122,43 @@ namespace KelasiNaBiso.Tests.Unit.Services
             result.Data.Should().ContainSingle(e => e.IdEleve == 2);
         }
 
+        [Fact]
+        public async Task GetByTuteurAsync_DefaultYear_ReturnsStudentAndYearFields()
+        {
+            var result = await _service.GetByTuteurAsync(1);
+
+            result.Should().ContainSingle(e => e.IdEleve == 1);
+
+            var eleve = result.Single();
+            eleve.IdEleve.Should().Be(1);
+            eleve.IdAnneeScolaire.Should().Be(100);
+            eleve.LibelleAnneeScolaire.Should().Be("Courante");
+        }
+
+        [Fact]
+        public async Task GetByTuteurAsync_LibelleAnneeScolaire_ReturnsMatchingYear()
+        {
+            var result = await _service.GetByTuteurAsync(
+                1, libelleAnneeScolaire: "Precedente");
+
+            result.Should().ContainSingle(e => e.IdEleve == 2);
+            result.Single().IdAnneeScolaire.Should().Be(99);
+            result.Single().LibelleAnneeScolaire.Should().Be("Precedente");
+        }
+
+        [Fact]
+        public async Task GetByTuteurAsync_IdEleve_FiltersWithinTuteurAndYear()
+        {
+            var result = await _service.GetByTuteurAsync(1, idEleve: 1);
+
+            result.Should().ContainSingle(e => e.IdEleve == 1);
+            result.Single().IdAnneeScolaire.Should().Be(100);
+
+            var otherYear = await _service.GetByTuteurAsync(1, idEleve: 2);
+
+            otherYear.Should().BeEmpty();
+        }
+
         public void Dispose() => _context.Dispose();
     }
 }

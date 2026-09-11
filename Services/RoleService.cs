@@ -18,43 +18,42 @@ namespace KelasiNaBiso.Services
         {
             if (!string.IsNullOrEmpty(nomRole))
             {
+                var query = _context.Roles
+                    .Where(r => r.Statut == true)
+                    .Where(r => r.Nom != "Eleve" && r.Nom != "Parent");
+
                 if (nomRole == "Super-Admin")
                 {
-                    return await _context.Roles
-                        .Where(r => r.Statut == true) // ✅ Filtrer uniquement les rôles actifs
+                    return await query
                         .OrderBy(r => r.Nom)
                         .ToListAsync();
                 }
                 else if (nomRole == "Admin")
                 {
-                    return await _context.Roles
-                        .Where(r => r.Statut == true) // ✅ Filtrer uniquement les rôles actifs
-                        .Where(r => r.Nom != "Super-Admin")
+                    return await query
+                        .Where(r => r.Nom != "Super-Admin" && r.Nom != "IT-Support")
                         .OrderBy(r => r.Nom)
                         .ToListAsync();
                 }
                 else if (nomRole == "Directeur")
                 {
-                    return await _context.Roles
-                        .Where(r => r.Statut == true) // ✅ Filtrer uniquement les rôles actifs
-                        .Where(r => r.Nom != "Super-Admin" && r.Nom != "Admin")
+                    return await query
+                        .Where(r => r.Nom != "Super-Admin" && r.Nom != "Admin" && r.Nom != "IT-Support")
                         .OrderBy(r => r.Nom)
                         .ToListAsync();
                 }
                 else if (nomRole == "IT-Support")
                 {
-                    // IT-Support n'attribue pas de rôles métier : lecture limitée, pas de Super/Admin/Directeur
-                    return await _context.Roles
-                        .Where(r => r.Statut == true)
-                        .Where(r => r.Nom != "Super-Admin" && r.Nom != "Admin" && r.Nom != "Directeur")
+                    // IT-Support ne peut pas attribuer de rôles réservés ni son propre rôle.
+                    return await query
+                        .Where(r => r.Nom != "Super-Admin" && r.Nom != "Admin" && r.Nom != "Directeur" && r.Nom != "IT-Support")
                         .OrderBy(r => r.Nom)
                         .ToListAsync();
                 }
                 else
                 {
-                    return await _context.Roles
-                        .Where(r => r.Statut == true) // ✅ Filtrer uniquement les rôles actifs
-                        .Where(r => r.Nom != "Super-Admin" && r.Nom != "Admin" && r.Nom != "Directeur")
+                    return await query
+                        .Where(r => r.Nom != "Super-Admin" && r.Nom != "Admin" && r.Nom != "Directeur" && r.Nom != "IT-Support")
                         .OrderBy(r => r.Nom)
                         .ToListAsync();
                 }

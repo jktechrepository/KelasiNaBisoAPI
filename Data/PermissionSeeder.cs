@@ -26,6 +26,7 @@ namespace KelasiNaBiso.Data
                 await EnsureEvaluationPermissionsAsync(context);
                 await EnsureCaissierPermissionsAsync(context);
                 await EnsureControleurPermissionsAsync(context);
+                await EnsureDirecteurPermissionsAsync(context);
                 return;
             }
 
@@ -320,30 +321,12 @@ namespace KelasiNaBiso.Data
             }
 
             // ═══════════════════════════════════════════════════════════════════
-            // 🟢 DIRECTEUR : Mêmes permissions que Admin, sauf modification/suppression de paiements
+            // 🟢 DIRECTEUR : Mêmes permissions que Admin, sauf création/modification/suppression de paiements
             // Peut créer des utilisateurs sauf Admin et Super-Admin (vérifié au niveau métier)
             // ═══════════════════════════════════════════════════════════════════
             if (directeurRole != null)
             {
-                // Prendre toutes les permissions de Admin
-                var directeurPermissions = allPermissions.Where(p =>
-                    // Écoles : Lecture et modification uniquement (pas création/suppression)
-                    (p.Categorie == "Ecole" && (p.Action == "Read" || p.Action == "ReadAll" || p.Action == "Update")) ||
-                    // Gestion complète de son école
-                    p.Categorie == "Utilisateur" ||
-                    p.Categorie == "Eleve" ||
-                    p.Categorie == "Agent" ||
-                    // Paiements : Création et lecture uniquement (PAS modification ni suppression)
-                    (p.Categorie == "Paiement" && p.Action != "Update" && p.Action != "Delete") ||
-                    p.Categorie == "Note" ||
-                    p.Categorie == "Evaluation" ||
-                    p.Categorie == "Tuteur" ||
-                    p.Categorie == "Classe" ||
-                    p.Categorie == "Frais" ||
-                    p.Categorie == "Inscription" ||
-                    p.Categorie == "Presence" ||
-                    p.Categorie == "Cours"
-                ).ToList();
+                var directeurPermissions = GetDirecteurPermissions(allPermissions);
 
                 foreach (var permission in directeurPermissions)
                 {
@@ -354,7 +337,7 @@ namespace KelasiNaBiso.Data
                         DateAttribution = DateTime.UtcNow
                     });
                 }
-                Console.WriteLine($"✅ {directeurPermissions.Count} permissions assignées à Directeur (mêmes que Admin sauf Paiement.Update et Paiement.Delete)");
+                Console.WriteLine($"✅ {directeurPermissions.Count} permissions assignées à Directeur (mêmes que Admin sauf Paiement.Create, Paiement.Update et Paiement.Delete)");
             }
 
             // ═══════════════════════════════════════════════════════════════════
@@ -507,8 +490,68 @@ namespace KelasiNaBiso.Data
             await EnsureItSupportPermissionsAsync(context);
             await EnsureCaissierPermissionsAsync(context);
             await EnsureControleurPermissionsAsync(context);
+            await EnsureDirecteurPermissionsAsync(context);
 
             await context.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// Permissions Directeur : mêmes que Admin sauf Paiement.Create/Update/Delete (lecture et validation uniquement).
+        /// </summary>
+        private static List<Permission> GetDirecteurPermissions(IEnumerable<Permission> allPermissions) =>
+            allPermissions.Where(p =>
+                (p.Categorie == "Ecole" && (p.Action == "Read" || p.Action == "ReadAll" || p.Action == "Update")) ||
+                p.Categorie == "Utilisateur" ||
+                p.Categorie == "Eleve" ||
+                p.Categorie == "Agent" ||
+                (p.Categorie == "Paiement" && (p.Action == "Read" || p.Action == "ReadAll" || p.Action == "Validate")) ||
+                p.Categorie == "Note" ||
+                p.Categorie == "Evaluation" ||
+                p.Categorie == "Tuteur" ||
+                p.Categorie == "Classe" ||
+                p.Categorie == "Frais" ||
+                p.Categorie == "Inscription" ||
+                p.Categorie == "Presence" ||
+                p.Categorie == "Cours"
+            ).ToList();
+
+        /// <summary>
+        /// Retire (idempotent) Paiement.Create/Update/Delete du rôle Directeur sur les bases existantes.
+        /// </summary>
+        public static async Task EnsureDirecteurPermissionsAsync(KelasiNaBisoDbContext context)
+        {
+            var directeurRole = await context.Roles.FirstOrDefaultAsync(r => r.Nom == "Directeur");
+            if (directeurRole == null)
+            {
+                Console.WriteLine("⚠️ Le rôle Directeur n'existe pas. Impossible de mettre à jour les permissions.");
+                return;
+            }
+
+            var forbiddenNames = new[] { "Paiement.Create", "Paiement.Update", "Paiement.Delete" };
+            var forbiddenPermissionIds = await context.Permissions
+                .Where(p => forbiddenNames.Contains(p.Nom))
+                .Select(p => p.IdPermission)
+                .ToListAsync();
+
+            if (!forbiddenPermissionIds.Any())
+            {
+                Console.WriteLine("⚠️ Permissions Paiement.Create/Update/Delete introuvables. Rien à retirer pour Directeur.");
+                return;
+            }
+
+            var toRemove = await context.RolePermissions
+                .Where(rp => rp.IdRole == directeurRole.IdRole && forbiddenPermissionIds.Contains(rp.IdPermission))
+                .ToListAsync();
+
+            if (!toRemove.Any())
+            {
+                Console.WriteLine("✅ Le rôle Directeur n'a déjà plus Paiement.Create/Update/Delete.");
+                return;
+            }
+
+            context.RolePermissions.RemoveRange(toRemove);
+            await context.SaveChangesAsync();
+            Console.WriteLine($"✅ {toRemove.Count} permission(s) Paiement retirée(s) du rôle Directeur (Create/Update/Delete).");
         }
 
         /// <summary>

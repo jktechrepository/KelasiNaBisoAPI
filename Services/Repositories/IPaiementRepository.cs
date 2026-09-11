@@ -10,7 +10,7 @@ namespace KelasiNaBiso.Services.Repositories
             int idEcole, PagedRequest request, int? idAnneeScolaire = null, int? idUtilisateur = null);
         Task<ElevesAnneeScopedResult<CursorPaginatedResult<Paiement>>> GetAllCursorPagedAsync(
             int idEcole, CursorPaginationRequest request, int? idAnneeScolaire = null, int? idUtilisateur = null);
-        Task<ElevesAnneeScopedResult<PagedResult<Paiement>>> GetByElevePagedAsync(
+        Task<ElevesAnneeScopedResult<PagedResult<PaiementElevePagedItemDto>>> GetByElevePagedAsync(
             int idEleve, PagedRequest request, int? idAnneeScolaire = null);
         Task<ElevesAnneeScopedResult<PagedResult<Paiement>>> GetByEcolePagedAsync(
             int idEcole, PagedRequest request, int? idAnneeScolaire = null);
@@ -22,7 +22,7 @@ namespace KelasiNaBiso.Services.Repositories
         Task<ElevesAnneeScopedResult<IEnumerable<Paiement>>> GetAllAsync(int idEcole, int? idAnneeScolaire = null);
         Task<Paiement> GetByIdAsync(int id);
         Task<Paiement> GetByReferenceAsync(string reference);
-        Task<ElevesAnneeScopedResult<IEnumerable<Paiement>>> GetByEleveAsync(int idEleve, int? idAnneeScolaire = null);
+        Task<ElevesAnneeScopedResult<IEnumerable<PaiementElevePagedItemDto>>> GetByEleveAsync(int idEleve, int? idAnneeScolaire = null);
         Task<IEnumerable<Paiement>> GetByUtilisateurAsync(int idUtilisateur);
         Task<IEnumerable<Paiement>> GetByFraisAsync(int idFrais);
         Task<ElevesAnneeScopedResult<IEnumerable<Paiement>>> GetByEcoleAsync(int idEcole, int? idAnneeScolaire = null);

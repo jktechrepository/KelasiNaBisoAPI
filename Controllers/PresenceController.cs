@@ -334,8 +334,6 @@ namespace KelasiNaBiso.Controllers
 
         // PUT: api/Presence/5
         [HttpPut("{id}")]
-        [Authorize(Roles = "Admin,Super-Admin,Enseignant")]
-        [Permission("Presence.Update")]
         [ProducesResponseType(typeof(Presence), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(404)]

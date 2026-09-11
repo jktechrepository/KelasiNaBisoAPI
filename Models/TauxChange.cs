@@ -18,7 +18,7 @@ namespace KelasiNaBiso.Models
         [StringLength(10)]
         public string CodeDeviseCible { get; set; } = string.Empty;
 
-        [Range(typeof(decimal), "0.00000001", "79228162514264337593543950335")]
+        [Range(0.00000001, double.MaxValue)]
         public decimal Taux { get; set; }
 
         public DateTime DateEffet { get; set; } = DateTime.UtcNow;

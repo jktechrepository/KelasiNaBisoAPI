@@ -870,7 +870,6 @@ namespace KelasiNaBiso.Controllers
         /// - Rôle, École, Statut (utiliser PUT /api/Utilisateur/{id}/admin)
         /// </remarks>
         [HttpPut("{id}")]
-        [Permission("Utilisateur.Update")]
         [ProducesResponseType(typeof(Utilisateur), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(401)]
@@ -1073,7 +1072,6 @@ namespace KelasiNaBiso.Controllers
         /// </remarks>
         [HttpPut("{id}/admin")]
         [Authorize(Roles = "Admin,Super-Admin")]
-        [Permission("Utilisateur.Update")]
         [ProducesResponseType(typeof(Utilisateur), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(403)]

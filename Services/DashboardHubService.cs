@@ -1,6 +1,7 @@
 using KelasiNaBisoAPI.Hubs;
 using KelasiNaBiso.Models.DTOs.Reporting;
 using KelasiNaBiso.Models.DTOs.Paiement;
+using KelasiNaBiso.Models.DTOs.MokoAfrika;
 using KelasiNaBisoAPI.Services.Repositories;
 using Microsoft.AspNetCore.SignalR;
 
@@ -120,6 +121,50 @@ namespace KelasiNaBisoAPI.Services
         public async Task NotifyPaiementUpdateAsync(int idEcole)
         {
             await NotifyDashboardUpdateAsync(idEcole, "paiement", "paiement_created");
+        }
+
+        public async Task NotifyPayInPendingAsync(int idEcole, PayInSignalRNotification notification)
+        {
+            await BroadcastPayInEventAsync(idEcole, "payin_pending", notification);
+        }
+
+        public async Task NotifyPayInConfirmedAsync(int idEcole, PayInSignalRNotification notification)
+        {
+            await BroadcastPayInEventAsync(idEcole, "payin_confirmed", notification);
+        }
+
+        private async Task BroadcastPayInEventAsync(int idEcole, string eventType, PayInSignalRNotification notification)
+        {
+            try
+            {
+                var payload = new
+                {
+                    ecoleId = idEcole,
+                    dashboardType = "paiement",
+                    eventType,
+                    reference = notification.Reference,
+                    idPaiement = notification.IdPaiement,
+                    idEleve = notification.IdEleve,
+                    montantNet = notification.MontantNet,
+                    statutPaiement = notification.StatutPaiement,
+                    statutGateway = notification.StatutGateway,
+                    timestamp = DateTime.UtcNow
+                };
+
+                var group = _hubContext.Clients.Group($"ecole_{idEcole}");
+                await group.SendAsync("DashboardUpdateNotification", payload);
+                await group.SendAsync("PayInStatusUpdated", payload);
+
+                _logger.LogInformation(
+                    "📡 SignalR PayIn {EventType} diffusé pour école {IdEcole} ref {Reference}",
+                    eventType,
+                    idEcole,
+                    notification.Reference);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Erreur SignalR PayIn {EventType} pour école {IdEcole}", eventType, idEcole);
+            }
         }
     }
 }

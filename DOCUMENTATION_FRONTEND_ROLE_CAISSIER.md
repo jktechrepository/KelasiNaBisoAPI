@@ -31,9 +31,10 @@ Guide complet pour implémenter l'**écran guichet** réservé au rôle JWT **`C
 
 | Rôle | Écran guichet | Wallet Moko | Config Moko | CRUD frais |
 |------|---------------|-------------|-------------|------------|
-| **Caissier** | ✅ | ❌ (403) | Lecture overview seulement | ❌ |
-| **Financier** | ✅ + supervision | ✅ | ✅ | ✅ |
-| **Directeur / Admin** | ✅ + supervision | ✅ | ✅ | Partiel |
+| **Caissier** | ✅ encaissement | ❌ (403) | Lecture overview seulement | ❌ |
+| **Financier** | ✅ encaissement + supervision | ✅ | ✅ | ✅ |
+| **Directeur** | ✅ supervision (lecture) | ✅ | ✅ | Partiel |
+| **Admin** | ✅ encaissement + supervision | ✅ | ✅ | Partiel |
 
 Le Caissier encaisse au guichet pour n'importe quel élève de **son école** (`idEcole` JWT). Il ne gère pas la trésorerie ni la configuration Moko.
 

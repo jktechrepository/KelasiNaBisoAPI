@@ -21,6 +21,7 @@ namespace KelasiNaBiso.Controllers
 
         [HttpGet]
         [RequireGlobalAccess]
+        [AllowAnonymous]
         public async Task<ActionResult<IEnumerable<FraisDto>>> GetFrais()
         {
             var frais = await _fraisRepository.GetAllAsync();
@@ -28,6 +29,7 @@ namespace KelasiNaBiso.Controllers
         }
 
         [HttpGet("{id}")]
+        [AllowAnonymous]
         public async Task<ActionResult<FraisDto>> GetFrais(int id)
         {
             var frais = await _fraisRepository.GetByIdAsync(id);
@@ -37,12 +39,13 @@ namespace KelasiNaBiso.Controllers
         }
 
         [HttpGet("ecole/{idEcole}")]
+        [AllowAnonymous]
         public async Task<IActionResult> GetFraisByEcole(
             int idEcole,
             [FromQuery] int? idAnneeScolaire = null,
             [FromQuery] int? idClasse = null)
         {
-            var deny = this.ForbidIfWrongSchool(idEcole);
+            var deny = await this.ForbidIfWrongSchoolAsync(idEcole);
             if (deny != null)
                 return deny;
 
@@ -57,21 +60,25 @@ namespace KelasiNaBiso.Controllers
         }
 
         [HttpGet("ecole/{idEcole}/libelle")]
+        [AllowAnonymous]
         public async Task<IActionResult> GetFraisByEcoleAndLibelle(
             int idEcole,
-            [FromQuery] string libelleFrais,
+            [FromQuery] string? libelleFrais = null,
             [FromQuery] int? idAnneeScolaire = null,
             [FromQuery] int? idClasse = null)
         {
-            if (string.IsNullOrWhiteSpace(libelleFrais))
-                return BadRequest(new { message = "Le paramètre libelleFrais est requis" });
-
-            var deny = this.ForbidIfWrongSchool(idEcole);
+            var deny = await this.ForbidIfWrongSchoolAsync(idEcole);
             if (deny != null)
                 return deny;
 
             try
             {
+                // Sans libellé : même sémantique que GET /ecole/{idEcole} (liste filtrée année/classe).
+                if (string.IsNullOrWhiteSpace(libelleFrais))
+                {
+                    return Ok(await _fraisRepository.GetByEcoleAsync(idEcole, idAnneeScolaire, idClasse));
+                }
+
                 var result = await _fraisRepository.GetByEcoleAndLibelleAsync(
                     idEcole, libelleFrais, idAnneeScolaire, idClasse);
                 if (result.Data == null)
@@ -90,6 +97,7 @@ namespace KelasiNaBiso.Controllers
         }
 
         [HttpGet("direction/{idDirection}")]
+        [AllowAnonymous]
         public async Task<IActionResult> GetFraisByDirection(
             int idDirection,
             [FromQuery] int? idAnneeScolaire = null,
@@ -106,6 +114,7 @@ namespace KelasiNaBiso.Controllers
         }
 
         [HttpGet("annee/{idAnneeScolaire}")]
+        [AllowAnonymous]
         public async Task<ActionResult<IEnumerable<FraisDto>>> GetFraisByAnnee(int idAnneeScolaire)
         {
             var frais = await _fraisRepository.GetByAnneeAsync(idAnneeScolaire);
@@ -113,6 +122,7 @@ namespace KelasiNaBiso.Controllers
         }
 
         [HttpGet("exists/{id}")]
+        [AllowAnonymous]
         public async Task<ActionResult<bool>> FraisExists(int id)
         {
             var exists = await _fraisRepository.ExistsAsync(id);
@@ -138,7 +148,6 @@ namespace KelasiNaBiso.Controllers
         }
 
         [HttpPut("{id}")]
-        [Authorize(Roles = "Admin,Super-Admin")]
         [Permission("Frais.Update")]
         public async Task<ActionResult<FraisDto>> UpdateFrais(int id, [FromBody] UpdateFraisDto dto)
         {

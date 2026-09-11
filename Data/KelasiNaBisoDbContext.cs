@@ -65,6 +65,7 @@ namespace KelasiNaBiso.Data
         public DbSet<CommunicationHistory> CommunicationHistory { get; set; }
         public DbSet<ParentCommunicationPreference> ParentCommunicationPreferences { get; set; }
         public DbSet<TauxChange> TauxChanges { get; set; }
+        public DbSet<DeviseMonetaire> DevisesMonetaires { get; set; }
         public DbSet<V_Utilisateur> V_Utilisateurs { get; set; }
         public DbSet<V_Eleve> V_Eleves { get; set; }
         public DbSet<EleveParEcoleDTO> EleveParEcole { get; set; }
@@ -1028,6 +1029,10 @@ namespace KelasiNaBiso.Data
             modelBuilder.Entity<VuePaiementsFraisParEcoleDTO>()
                 .ToView("VuePaiementsFraisParEcole")
                 .HasKey(p => p.IdPaiement);
+            modelBuilder.Entity<VuePaiementsFraisParEcoleDTO>()
+                .Ignore(p => p.TotalPayeSurFrais)
+                .Ignore(p => p.ResteAPayer)
+                .Ignore(p => p.CodeDeviseReste);
 
             // Configuration de la vue VuePointagePresenceParEcole
             modelBuilder.Entity<VuePointagePresenceParEcoleDTO>()
@@ -1045,7 +1050,12 @@ namespace KelasiNaBiso.Data
                 .HasIndex(r => r.Nom)
                 .IsUnique();
 
+            modelBuilder.Entity<DeviseMonetaire>()
+                .HasIndex(d => new { d.IdEcole, d.CodeDevise })
+                .IsUnique();
 
+            modelBuilder.Entity<DeviseMonetaire>()
+                .HasIndex(d => d.IdEcole);
         }
 
         // Vues de reporting : source de vérité = Migrations/20260727084551_AddReportingViews.cs
