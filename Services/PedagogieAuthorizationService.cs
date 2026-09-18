@@ -49,6 +49,26 @@ namespace KelasiNaBiso.Services
             return courante?.IdAnneeScolaire;
         }
 
+        public async Task<bool> AgentEstTitulaireClasseAsync(
+            int idAgent,
+            int idClasse,
+            int? idAnneeScolaire = null,
+            CancellationToken cancellationToken = default)
+        {
+            var resolvedAnnee = await ResolveIdAnneeScolairePourClasseAsync(idClasse, idAnneeScolaire, cancellationToken);
+            if (!resolvedAnnee.HasValue)
+                return false;
+
+            return await _context.TitulairesClasses
+                .AsNoTracking()
+                .AnyAsync(tc =>
+                    tc.IdAgent == idAgent
+                    && tc.IdClasse == idClasse
+                    && tc.IdAnneeScolaire == resolvedAnnee.Value
+                    && tc.Statut == true,
+                    cancellationToken);
+        }
+
         public async Task<bool> AgentEnseigneClasseAsync(
             int idAgent,
             int idClasse,
@@ -64,16 +84,7 @@ namespace KelasiNaBiso.Services
                 return false;
             }
 
-            var estTitulaire = await _context.TitulairesClasses
-                .AsNoTracking()
-                .AnyAsync(tc =>
-                    tc.IdAgent == idAgent
-                    && tc.IdClasse == idClasse
-                    && tc.IdAnneeScolaire == resolvedAnnee.Value
-                    && tc.Statut == true,
-                    cancellationToken);
-
-            if (estTitulaire)
+            if (await AgentEstTitulaireClasseAsync(idAgent, idClasse, resolvedAnnee.Value, cancellationToken))
                 return true;
 
             return await _context.AffectationsCours

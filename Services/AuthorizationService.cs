@@ -214,8 +214,8 @@ namespace KelasiNaBiso.Services
                         break;
 
                     case "Eleve":
-                        // Dans KelasiNaBisoAPI, les élèves et utilisateurs sont séparés
-                        // On ne peut pas faire de lien direct, donc on laisse vide pour l'instant
+                        if (user.IdEleve.HasValue)
+                            scope.EleveIds = new List<int> { user.IdEleve.Value };
                         break;
                 }
 

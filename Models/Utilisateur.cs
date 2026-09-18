@@ -107,9 +107,10 @@ namespace KelasiNaBiso.Models
         [ValidateNever]
         public ICollection<CommunicationHistory>? CampaignHistoryActions { get; set; }
 
-        // Relations avec Agent et Tuteur (nullable)
+        // Relations avec Agent, Tuteur et Eleve (nullable)
         public int? IdAgent { get; set; }
         public int? IdTuteur { get; set; }
+        public int? IdEleve { get; set; }
 
         [JsonIgnore]
         [ValidateNever]
@@ -120,6 +121,11 @@ namespace KelasiNaBiso.Models
         [ValidateNever]
         [ForeignKey("IdTuteur")]
         public Tuteur? Tuteur { get; set; }
+
+        [JsonIgnore]
+        [ValidateNever]
+        [ForeignKey("IdEleve")]
+        public Eleve? Eleve { get; set; }
 
         // ═══════════════════════════════════════════════════════════════════
         // ✅ MULTI-RÔLES : Relation N-N avec Role via UserRole

@@ -84,6 +84,13 @@ namespace KelasiNaBiso.Services
                     Console.WriteLine($"✅ [SIMPLEJWT] IdTuteur ajouté au token: {tuteurId.Value}");
                 }
 
+                // ✅ Ajouter EleveId si l'utilisateur est lié à une fiche Élève
+                if (utilisateur.IdEleve.HasValue && utilisateur.IdEleve.Value > 0)
+                {
+                    claims.Add(new Claim("EleveId", utilisateur.IdEleve.Value.ToString()));
+                    Console.WriteLine($"✅ [SIMPLEJWT] EleveId ajouté au token: {utilisateur.IdEleve.Value}");
+                }
+
                 // ✅ MULTI-RÔLES : Ajouter tous les rôles si disponibles via UserRoles
                 if (utilisateur.UserRoles != null && utilisateur.UserRoles.Any(ur => ur.Statut == true))
                 {

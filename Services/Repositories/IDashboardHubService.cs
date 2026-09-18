@@ -49,6 +49,11 @@ namespace KelasiNaBisoAPI.Services.Repositories
         /// PayIn Moko confirmé (callback ou polling).
         /// </summary>
         Task NotifyPayInConfirmedAsync(int idEcole, PayInSignalRNotification notification);
+
+        /// <summary>
+        /// PayIn Moko échoué / annulé (USSD cancel, Trans_Status Failed, etc.).
+        /// </summary>
+        Task NotifyPayInFailedAsync(int idEcole, PayInSignalRNotification notification);
     }
 }
 

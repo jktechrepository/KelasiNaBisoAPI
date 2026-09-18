@@ -27,6 +27,9 @@ namespace KelasiNaBiso.Data
                 await EnsureCaissierPermissionsAsync(context);
                 await EnsureControleurPermissionsAsync(context);
                 await EnsureDirecteurPermissionsAsync(context);
+                await EnsureElevePermissionsAsync(context);
+                await EnsureBulletinPermissionsAsync(context);
+                await EnsureDepensePermissionsAsync(context);
                 return;
             }
 
@@ -143,9 +146,16 @@ namespace KelasiNaBiso.Data
                 new Permission { Nom = "Paiement.Read", Categorie = "Paiement", Action = "Read", Description = "Voir un paiement", Statut = true },
                 new Permission { Nom = "Paiement.ReadAll", Categorie = "Paiement", Action = "ReadAll", Description = "Voir tous les paiements", Statut = true },
                 new Permission { Nom = "Paiement.ReadOwn", Categorie = "Paiement", Action = "ReadOwn", Description = "Voir ses propres paiements (parent)", Statut = true },
+                new Permission { Nom = "Paiement.PayOwn", Categorie = "Paiement", Action = "PayOwn", Description = "Payer ses propres frais (élève / parent)", Statut = true },
                 new Permission { Nom = "Paiement.Update", Categorie = "Paiement", Action = "Update", Description = "Modifier un paiement", Statut = true },
                 new Permission { Nom = "Paiement.Delete", Categorie = "Paiement", Action = "Delete", Description = "Supprimer un paiement", Statut = true },
                 new Permission { Nom = "Paiement.Validate", Categorie = "Paiement", Action = "Validate", Description = "Valider un paiement", Statut = true },
+
+                // ═══════════════════════════════════════════════════════════════════
+                // NOTIFICATION - consultation « own »
+                // ═══════════════════════════════════════════════════════════════════
+                new Permission { Nom = "Notification.ReadOwn", Categorie = "Notification", Action = "ReadOwn", Description = "Consulter ses propres notifications", Statut = true },
+                new Permission { Nom = "Notification.UpdateOwn", Categorie = "Notification", Action = "UpdateOwn", Description = "Marquer ses notifications comme lues", Statut = true },
 
                 // ═══════════════════════════════════════════════════════════════════
                 // NOTE - 7 permissions
@@ -157,6 +167,33 @@ namespace KelasiNaBiso.Data
                 new Permission { Nom = "Note.ReadChildren", Categorie = "Note", Action = "ReadChildren", Description = "Voir les notes de ses enfants (parent)", Statut = true },
                 new Permission { Nom = "Note.Update", Categorie = "Note", Action = "Update", Description = "Modifier une note", Statut = true },
                 new Permission { Nom = "Note.Delete", Categorie = "Note", Action = "Delete", Description = "Supprimer une note", Statut = true },
+
+                // ═══════════════════════════════════════════════════════════════════
+                // BULLETIN - 5 permissions
+                // ═══════════════════════════════════════════════════════════════════
+                new Permission { Nom = "Bulletin.Read", Categorie = "Bulletin", Action = "Read", Description = "Voir les bulletins (classe / école)", Statut = true },
+                new Permission { Nom = "Bulletin.ReadOwn", Categorie = "Bulletin", Action = "ReadOwn", Description = "Voir son propre bulletin (élève)", Statut = true },
+                new Permission { Nom = "Bulletin.ReadChildren", Categorie = "Bulletin", Action = "ReadChildren", Description = "Voir les bulletins de ses enfants (parent)", Statut = true },
+                new Permission { Nom = "Bulletin.Update", Categorie = "Bulletin", Action = "Update", Description = "Saisir décision / appréciation de bulletin", Statut = true },
+                new Permission { Nom = "Bulletin.Unlock", Categorie = "Bulletin", Action = "Unlock", Description = "Déverrouiller un bulletin figé", Statut = true },
+
+                // ═══════════════════════════════════════════════════════════════════
+                // DEPENSE - 5 permissions
+                // ═══════════════════════════════════════════════════════════════════
+                new Permission { Nom = "Depense.Read", Categorie = "Depense", Action = "Read", Description = "Voir une dépense", Statut = true },
+                new Permission { Nom = "Depense.ReadAll", Categorie = "Depense", Action = "ReadAll", Description = "Lister les dépenses", Statut = true },
+                new Permission { Nom = "Depense.Create", Categorie = "Depense", Action = "Create", Description = "Créer une dépense", Statut = true },
+                new Permission { Nom = "Depense.Update", Categorie = "Depense", Action = "Update", Description = "Modifier / annuler une dépense", Statut = true },
+                new Permission { Nom = "Depense.Delete", Categorie = "Depense", Action = "Delete", Description = "Supprimer (soft) une dépense", Statut = true },
+
+                // ═══════════════════════════════════════════════════════════════════
+                // CATEGORIE DEPENSE - 5 permissions
+                // ═══════════════════════════════════════════════════════════════════
+                new Permission { Nom = "CategorieDepense.Read", Categorie = "CategorieDepense", Action = "Read", Description = "Voir une catégorie de dépense", Statut = true },
+                new Permission { Nom = "CategorieDepense.ReadAll", Categorie = "CategorieDepense", Action = "ReadAll", Description = "Lister les catégories de dépense", Statut = true },
+                new Permission { Nom = "CategorieDepense.Create", Categorie = "CategorieDepense", Action = "Create", Description = "Créer une catégorie de dépense", Statut = true },
+                new Permission { Nom = "CategorieDepense.Update", Categorie = "CategorieDepense", Action = "Update", Description = "Modifier une catégorie de dépense", Statut = true },
+                new Permission { Nom = "CategorieDepense.Delete", Categorie = "CategorieDepense", Action = "Delete", Description = "Supprimer / désactiver une catégorie", Statut = true },
 
                 // ═══════════════════════════════════════════════════════════════════
                 // EVALUATION - 5 permissions
@@ -206,11 +243,12 @@ namespace KelasiNaBiso.Data
                 new Permission { Nom = "Classe.Delete", Categorie = "Classe", Action = "Delete", Description = "Supprimer une classe", Statut = true },
 
                 // ═══════════════════════════════════════════════════════════════════
-                // FRAIS - 5 permissions
+                // FRAIS - 6 permissions
                 // ═══════════════════════════════════════════════════════════════════
                 new Permission { Nom = "Frais.Create", Categorie = "Frais", Action = "Create", Description = "Créer un frais", Statut = true },
                 new Permission { Nom = "Frais.Read", Categorie = "Frais", Action = "Read", Description = "Voir un frais", Statut = true },
                 new Permission { Nom = "Frais.ReadAll", Categorie = "Frais", Action = "ReadAll", Description = "Voir tous les frais", Statut = true },
+                new Permission { Nom = "Frais.ReadOwn", Categorie = "Frais", Action = "ReadOwn", Description = "Voir ses propres frais / situation de paiement (élève)", Statut = true },
                 new Permission { Nom = "Frais.Update", Categorie = "Frais", Action = "Update", Description = "Modifier un frais", Statut = true },
                 new Permission { Nom = "Frais.Delete", Categorie = "Frais", Action = "Delete", Description = "Supprimer un frais", Statut = true },
 
@@ -240,6 +278,15 @@ namespace KelasiNaBiso.Data
                 new Permission { Nom = "Cours.ReadAll", Categorie = "Cours", Action = "ReadAll", Description = "Voir tous les cours", Statut = true },
                 new Permission { Nom = "Cours.Update", Categorie = "Cours", Action = "Update", Description = "Modifier un cours", Statut = true },
                 new Permission { Nom = "Cours.Delete", Categorie = "Cours", Action = "Delete", Description = "Supprimer un cours", Statut = true },
+
+                // ═══════════════════════════════════════════════════════════════════
+                // DEVOIR À DOMICILE - 5 permissions
+                // ═══════════════════════════════════════════════════════════════════
+                new Permission { Nom = "DevoirADomicile.Create", Categorie = "DevoirADomicile", Action = "Create", Description = "Créer et publier un devoir à domicile", Statut = true },
+                new Permission { Nom = "DevoirADomicile.Read", Categorie = "DevoirADomicile", Action = "Read", Description = "Voir et consulter les devoirs à domicile", Statut = true },
+                new Permission { Nom = "DevoirADomicile.Update", Categorie = "DevoirADomicile", Action = "Update", Description = "Modifier un devoir à domicile existant", Statut = true },
+                new Permission { Nom = "DevoirADomicile.Delete", Categorie = "DevoirADomicile", Action = "Delete", Description = "Supprimer un devoir à domicile", Statut = true },
+                new Permission { Nom = "DevoirADomicile.Download", Categorie = "DevoirADomicile", Action = "Download", Description = "Télécharger le fichier PDF d'un devoir à domicile", Statut = true },
             };
         }
 
@@ -299,6 +346,7 @@ namespace KelasiNaBiso.Data
                     p.Categorie == "Agent" ||
                     p.Categorie == "Paiement" ||
                     p.Categorie == "Note" ||
+                    p.Categorie == "Bulletin" ||
                     p.Categorie == "Evaluation" ||
                     p.Categorie == "Tuteur" ||
                     p.Categorie == "Classe" ||
@@ -348,6 +396,8 @@ namespace KelasiNaBiso.Data
                 var enseignantPermissions = allPermissions.Where(p =>
                     // Notes : Créer, lire, modifier (pas supprimer)
                     (p.Categorie == "Note" && p.Action != "Delete") ||
+                    // Bulletins : lecture + saisie décision (ACL titulaire)
+                    (p.Categorie == "Bulletin" && (p.Action == "Read" || p.Action == "Update")) ||
                     // Évaluations : Créer, lire, modifier (pas supprimer)
                     (p.Categorie == "Evaluation" && p.Action != "Delete") ||
                     // Présences : Gestion complète
@@ -383,6 +433,10 @@ namespace KelasiNaBiso.Data
                     (p.Categorie == "Paiement" && p.Action != "Update" && p.Action != "Delete") ||
                     // Frais : Gestion complète
                     p.Categorie == "Frais" ||
+                    // Dépenses : Create/Update/Read/ReadAll
+                    (p.Categorie == "Depense" && p.Action != "Delete") ||
+                    // Catégories dépense : sans Delete
+                    (p.Categorie == "CategorieDepense" && p.Action != "Delete") ||
                     // Élèves : Lecture seule (pour vérifier les paiements)
                     (p.Categorie == "Eleve" && (p.Action == "Read" || p.Action == "ReadAll")) ||
                     // Classes : Lecture seule (pour les frais par classe)
@@ -470,6 +524,7 @@ namespace KelasiNaBiso.Data
             {
                 var elevePermissions = allPermissions.Where(p =>
                     p.Action == "ReadOwn"
+                    || (p.Categorie == "DevoirADomicile" && (p.Action == "Read" || p.Action == "Download"))
                 ).ToList();
 
                 foreach (var permission in elevePermissions)
@@ -491,6 +546,8 @@ namespace KelasiNaBiso.Data
             await EnsureCaissierPermissionsAsync(context);
             await EnsureControleurPermissionsAsync(context);
             await EnsureDirecteurPermissionsAsync(context);
+            await EnsureElevePermissionsAsync(context);
+            await EnsureBulletinPermissionsAsync(context);
 
             await context.SaveChangesAsync();
         }
@@ -506,13 +563,16 @@ namespace KelasiNaBiso.Data
                 p.Categorie == "Agent" ||
                 (p.Categorie == "Paiement" && (p.Action == "Read" || p.Action == "ReadAll" || p.Action == "Validate")) ||
                 p.Categorie == "Note" ||
+                p.Categorie == "Bulletin" ||
                 p.Categorie == "Evaluation" ||
                 p.Categorie == "Tuteur" ||
                 p.Categorie == "Classe" ||
                 p.Categorie == "Frais" ||
                 p.Categorie == "Inscription" ||
                 p.Categorie == "Presence" ||
-                p.Categorie == "Cours"
+                p.Categorie == "Cours" ||
+                (p.Categorie == "Depense" && (p.Action == "Read" || p.Action == "ReadAll" || p.Action == "Update" || p.Action == "Delete")) ||
+                p.Categorie == "CategorieDepense"
             ).ToList();
 
         /// <summary>
@@ -552,6 +612,372 @@ namespace KelasiNaBiso.Data
             context.RolePermissions.RemoveRange(toRemove);
             await context.SaveChangesAsync();
             Console.WriteLine($"✅ {toRemove.Count} permission(s) Paiement retirée(s) du rôle Directeur (Create/Update/Delete).");
+        }
+
+        /// <summary>
+        /// Crée (idempotent) Bulletin.Read / ReadOwn / ReadChildren et les assigne aux rôles.
+        /// </summary>
+        public static async Task EnsureBulletinPermissionsAsync(KelasiNaBisoDbContext context)
+        {
+            var defs = new (string Nom, string Action, string Description)[]
+            {
+                ("Bulletin.Read", "Read", "Voir les bulletins (classe / école)"),
+                ("Bulletin.ReadOwn", "ReadOwn", "Voir son propre bulletin (élève)"),
+                ("Bulletin.ReadChildren", "ReadChildren", "Voir les bulletins de ses enfants (parent)"),
+                ("Bulletin.Update", "Update", "Saisir décision / appréciation de bulletin"),
+                ("Bulletin.Unlock", "Unlock", "Déverrouiller un bulletin figé"),
+            };
+
+            var existingNames = await context.Permissions
+                .Where(p => p.Categorie == "Bulletin")
+                .Select(p => p.Nom)
+                .ToListAsync();
+
+            var created = 0;
+            foreach (var (nom, action, description) in defs)
+            {
+                if (existingNames.Contains(nom))
+                    continue;
+
+                context.Permissions.Add(new Permission
+                {
+                    Nom = nom,
+                    Categorie = "Bulletin",
+                    Action = action,
+                    Description = description,
+                    Statut = true,
+                    DateCreation = DateTime.UtcNow
+                });
+                created++;
+            }
+
+            if (created > 0)
+            {
+                await context.SaveChangesAsync();
+                Console.WriteLine($"✅ {created} permission(s) Bulletin ajoutée(s) au catalogue");
+            }
+
+            var all = await context.Permissions.Where(p => p.Categorie == "Bulletin").ToListAsync();
+            if (!all.Any())
+                return;
+
+            async Task AssignToRole(string roleName, Func<Permission, bool> predicate)
+            {
+                var role = await context.Roles.FirstOrDefaultAsync(r => r.Nom == roleName
+                    || (roleName == UserRoles.ELEVE && r.Nom == "Eleve"));
+                if (role == null)
+                    return;
+
+                var existingIds = await context.RolePermissions
+                    .Where(rp => rp.IdRole == role.IdRole)
+                    .Select(rp => rp.IdPermission)
+                    .ToListAsync();
+
+                var toAdd = all.Where(predicate).Where(p => !existingIds.Contains(p.IdPermission)).ToList();
+                foreach (var p in toAdd)
+                {
+                    context.RolePermissions.Add(new RolePermission
+                    {
+                        IdRole = role.IdRole,
+                        IdPermission = p.IdPermission,
+                        DateAttribution = DateTime.UtcNow
+                    });
+                }
+
+                if (toAdd.Count > 0)
+                    Console.WriteLine($"✅ {toAdd.Count} Bulletin.* assignée(s) à {roleName}");
+            }
+
+            await AssignToRole(UserRoles.SUPER_ADMIN, _ => true);
+            await AssignToRole(UserRoles.ADMIN, _ => true);
+            await AssignToRole(UserRoles.DIRECTEUR, _ => true);
+            await AssignToRole(UserRoles.SOUS_DIRECTEUR, p => p.Action == "Read" || p.Action == "Update" || p.Action == "Unlock");
+            await AssignToRole(UserRoles.ENSEIGNANT, p => p.Action == "Read" || p.Action == "Update");
+            await AssignToRole(UserRoles.PARENT, p => p.Action == "ReadChildren");
+            await AssignToRole(UserRoles.ELEVE, p => p.Action == "ReadOwn");
+
+            await context.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// Crée (idempotent) Depense.* / CategorieDepense.* et les assigne selon la matrice Kelasi V1.
+        /// </summary>
+        public static async Task EnsureDepensePermissionsAsync(KelasiNaBisoDbContext context)
+        {
+            var defs = new (string Nom, string Categorie, string Action, string Description)[]
+            {
+                ("Depense.Read", "Depense", "Read", "Voir une dépense"),
+                ("Depense.ReadAll", "Depense", "ReadAll", "Lister les dépenses"),
+                ("Depense.Create", "Depense", "Create", "Créer une dépense"),
+                ("Depense.Update", "Depense", "Update", "Modifier / annuler une dépense"),
+                ("Depense.Delete", "Depense", "Delete", "Supprimer (soft) une dépense"),
+                ("CategorieDepense.Read", "CategorieDepense", "Read", "Voir une catégorie de dépense"),
+                ("CategorieDepense.ReadAll", "CategorieDepense", "ReadAll", "Lister les catégories de dépense"),
+                ("CategorieDepense.Create", "CategorieDepense", "Create", "Créer une catégorie de dépense"),
+                ("CategorieDepense.Update", "CategorieDepense", "Update", "Modifier une catégorie de dépense"),
+                ("CategorieDepense.Delete", "CategorieDepense", "Delete", "Supprimer / désactiver une catégorie"),
+            };
+
+            var existingNames = await context.Permissions
+                .Where(p => p.Categorie == "Depense" || p.Categorie == "CategorieDepense")
+                .Select(p => p.Nom)
+                .ToListAsync();
+
+            var created = 0;
+            foreach (var (nom, categorie, action, description) in defs)
+            {
+                if (existingNames.Contains(nom))
+                    continue;
+
+                context.Permissions.Add(new Permission
+                {
+                    Nom = nom,
+                    Categorie = categorie,
+                    Action = action,
+                    Description = description,
+                    Statut = true,
+                    DateCreation = DateTime.UtcNow
+                });
+                created++;
+            }
+
+            if (created > 0)
+            {
+                await context.SaveChangesAsync();
+                Console.WriteLine($"✅ {created} permission(s) Depense/CategorieDepense ajoutée(s)");
+            }
+
+            var all = await context.Permissions
+                .Where(p => p.Categorie == "Depense" || p.Categorie == "CategorieDepense")
+                .ToListAsync();
+            if (!all.Any())
+                return;
+
+            async Task AssignToRole(string roleName, Func<Permission, bool> predicate)
+            {
+                var role = await context.Roles.FirstOrDefaultAsync(r => r.Nom == roleName);
+                if (role == null)
+                    return;
+
+                var existingIds = await context.RolePermissions
+                    .Where(rp => rp.IdRole == role.IdRole)
+                    .Select(rp => rp.IdPermission)
+                    .ToListAsync();
+
+                var toAdd = all.Where(predicate).Where(p => !existingIds.Contains(p.IdPermission)).ToList();
+                foreach (var p in toAdd)
+                {
+                    context.RolePermissions.Add(new RolePermission
+                    {
+                        IdRole = role.IdRole,
+                        IdPermission = p.IdPermission,
+                        DateAttribution = DateTime.UtcNow
+                    });
+                }
+
+                if (toAdd.Count > 0)
+                    Console.WriteLine($"✅ {toAdd.Count} Depense/Categorie assignée(s) à {roleName}");
+            }
+
+            await AssignToRole(UserRoles.SUPER_ADMIN, _ => true);
+            await AssignToRole(UserRoles.ADMIN, _ => true);
+            await AssignToRole(UserRoles.FINANCIER, p =>
+                (p.Categorie == "Depense" && p.Action != "Delete")
+                || (p.Categorie == "CategorieDepense" && p.Action != "Delete"));
+            await AssignToRole(UserRoles.CAISSIER, p =>
+                (p.Categorie == "Depense" && (p.Action == "Create" || p.Action == "Read" || p.Action == "ReadAll"))
+                || (p.Categorie == "CategorieDepense" && (p.Action == "Read" || p.Action == "ReadAll")));
+            await AssignToRole(UserRoles.DIRECTEUR, p =>
+                (p.Categorie == "Depense" && (p.Action == "Read" || p.Action == "ReadAll" || p.Action == "Update" || p.Action == "Delete"))
+                || p.Categorie == "CategorieDepense");
+            await AssignToRole(UserRoles.SOUS_DIRECTEUR, p =>
+                (p.Categorie == "Depense" && (p.Action == "Read" || p.Action == "ReadAll" || p.Action == "Update"))
+                || (p.Categorie == "CategorieDepense" && (p.Action == "Read" || p.Action == "ReadAll")));
+
+            await context.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// Assigne (idempotent) lecture « own », PayOwn, notifications et devoirs au rôle Eleve.
+        /// Crée aussi Frais.ReadOwn, Paiement.PayOwn, Notification.ReadOwn/UpdateOwn si manquants.
+        /// </summary>
+        public static async Task EnsureElevePermissionsAsync(KelasiNaBisoDbContext context)
+        {
+            var extraDefs = new (string Nom, string Categorie, string Action, string Description)[]
+            {
+                ("Frais.ReadOwn", "Frais", "ReadOwn", "Voir ses propres frais / situation de paiement (élève)"),
+                ("Paiement.PayOwn", "Paiement", "PayOwn", "Payer ses propres frais (élève / parent)"),
+                ("Notification.ReadOwn", "Notification", "ReadOwn", "Consulter ses propres notifications"),
+                ("Notification.UpdateOwn", "Notification", "UpdateOwn", "Marquer ses notifications comme lues"),
+            };
+
+            var extraNames = extraDefs.Select(d => d.Nom).ToList();
+            var existingNames = await context.Permissions
+                .Where(p => extraNames.Contains(p.Nom))
+                .Select(p => p.Nom)
+                .ToListAsync();
+
+            var createdExtra = 0;
+            foreach (var (nom, categorie, action, description) in extraDefs)
+            {
+                if (existingNames.Contains(nom))
+                    continue;
+
+                context.Permissions.Add(new Permission
+                {
+                    Nom = nom,
+                    Categorie = categorie,
+                    Action = action,
+                    Description = description,
+                    Statut = true,
+                    DateCreation = DateTime.UtcNow
+                });
+                createdExtra++;
+            }
+
+            if (createdExtra > 0)
+            {
+                await context.SaveChangesAsync();
+                Console.WriteLine($"✅ {createdExtra} permission(s) Eleve/PayOwn/Notification ajoutée(s) au catalogue");
+            }
+
+            var devoirDefs = new (string Nom, string Action, string Description)[]
+            {
+                ("DevoirADomicile.Create", "Create", "Créer et publier un devoir à domicile"),
+                ("DevoirADomicile.Read", "Read", "Voir et consulter les devoirs à domicile"),
+                ("DevoirADomicile.Update", "Update", "Modifier un devoir à domicile existant"),
+                ("DevoirADomicile.Delete", "Delete", "Supprimer un devoir à domicile"),
+                ("DevoirADomicile.Download", "Download", "Télécharger le fichier PDF d'un devoir à domicile"),
+            };
+
+            var existingDevoirNames = await context.Permissions
+                .Where(p => p.Categorie == "DevoirADomicile")
+                .Select(p => p.Nom)
+                .ToListAsync();
+
+            var createdDevoir = 0;
+            foreach (var (nom, action, description) in devoirDefs)
+            {
+                if (existingDevoirNames.Contains(nom))
+                    continue;
+
+                context.Permissions.Add(new Permission
+                {
+                    Nom = nom,
+                    Categorie = "DevoirADomicile",
+                    Action = action,
+                    Description = description,
+                    Statut = true,
+                    DateCreation = DateTime.UtcNow
+                });
+                createdDevoir++;
+            }
+
+            if (createdDevoir > 0)
+            {
+                await context.SaveChangesAsync();
+                Console.WriteLine($"✅ {createdDevoir} permission(s) DevoirADomicile ajoutée(s) au catalogue");
+            }
+
+            var allPermissions = await context.Permissions.ToListAsync();
+            if (!allPermissions.Any())
+            {
+                Console.WriteLine("⚠️ Aucune permission en base. Initialise d'abord le catalogue Permissions.");
+                return;
+            }
+
+            // Parent : PayOwn pour payer les frais des enfants (PayIn Moko)
+            await AssignPermissionsToRoleAsync(
+                context,
+                UserRoles.PARENT,
+                allPermissions.Where(p => p.Nom == "Paiement.PayOwn"
+                    || p.Nom == "Notification.ReadOwn"
+                    || p.Nom == "Notification.UpdateOwn").ToList(),
+                "Parent");
+
+            // Admin / Super-Admin : notifications own (routes détail / marquer lu)
+            var notifOwn = allPermissions.Where(p =>
+                p.Nom == "Notification.ReadOwn" || p.Nom == "Notification.UpdateOwn").ToList();
+            await AssignPermissionsToRoleAsync(context, UserRoles.ADMIN, notifOwn, "Admin");
+            await AssignPermissionsToRoleAsync(context, UserRoles.SUPER_ADMIN, notifOwn, "Super-Admin");
+
+            var eleveRole = await context.Roles.FirstOrDefaultAsync(r => r.Nom == UserRoles.ELEVE || r.Nom == "Eleve");
+            if (eleveRole == null)
+            {
+                Console.WriteLine("⚠️ Le rôle Eleve n'existe pas. Impossible d'assigner les permissions.");
+                return;
+            }
+
+            var targetPermissions = allPermissions.Where(p =>
+                p.Action == "ReadOwn"
+                || p.Nom == "Paiement.PayOwn"
+                || p.Nom == "Notification.UpdateOwn"
+                || (p.Categorie == "DevoirADomicile" && (p.Action == "Read" || p.Action == "Download"))
+            ).ToList();
+
+            var existingIds = await context.RolePermissions
+                .Where(rp => rp.IdRole == eleveRole.IdRole)
+                .Select(rp => rp.IdPermission)
+                .ToListAsync();
+
+            var toAdd = targetPermissions
+                .Where(p => !existingIds.Contains(p.IdPermission))
+                .ToList();
+
+            if (!toAdd.Any())
+            {
+                Console.WriteLine($"✅ Le rôle Eleve a déjà les permissions cibles ({existingIds.Count} assignée(s)).");
+                return;
+            }
+
+            foreach (var permission in toAdd)
+            {
+                context.RolePermissions.Add(new RolePermission
+                {
+                    IdRole = eleveRole.IdRole,
+                    IdPermission = permission.IdPermission,
+                    DateAttribution = DateTime.UtcNow
+                });
+            }
+
+            await context.SaveChangesAsync();
+            Console.WriteLine($"✅ {toAdd.Count} permission(s) ajoutée(s) au rôle Eleve (cible: {targetPermissions.Count})");
+        }
+
+        private static async Task AssignPermissionsToRoleAsync(
+            KelasiNaBisoDbContext context,
+            string roleName,
+            List<Permission> permissions,
+            string label)
+        {
+            if (permissions.Count == 0)
+                return;
+
+            var role = await context.Roles.FirstOrDefaultAsync(r => r.Nom == roleName);
+            if (role == null)
+                return;
+
+            var existingIds = await context.RolePermissions
+                .Where(rp => rp.IdRole == role.IdRole)
+                .Select(rp => rp.IdPermission)
+                .ToListAsync();
+
+            var toAdd = permissions.Where(p => !existingIds.Contains(p.IdPermission)).ToList();
+            foreach (var p in toAdd)
+            {
+                context.RolePermissions.Add(new RolePermission
+                {
+                    IdRole = role.IdRole,
+                    IdPermission = p.IdPermission,
+                    DateAttribution = DateTime.UtcNow
+                });
+            }
+
+            if (toAdd.Count > 0)
+            {
+                await context.SaveChangesAsync();
+                Console.WriteLine($"✅ {toAdd.Count} permission(s) ajoutée(s) au rôle {label}");
+            }
         }
 
         /// <summary>
@@ -625,7 +1051,9 @@ namespace KelasiNaBiso.Data
                 (p.Categorie == "Frais" && (p.Action == "Read" || p.Action == "ReadAll")) ||
                 (p.Categorie == "Eleve" && (p.Action == "Read" || p.Action == "ReadAll")) ||
                 (p.Categorie == "Classe" && (p.Action == "Read" || p.Action == "ReadAll")) ||
-                (p.Categorie == "Inscription" && (p.Action == "Read" || p.Action == "ReadAll"))
+                (p.Categorie == "Inscription" && (p.Action == "Read" || p.Action == "ReadAll")) ||
+                (p.Categorie == "Depense" && (p.Action == "Create" || p.Action == "Read" || p.Action == "ReadAll")) ||
+                (p.Categorie == "CategorieDepense" && (p.Action == "Read" || p.Action == "ReadAll"))
             ).ToList();
 
         /// <summary>

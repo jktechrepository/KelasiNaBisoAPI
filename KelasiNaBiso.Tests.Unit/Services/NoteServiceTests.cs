@@ -20,7 +20,7 @@ namespace KelasiNaBiso.Tests.Unit.Services
             var anneeRepo = new AnneeScolaireService(_context);
             var scope = new EleveAnneeScopeHelper(_context, inscriptionResolver, anneeRepo);
             _service = new NoteService(_context, scope);
-            _evaluationService = new EvaluationService(_context);
+            _evaluationService = new EvaluationService(_context, new PeriodeCotationResolver(_context));
             Seed();
         }
 
@@ -33,6 +33,7 @@ namespace KelasiNaBiso.Tests.Unit.Services
                 TestDataBuilder.CreateAnneeScolaire(100, 1, "Courante", _now.AddMonths(-3), _now.AddMonths(6)));
             _context.Utilisateurs.Add(TestDataBuilder.CreateUtilisateur(5, "prof@test.com", "Prof"));
             _context.Eleves.Add(TestDataBuilder.CreateEleve(1, null, "Eleve A"));
+            _context.Eleves.Add(TestDataBuilder.CreateEleve(2, null, "Eleve B"));
             _context.Cours.Add(new Cours
             {
                 IdCours = 50,
@@ -54,6 +55,7 @@ namespace KelasiNaBiso.Tests.Unit.Services
                 DateCreation = DateTime.Now
             });
             _context.Inscriptions.Add(TestDataBuilder.CreateInscription(1, 1, 1, 10, 100));
+            _context.Inscriptions.Add(TestDataBuilder.CreateInscription(2, 2, 1, 10, 100));
             _context.SaveChanges();
         }
 
@@ -113,6 +115,55 @@ namespace KelasiNaBiso.Tests.Unit.Services
             var ok = await _service.DeleteAsync(note.IdNote);
             ok.Should().BeTrue();
             (await _service.GetByIdAsync(note.IdNote)).Should().BeNull();
+        }
+
+        [Fact]
+        public async Task UpsertBulk_CreatesThenUpdates()
+        {
+            var first = await _service.UpsertBulkAsync(new Models.DTOs.BulkNoteRequestDto
+            {
+                IdEvaluation = 1,
+                IdAnneeScolaire = 100,
+                Lignes =
+                {
+                    new Models.DTOs.BulkNoteLigneDto { IdEleve = 1, NoteObtenue = 12 },
+                    new Models.DTOs.BulkNoteLigneDto { IdEleve = 2, NoteObtenue = 15, Appreciation = "Bien" }
+                }
+            }, idProfesseur: 5);
+
+            first.Created.Should().Be(2);
+            first.Updated.Should().Be(0);
+
+            var second = await _service.UpsertBulkAsync(new Models.DTOs.BulkNoteRequestDto
+            {
+                IdEvaluation = 1,
+                IdAnneeScolaire = 100,
+                Lignes =
+                {
+                    new Models.DTOs.BulkNoteLigneDto { IdEleve = 1, NoteObtenue = 14 }
+                }
+            }, idProfesseur: 5);
+
+            second.Created.Should().Be(0);
+            second.Updated.Should().Be(1);
+            second.Notes.Single().NoteObtenue.Should().Be(14);
+        }
+
+        [Fact]
+        public async Task UpsertBulk_EleveHorsClasse_Throws()
+        {
+            _context.Eleves.Add(TestDataBuilder.CreateEleve(99, null, "Hors Classe"));
+            _context.SaveChanges();
+
+            var act = async () => await _service.UpsertBulkAsync(new Models.DTOs.BulkNoteRequestDto
+            {
+                IdEvaluation = 1,
+                IdAnneeScolaire = 100,
+                Lignes = { new Models.DTOs.BulkNoteLigneDto { IdEleve = 99, NoteObtenue = 10 } }
+            }, idProfesseur: 5);
+
+            await act.Should().ThrowAsync<InvalidOperationException>()
+                .WithMessage("*hors classe*");
         }
 
         [Fact]

@@ -34,11 +34,12 @@ Guide pour **Parent**, **personnel école** (Admin, Directeur, Financier,Caissie
 | Acteur | Rôle JWT | Peut lancer un PayIn ? | Contexte |
 |--------|----------|------------------------|----------|
 | **Parent** | `Parent` | Oui | Paie les frais de **son** enfant depuis l'app mobile |
+| **Élève** | `Eleve` | Oui | Paie **ses propres** frais (`idEleve` = claim JWT `EleveId` uniquement) |
 | **Personnel école (guichet)** | `Admin`, `Financier`, **`Caissier`** | Oui | Encaisse au guichet : le parent est présent, saisie du **téléphone du payeur** (Mobile Money) |
 | **Directeur** | `Directeur` | Non | Supervision guichet (lecture dashboard, journal) — pas d'encaissement |
 | **Super-Admin** | `Super-Admin` | Oui | Idem personnel école + relance PayOut échoué |
 
-**Règle clé :** Parent **et** école utilisent le **même endpoint** `POST /api/MokoAfrika/payin/frais-scolaire`. Seul le rôle JWT change.
+**Règle clé :** Parent, **Élève** et école utilisent le **même endpoint** `POST /api/MokoAfrika/payin/frais-scolaire`. Seul le rôle JWT change. Un élève ne peut payer que pour son propre `idEleve`.
 
 ### Wallet virtuel par école
 
@@ -134,19 +135,19 @@ Après mise à jour API, `GET /api/Ecole/{id}/paiement-mobile` retourne **503** 
 
 ## 3. Acteurs et rôles
 
-| Endpoint | Parent | Admin | Directeur | Financier | **Caissier** | Super-Admin |
-|----------|--------|-------|-----------|-----------|--------------|-------------|
-| `GET /api/Ecole/{id}/paiement-mobile` | — | ✅ | ✅ | ✅ | **✅** | ✅ |
-| `POST /api/Ecole/{id}/paiement-mobile` (config) | — | ✅ | ✅ | — | — | ✅ |
-| `POST .../beneficiaires` | — | ✅ | ✅ | — | — | ✅ |
-| `GET .../transactions` | — | ✅ | ✅ | ✅ | — | ✅ |
-| `GET .../wallet/mouvements` | — | ✅ | ✅ | ✅ | — | ✅ |
-| `GET .../payouts` | — | ✅ | ✅ | ✅ | — | ✅ |
-| `POST /api/MokoAfrika/payin/frais-scolaire` | ✅ | ✅ | — | ✅ | **✅** | ✅ |
-| `GET /api/Dashboard/caissier` | — | ✅ | ✅ | ✅ | **✅** | ✅ |
-| `GET /api/Dashboard/caissier/cloture` | — | ✅ | ✅ | ✅ | **✅** | ✅ |
-| `GET /api/MokoAfrika/fees/estimate` | ✅ (public) | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `POST /api/MokoAfrika/payout/retry` | — | — | — | — | **✅ seul** |
+| Endpoint | Parent | **Eleve** | Admin | Directeur | Financier | **Caissier** | Super-Admin |
+|----------|--------|-----------|-------|-----------|-----------|--------------|-------------|
+| `GET /api/Ecole/{id}/paiement-mobile` | — | — | ✅ | ✅ | ✅ | **✅** | ✅ |
+| `POST /api/Ecole/{id}/paiement-mobile` (config) | — | — | ✅ | ✅ | — | — | ✅ |
+| `POST .../beneficiaires` | — | — | ✅ | ✅ | — | — | ✅ |
+| `GET .../transactions` | — | — | ✅ | ✅ | ✅ | — | ✅ |
+| `GET .../wallet/mouvements` | — | — | ✅ | ✅ | ✅ | — | ✅ |
+| `GET .../payouts` | — | — | ✅ | ✅ | ✅ | — | ✅ |
+| `POST /api/MokoAfrika/payin/frais-scolaire` | ✅ | **✅ (soi)** | ✅ | — | ✅ | **✅** | ✅ |
+| `GET /api/Dashboard/caissier` | — | — | ✅ | ✅ | ✅ | **✅** | ✅ |
+| `GET /api/Dashboard/caissier/cloture` | — | — | ✅ | ✅ | ✅ | **✅** | ✅ |
+| `GET /api/MokoAfrika/fees/estimate` | ✅ (public) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `POST /api/MokoAfrika/payout/retry` | — | — | — | — | — | — | **✅ seul** |
 
 **Contrôle d'accès école :** le frontend doit utiliser `idEcole` de l'utilisateur connecté (JWT / profil), pas un ID arbitraire.
 
@@ -342,44 +343,47 @@ Content-Type: application/json
 |-------|-------------|-------|
 | `idEleve` | Oui | Élève concerné |
 | `idFrais` | Oui | Doit appartenir à l'école de l'élève |
-| `montantNet` | Non | Défaut = montant du frais — **toujours en devise principale école** |
+| `montantNet` | Non | Défaut = montant du frais — **toujours en devise du frais** (`Frais.Devise`) |
 | `method` | Oui | Opérateur ou `card` |
 | `telephonePayeur` | Oui | **Téléphone qui recevra l'USSD** (parent ou payeur présent au guichet) |
-| `devise` / `currency` | Non | Doit être la devise principale **ou** la devise MM gateway ; sinon 400 |
+| `devise` / `currency` | Non | Devise de **règlement** : devise du frais, principale école ou MM ; défaut = devise du frais |
 | `commentaire` | Non | Recommandé pour paiements guichet |
 
 **MultiDevise (obligatoire côté front) :**
 
-1. Lire `GET /api/Ecole/{idEcole}/devise-principale` et afficher cette devise pour `montantNet`.
-2. Poster `devise` = code principale (ou omettre le champ).
-3. Ne **pas** poster `USD` si l’école est en `CDF` : le backend convertit principale → devise MM (`infoPaiement.Devise`) via `TauxChanges` avant l’appel gateway.
-4. Preview optionnelle : `GET /api/Devise/preview-conversion?idEcole=…&codeDeviseSource=USD&codeDeviseCible=CDF&montant=10`.
+1. Afficher `montantNet` dans la **devise du frais** (pas la devise principale école).
+2. Poster `devise` = devise du frais (ou omettre). **Par défaut**, PayIn / USSD = **devise du frais** (`codeDevisePaiement` = devise du frais).
+3. Conversion **uniquement** si le parent choisit une autre devise de règlement (`devise` / `currency` ≠ frais) — ex. frais USD, règlement CDF → gateway CDF.
+4. `EcolesInfoPaiementMobile.Devise` = devise MM **acceptée** en règlement alternatif + devise du **wallet / PayOut** (plus de force-gateway automatique).
+5. Exemple : frais `10` USD, MM école CDF, sans `devise` client → USSD **10 USD** (+ frais opérateur). Avec `devise=CDF` → ~`28000` CDF.
+6. Preview optionnelle : `GET /api/Devise/preview-conversion?idEcole=…&codeDeviseSource=…&codeDeviseCible=…&montant=…`.
 
-**Réponse 200 (en attente USSD) :**
+**Réponse 200 (en attente USSD) — défaut devise frais USD :**
 
 ```json
 {
-  "idPaiement": 891,
+  "idPaiement": null,
   "idEcole": 13,
   "reference": "MOKO_20260704143022_7841",
   "statutPaiement": "En attente",
   "statutGateway": "pending",
   "montantNet": 10,
-  "montantCollecte": 28045,
+  "montantCollecte": 10.45,
   "codeDevisePrincipale": "USD",
-  "codeDevisePaiement": "CDF",
-  "tauxVersDevisePrincipale": 0.00035714,
+  "codeDevisePaiement": "USD",
+  "tauxVersDevisePrincipale": 1,
   "montantPayeDevisePrincipale": 10,
   "requiresUssdConfirmation": true,
-  "message": "Validez le paiement sur votre téléphone."
+  "message": "Transaction initiée — validez sur votre téléphone (USSD)."
 }
 ```
 
+Afficher au parent **`montantCollecte` + `codeDevisePaiement`** (devise réellement envoyée à MOKO), pas seulement `montantNet` sans unité.
 **Erreurs fréquentes 400 :**
 
 - « Paiement mobile non configuré pour l'école X » → configurer l'école d'abord
 - « Un paiement est déjà en attente pour ce frais et cet élève »
-- « Paiement Mobile Money désactivé pour cette école »
+- « Paiement Mobile non disponible. Veuillez contacter la direction de votre école. »
 - « Devise non supportée pour ce PayIn : EUR… » → utiliser principale ou devise MM
 - « Aucun taux de change trouvé pour USD→CDF… » → saisir un taux (`POST /api/Devise/taux-change`)
 
@@ -647,6 +651,10 @@ export interface TransactionMokoListItem {
   status: 'pending' | 'success' | 'error' | 'timeout';
   statusDescription?: string;
   isDefinitive?: boolean;
+  gatewayStatusRaw?: string;
+  resultCodeError?: string;
+  resultCodeErrorDescription?: string;
+  hasCallback?: boolean;
   customerPhone?: string;
   statutPaiement?: string;
   nomEleve?: string;
@@ -824,8 +832,8 @@ Hub : `wss://{api}/hubs/dashboard` (JWT requis). À la connexion, le client rejo
 
 | Événement | Quand | `eventType` |
 |-----------|-------|-------------|
-| `DashboardUpdateNotification` | PayIn initié ou confirmé | `payin_pending` / `payin_confirmed` |
-| `PayInStatusUpdated` | Idem (payload enrichi) | `payin_pending` / `payin_confirmed` |
+| `DashboardUpdateNotification` | PayIn initié, confirmé ou échoué | `payin_pending` / `payin_confirmed` / `payin_failed` |
+| `PayInStatusUpdated` | Idem (payload enrichi) | `payin_pending` / `payin_confirmed` / `payin_failed` |
 
 Payload commun :
 
@@ -840,11 +848,22 @@ Payload commun :
   "montantNet": 50000,
   "statutPaiement": "En attente",
   "statutGateway": "pending",
+  "statusDescription": null,
   "timestamp": "2026-09-02T11:00:00Z"
 }
 ```
 
-**Recommandation front :** écouter `PayInStatusUpdated` pour rafraîchir le guichet sans polling agressif ; conserver le polling `status/check` comme filet de sécurité (timeout 120 s).
+**Recommandation front :** écouter `PayInStatusUpdated` pour rafraîchir le guichet ; **conserver obligatoirement** le polling `POST .../status/{ref}/check` comme filet (timeout 120 s).
+
+**Important — SignalR ne crée pas le Paiement.**  
+`payin_confirmed` / `PayInStatusUpdated` ne partent qu’**après** `ConfirmerPayInEtNotifierAsync` (callback MOKO `POST /api/MokoAfrika/callback` **ou** `POST .../check` en succès).  
+`payin_failed` part quand la `TransactionMoko` bascule `pending` → `error` (callback ou check) : annulation USSD (`Trans_Status: Failed` / `cancelled`), refus client, ou soft Error **hors** fenêtre 120 s. **Aucune** ligne `Paiements` n’est créée.  
+Si l’UI reste « En attente » et qu’aucune ligne `Paiements` n’existe :
+
+1. Vérifier `TransactionsMoko.RawCallback` / champ API `hasCallback` (false = callback jamais reçu / rejeté HMAC 401).
+2. Forcer **`POST /api/MokoAfrika/status/{reference}/check`** (ne pas poller uniquement avec `GET .../status/{ref}` = lecture DB seule). Le backend envoie alors `action: verify` à MOKO (pas `check` — sinon erreur **408**).
+3. Lire `gatewayStatusRaw` / `resultCodeError` / `Trans_Status` via les champs ops : si `Error` + `408`, build non déployé ou mauvais action.
+4. **SMS opérateur / FreshPay ≠ confirmation KelasiNaBiso** : un message « paiement effectué » sur le téléphone ne crée pas la ligne `Paiements`. Sans `status: success` MOKO (callback ou check), escalade ops (HMAC callback, RawResponse).
 
 ```javascript
 connection.on('PayInStatusUpdated', (payload) => {
@@ -854,6 +873,10 @@ connection.on('PayInStatusUpdated', (payload) => {
   if (payload.eventType === 'payin_confirmed') {
     retirerPayInEnAttente(payload.reference);
     refreshDashboardCaissier();
+  }
+  if (payload.eventType === 'payin_failed') {
+    retirerPayInEnAttente(payload.reference);
+    afficherEchecOuAnnulation(payload.statusDescription || 'Paiement annulé ou échoué');
   }
 });
 ```
@@ -865,27 +888,30 @@ connection.on('PayInStatusUpdated', (payload) => {
 ### Règles obligatoires (Flutter / Vue)
 
 1. **Ne pas** utiliser `GET /api/MokoAfrika/status/{ref}` pour le polling USSD — lecture **DB seule** (ne rafraîchit pas la gateway).
-2. Poller uniquement : **`POST /api/MokoAfrika/status/{reference}/check`**
+2. Poller uniquement : **`POST /api/MokoAfrika/status/{reference}/check`** (jamais seulement `GET .../status/{ref}` pour le USSD)
 3. **Délai avant le 1er check** : **3–5 secondes** (jamais immédiat après l’initiation)
 4. Intervalle : **5–10 secondes** ; durée max : **120 secondes**
-5. Arrêter seulement si `isDefinitive === true` **et** (`success` / `error` / `timeout`) **après** un `POST .../check`, ou via SignalR `PayInStatusUpdated`
-6. **Devise** : le backend utilise la devise configurée de l’école (souvent `CDF`). Ne pas poster `USD` si l’école est en `CDF` — sinon `montantNet: 10` est traité comme **10 CDF**, pas 10 USD.
+5. Arrêter seulement si `isDefinitive === true` **et** (`success` / `error` / `timeout`) **après** un `POST .../check`, ou via SignalR `PayInStatusUpdated` (`payin_confirmed` / `payin_failed`)
+6. **Devise (MultiDevise)** : `montantNet` est en **devise du frais**. Par défaut USSD = devise du frais. Conversion seulement si `devise` de règlement ≠ devise du frais. Afficher `montantCollecte` + `codeDevisePaiement` (devise envoyée à MOKO).
 
 Succès quand `status === 'success'` (et `isDefinitive === true`).  
+Échec / annulation quand `status === 'error'` (et `isDefinitive === true`) **ou** SignalR `payin_failed` — afficher `statusDescription` / message d’annulation.  
 Préférer SignalR `PayInStatusUpdated` ; le polling reste un filet de sécurité.
 
 **Statuts check :**
 
 | `status` | `isDefinitive` | Action front |
 |----------|----------------|--------------|
-| `pending` | `false` | Continuer le poll (USSD en cours — y compris si la gateway a renvoyé un `Status: Error` soft) |
+| `pending` | `false` | Continuer le poll (USSD en cours — y compris `Status: Error` soft **dans** les 120 s) |
 | `success` | `true` | Succès — arrêter |
-| `error` | `true` | Échec **définitif** — arrêter ; afficher `statusDescription` |
+| `error` | `true` | Échec **définitif** (annulation USSD / refus / hors fenêtre) — arrêter ; afficher `statusDescription` / `gatewayStatusRaw` |
 | `timeout` | `true` | Timeout — arrêter |
 
-Le backend **ne passe plus** un PayIn `pending` en `error` sur un **check** ou un **callback** trop tôt avec seulement `Status: "Error"` (sans `resultCodeError`). Seuls les échecs durs (`resultCodeError`, `cancelled`, `rejected`, `declined`, `timeout`) marquent `Echoue`.
+**Règle backend :** dans la fenêtre USSD (120 s), un check `Status: Error` / `Status: Failed` **sans** `Trans_Status` terminal reste `pending`. Un `Trans_Status: Failed` / `cancelled` / `rejected` / `declined` / `timeout` (ou Status cancelled…) → `error` **immédiat**, même dans les 120 s, + SignalR `payin_failed`. **Hors** fenêtre, soft `Error`/`Failed` → `error` définitif. Seul `status === 'success'` crée le `Paiement`. Un SMS opérateur ne suffit pas.
 
-**Anti-pattern observé (04 Sep 2026) :** initiation `pending` + USSD → front appelle immédiatement `GET .../status/{ref}` → lit `error` déjà en base (faux soft Error) → stop. Corriger : `POST .../check` + délai 3–5 s.
+Champs ops utiles sur la réponse check : `gatewayStatusRaw`, `resultCodeError`, `resultCodeErrorDescription`, `hasCallback`.
+
+**Anti-pattern observé :** initiation `pending` + USSD → front appelle immédiatement `GET .../status/{ref}` → lit un état DB non rafraîchi → stop. Corriger : `POST .../check` + délai 3–5 s.
 
 ```javascript
 async function attendreConfirmation(reference, token, maxMs = 120000) {
@@ -916,7 +942,7 @@ async function attendreConfirmation(reference, token, maxMs = 120000) {
 | **503** | `MOKO_MIGRATION_REQUIRED` | Bandeau admin : exécuter migration SQL |
 | **200** | `estConfigure: false` | Wizard configuration, pas d'erreur |
 | **400** | Paiement déjà en attente | Afficher paiement en cours |
-| **400** | MM désactivé | Rediriger vers config école |
+| **400** | Paiement Mobile non disponible | Afficher le message et orienter vers la direction de l'école |
 | **404** | Élève/frais introuvable | Vérifier sélection |
 | **401** | Token expiré | Reconnexion |
 | **500** | Erreur interne | Vérifier logs serveur + migration DB |

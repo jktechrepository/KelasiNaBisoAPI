@@ -1,14 +1,39 @@
 using KelasiNaBiso.Data;
 using KelasiNaBiso.Models;
 using KelasiNaBiso.Models.Enums;
+using KelasiNaBiso.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace KelasiNaBiso.Services.MokoAfrika
 {
+    public record WalletCreditResult(
+        decimal MontantWallet,
+        string DeviseWallet,
+        decimal MontantSource,
+        string CodeDeviseSource,
+        decimal Taux);
+
     public interface IMokoWalletService
     {
         Task<EcoleWallet> GetOrCreateWalletAsync(int idEcole, CancellationToken cancellationToken = default);
-        Task CrediterApresPayInAsync(int idEcole, int idPaiement, int idTransactionMoko, decimal montantNet, string reference, CancellationToken cancellationToken = default);
+        /// <summary>
+        /// Crédite le wallet en devise wallet : convertit <paramref name="montantNet"/> depuis
+        /// <paramref name="codeDeviseSource"/> si différent de <c>wallet.Devise</c>.
+        /// </summary>
+        Task<WalletCreditResult> CrediterApresPayInAsync(
+            int idEcole,
+            int idPaiement,
+            int idTransactionMoko,
+            decimal montantNet,
+            string reference,
+            string? codeDeviseSource,
+            CancellationToken cancellationToken = default);
+        /// <summary>Convertit un montant gateway vers la devise du wallet (sans créditer).</summary>
+        Task<(decimal MontantWallet, string DeviseWallet)> ConvertirVersDeviseWalletAsync(
+            int idEcole,
+            decimal montantSource,
+            string? codeDeviseSource,
+            CancellationToken cancellationToken = default);
         Task LibererSoldeEnAttenteAsync(int idEcole, int idTransactionMoko, decimal montantNet, string reference, CancellationToken cancellationToken = default);
         Task DebiterPourPayOutAsync(int idEcole, int idTransactionMoko, int? idPaiement, decimal montantNet, string reference, CancellationToken cancellationToken = default);
         Task RecrediterPayOutEchoueAsync(int idEcole, int idTransactionMoko, decimal montantNet, string reference, CancellationToken cancellationToken = default);
@@ -17,11 +42,16 @@ namespace KelasiNaBiso.Services.MokoAfrika
     public class MokoWalletService : IMokoWalletService
     {
         private readonly KelasiNaBisoDbContext _context;
+        private readonly ICurrencyConversionService _currencyConversion;
         private readonly ILogger<MokoWalletService> _logger;
 
-        public MokoWalletService(KelasiNaBisoDbContext context, ILogger<MokoWalletService> logger)
+        public MokoWalletService(
+            KelasiNaBisoDbContext context,
+            ICurrencyConversionService currencyConversion,
+            ILogger<MokoWalletService> logger)
         {
             _context = context;
+            _currencyConversion = currencyConversion;
             _logger = logger;
         }
 
@@ -46,18 +76,81 @@ namespace KelasiNaBiso.Services.MokoAfrika
             return wallet;
         }
 
-        public async Task CrediterApresPayInAsync(
+        public async Task<(decimal MontantWallet, string DeviseWallet)> ConvertirVersDeviseWalletAsync(
+            int idEcole,
+            decimal montantSource,
+            string? codeDeviseSource,
+            CancellationToken cancellationToken = default)
+        {
+            var wallet = await GetOrCreateWalletAsync(idEcole, cancellationToken);
+            var deviseWallet = NormalizeDevise(wallet.Devise) ?? "CDF";
+            var source = NormalizeDevise(codeDeviseSource) ?? deviseWallet;
+
+            if (source == deviseWallet)
+                return (montantSource, deviseWallet);
+
+            var result = await _currencyConversion.ConvertAsync(
+                idEcole,
+                source,
+                deviseWallet,
+                montantSource,
+                DateTime.UtcNow,
+                cancellationToken);
+
+            if (!result.Success)
+            {
+                throw new InvalidOperationException(
+                    result.ErrorMessage
+                    ?? $"Impossible de convertir {source} → {deviseWallet} pour le crédit wallet école {idEcole}.");
+            }
+
+            return (result.MontantConverti, deviseWallet);
+        }
+
+        public async Task<WalletCreditResult> CrediterApresPayInAsync(
             int idEcole,
             int idPaiement,
             int idTransactionMoko,
             decimal montantNet,
             string reference,
+            string? codeDeviseSource,
             CancellationToken cancellationToken = default)
         {
             var wallet = await GetOrCreateWalletAsync(idEcole, cancellationToken);
-            wallet.SoldeEnAttente += montantNet;
-            wallet.TotalRecu += montantNet;
+            var deviseWallet = NormalizeDevise(wallet.Devise) ?? "CDF";
+            var source = NormalizeDevise(codeDeviseSource) ?? deviseWallet;
+
+            decimal montantWallet = montantNet;
+            decimal taux = 1m;
+
+            if (source != deviseWallet)
+            {
+                var result = await _currencyConversion.ConvertAsync(
+                    idEcole,
+                    source,
+                    deviseWallet,
+                    montantNet,
+                    DateTime.UtcNow,
+                    cancellationToken);
+
+                if (!result.Success)
+                {
+                    throw new InvalidOperationException(
+                        result.ErrorMessage
+                        ?? $"Impossible de convertir {source} → {deviseWallet} pour le crédit wallet école {idEcole}.");
+                }
+
+                montantWallet = result.MontantConverti;
+                taux = result.Taux;
+            }
+
+            wallet.SoldeEnAttente += montantWallet;
+            wallet.TotalRecu += montantWallet;
             wallet.DateModification = DateTime.Now;
+
+            var commentaire = source == deviseWallet
+                ? "Crédit wallet après PayIn réussi (en attente de libération)"
+                : $"Crédit wallet après PayIn réussi ({montantNet} {source} → {montantWallet} {deviseWallet}, taux {taux})";
 
             _context.EcolesWalletMouvements.Add(new EcoleWalletMouvement
             {
@@ -66,16 +159,20 @@ namespace KelasiNaBiso.Services.MokoAfrika
                 IdTransactionMoko = idTransactionMoko,
                 IdPaiement = idPaiement,
                 TypeMouvement = WalletMouvementTypes.PayInCreditPending,
-                Montant = montantNet,
+                Montant = montantWallet,
                 SoldeEnAttenteApres = wallet.SoldeEnAttente,
                 SoldeDisponibleApres = wallet.SoldeDisponible,
                 Reference = reference,
-                Commentaire = "Crédit wallet après PayIn réussi (en attente de libération)",
+                Commentaire = commentaire,
                 DateCreation = DateTime.Now
             });
 
             await _context.SaveChangesAsync(cancellationToken);
-            _logger.LogInformation("Wallet école {IdEcole} crédité {Montant} en attente (ref {Reference})", idEcole, montantNet, reference);
+            _logger.LogInformation(
+                "Wallet école {IdEcole} crédité {Montant} {Devise} en attente (source {SourceMontant} {SourceDevise}, ref {Reference})",
+                idEcole, montantWallet, deviseWallet, montantNet, source, reference);
+
+            return new WalletCreditResult(montantWallet, deviseWallet, montantNet, source, taux);
         }
 
         public async Task LibererSoldeEnAttenteAsync(
@@ -174,5 +271,8 @@ namespace KelasiNaBiso.Services.MokoAfrika
 
             await _context.SaveChangesAsync(cancellationToken);
         }
+
+        private static string? NormalizeDevise(string? code) =>
+            string.IsNullOrWhiteSpace(code) ? null : code.Trim().ToUpperInvariant();
     }
 }

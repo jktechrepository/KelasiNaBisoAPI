@@ -19,7 +19,7 @@ namespace KelasiNaBiso.Tests.Unit.Services
             _context = TestDbContextFactory.CreateInMemoryContext();
             var resolver = new InscriptionActiveResolver(_context);
             var scopeFactory = new Mock<IServiceScopeFactory>();
-            _service = new BulletinService(_context, resolver, scopeFactory.Object);
+            _service = new BulletinService(_context, resolver, scopeFactory.Object, new PeriodeCotationResolver(_context));
             Seed();
         }
 
@@ -42,6 +42,16 @@ namespace KelasiNaBiso.Tests.Unit.Services
             _context.Cours.AddRange(
                 new Cours { IdCours = 50, NomCours = "Math", IdClasse = 10, Statut = true, DateCreation = DateTime.Now },
                 new Cours { IdCours = 51, NomCours = "Francais", IdClasse = 10, Statut = true, DateCreation = DateTime.Now });
+
+            _context.PeriodesCotation.Add(new PeriodeCotation
+            {
+                IdPeriode = 1,
+                Code = "T1",
+                Libelle = "Trimestre 1",
+                Ordre = 1,
+                Statut = true,
+                DateCreation = DateTime.UtcNow
+            });
 
             _context.Evaluations.AddRange(
                 new Evaluation
@@ -178,8 +188,27 @@ namespace KelasiNaBiso.Tests.Unit.Services
             var bulletin = await _service.GetBulletinEleveAsync(1, 100, "Trimestre 1");
 
             bulletin.Should().NotBeNull();
-            bulletin!.MoyenneGenerale.Should().BeApproximately(12.5d, 0.001);
+            bulletin!.MoyenneGenerale.Should().BeApproximately(13d, 0.001);
             bulletin.Lignes.Should().HaveCount(2);
+            bulletin.Lignes.Should().OnlyContain(l => l.PonderationCours == 1);
+        }
+
+        [Fact]
+        public async Task GetBulletinEleve_GeneralAverage_UsesCoursPonderation()
+        {
+            var math = _context.Cours.Single(c => c.IdCours == 50);
+            var fr = _context.Cours.Single(c => c.IdCours == 51);
+            math.Ponderation = 3;
+            fr.Ponderation = 1;
+            _context.SaveChanges();
+
+            var bulletin = await _service.GetBulletinEleveAsync(1, 100, "Trimestre 1");
+
+            // (12*3 + 14*1) / 4 = 12.5
+            bulletin.Should().NotBeNull();
+            bulletin!.MoyenneGenerale.Should().BeApproximately(12.5d, 0.001);
+            bulletin.Lignes.Single(l => l.IdCours == 50).PonderationCours.Should().Be(3);
+            bulletin.Lignes.Single(l => l.IdCours == 51).PonderationCours.Should().Be(1);
         }
 
         [Fact]
@@ -203,6 +232,112 @@ namespace KelasiNaBiso.Tests.Unit.Services
             bulletin.Should().NotBeNull();
             bulletin!.Lignes.SelectMany(l => l.Notes).Should().NotContain(n => n.IdEvaluation == 4);
             bulletin.Lignes.SelectMany(l => l.Notes).Should().HaveCount(3);
+        }
+
+        [Fact]
+        public async Task UpsertDecision_AppearsOnBulletin()
+        {
+            await _service.UpsertDecisionAsync(
+                idEleve: 1,
+                idAnneeScolaire: 100,
+                idPeriode: 1,
+                decision: "Admis avec félicitations",
+                appreciationGenerale: "Excellent trimestre",
+                idAuteur: 5);
+
+            var bulletin = await _service.GetBulletinEleveAsync(1, 100, "T1", idPeriode: 1);
+
+            bulletin.Should().NotBeNull();
+            bulletin!.Decision.Should().Be("Admis avec félicitations");
+            bulletin.AppreciationGenerale.Should().Be("Excellent trimestre");
+            bulletin.EstFige.Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task Figer_ThenGet_IgnoresNewNotes()
+        {
+            var frozen = await _service.FigerEleveAsync(1, 100, idPeriode: 1, idAuteurValidation: 9);
+            frozen.EstFige.Should().BeTrue();
+            frozen.DateValidation.Should().NotBeNull();
+            var moyenneFigee = frozen.MoyenneGenerale;
+
+            _context.Notes.Add(new Note
+            {
+                IdNote = 99,
+                IdEleve = 1,
+                IdEvaluation = 1,
+                IdAnneeScolaire = 100,
+                NoteObtenue = 2,
+                Appreciation = "",
+                DateEvaluation = _now,
+                IdProfesseur = 1,
+                Statut = true,
+                DateCreation = DateTime.Now
+            });
+            await _context.SaveChangesAsync();
+
+            var after = await _service.GetBulletinEleveAsync(1, 100, idPeriode: 1);
+            after.Should().NotBeNull();
+            after!.EstFige.Should().BeTrue();
+            after.MoyenneGenerale.Should().Be(moyenneFigee);
+            after.Lignes.SelectMany(l => l.Notes).Should().NotContain(n => n.IdNote == 99);
+        }
+
+        [Fact]
+        public async Task Figer_Twice_ThrowsConflict()
+        {
+            await _service.FigerEleveAsync(1, 100, idPeriode: 1);
+
+            var act = async () => await _service.FigerEleveAsync(1, 100, idPeriode: 1);
+
+            await act.Should().ThrowAsync<InvalidOperationException>()
+                .WithMessage("*déjà figé*");
+        }
+
+        [Fact]
+        public async Task UpsertDecision_WhenFige_Throws()
+        {
+            await _service.FigerEleveAsync(1, 100, idPeriode: 1);
+
+            var act = async () => await _service.UpsertDecisionAsync(
+                1, 100, 1, "Refusé", null, 1);
+
+            await act.Should().ThrowAsync<InvalidOperationException>()
+                .WithMessage("*figé*");
+        }
+
+        [Fact]
+        public async Task Deverrouiller_ThenLiveRecalculates()
+        {
+            var before = await _service.GetBulletinEleveAsync(1, 100, idPeriode: 1);
+            await _service.FigerEleveAsync(1, 100, idPeriode: 1);
+
+            _context.Notes.Add(new Note
+            {
+                IdNote = 100,
+                IdEleve = 1,
+                IdEvaluation = 3,
+                IdAnneeScolaire = 100,
+                NoteObtenue = 20,
+                Appreciation = "",
+                DateEvaluation = _now,
+                IdProfesseur = 1,
+                Statut = true,
+                DateCreation = DateTime.Now
+            });
+            await _context.SaveChangesAsync();
+
+            var whileFrozen = await _service.GetBulletinEleveAsync(1, 100, idPeriode: 1);
+            whileFrozen!.MoyenneGenerale.Should().Be(before!.MoyenneGenerale);
+
+            await _service.DeverrouillerEleveAsync(1, 100, idPeriode: 1);
+
+            var live = await _service.GetBulletinEleveAsync(1, 100, idPeriode: 1);
+            live.Should().NotBeNull();
+            live!.EstFige.Should().BeFalse();
+            live.DateValidation.Should().BeNull();
+            live.MoyenneGenerale.Should().NotBe(before.MoyenneGenerale);
+            live.Lignes.SelectMany(l => l.Notes).Should().Contain(n => n.IdNote == 100);
         }
 
         public void Dispose() => _context.Dispose();

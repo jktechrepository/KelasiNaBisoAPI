@@ -205,7 +205,7 @@ namespace KelasiNaBiso.Tests.Unit.Services
         [Fact]
         public async Task InitierPayIn_SameDevise_UsesTauxOne_AndGatewayAmountEqualsNet()
         {
-            var local = await CreateOrchestratorAsync("CDF", "CDF", withTaux: false);
+            var local = await CreateOrchestratorAsync("CDF", "CDF", "CDF", withTaux: false);
             try
             {
                 var result = await local.Orchestrator.InitierPayInFraisScolaireAsync(BaseRequest("CDF"), idUtilisateur: 1);
@@ -216,13 +216,13 @@ namespace KelasiNaBiso.Tests.Unit.Services
                 result.MontantNet.Should().Be(10m);
                 result.MontantPayeDevisePrincipale.Should().Be(10m);
 
-                var paiement = await local.Context.Paiements.SingleAsync();
-                paiement.CodeDevisePaiement.Should().Be("CDF");
-                paiement.MontantNet.Should().Be(10m);
+                (await local.Context.Paiements.CountAsync()).Should().Be(0);
+                result.IdPaiement.Should().BeNull();
 
                 var tx = await local.Context.TransactionsMoko.SingleAsync();
                 tx.Devise.Should().Be("CDF");
                 tx.AmountNet.Should().Be(10m);
+                tx.IdPaiement.Should().BeNull();
             }
             finally
             {
@@ -231,22 +231,102 @@ namespace KelasiNaBiso.Tests.Unit.Services
         }
 
         [Fact]
-        public async Task InitierPayIn_UsdToCdf_ConvertsGatewayAmount_AndSnapshotsPrincipal()
+        public async Task InitierPayIn_UsdFee_DefaultSettlement_StaysUsdOnGateway()
         {
-            var result = await _orchestrator.InitierPayInFraisScolaireAsync(BaseRequest("USD"), idUtilisateur: 1);
+            // Sans choix client ≠ frais : gateway = devise du frais (USD), pas force vers MM CDF.
+            var result = await _orchestrator.InitierPayInFraisScolaireAsync(BaseRequest(), idUtilisateur: 1);
 
             result.CodeDevisePrincipale.Should().Be("USD");
-            result.CodeDevisePaiement.Should().Be("CDF");
+            result.CodeDevisePaiement.Should().Be("USD");
             result.MontantNet.Should().Be(10m);
             result.MontantPayeDevisePrincipale.Should().Be(10m);
-            result.TauxVersDevisePrincipale.Should().BeApproximately(1m / 2800m, 0.0000001m);
+            result.TauxVersDevisePrincipale.Should().Be(1m);
+            result.IdPaiement.Should().BeNull();
+            (await _context.Paiements.CountAsync()).Should().Be(0);
 
             var tx = await _context.TransactionsMoko.SingleAsync();
-            tx.Devise.Should().Be("CDF");
-            tx.AmountNet.Should().Be(28000m);
+            tx.Devise.Should().Be("USD");
+            tx.AmountNet.Should().Be(10m);
+            tx.IdPaiement.Should().BeNull();
 
             var payload = System.Text.Json.JsonDocument.Parse(tx.RawRequest!);
-            payload.RootElement.GetProperty("currency").GetString().Should().Be("CDF");
+            payload.RootElement.GetProperty("intent").GetProperty("idEleve").GetInt32().Should().Be(1746);
+            payload.RootElement.GetProperty("intent").GetProperty("codeDeviseFrais").GetString().Should().Be("USD");
+            payload.RootElement.GetProperty("gateway").GetProperty("currency").GetString().Should().Be("USD");
+        }
+
+        [Fact]
+        public async Task InitierPayIn_UsdFee_ClientChoosesCdf_ConvertsToGatewayCdf()
+        {
+            var result = await _orchestrator.InitierPayInFraisScolaireAsync(BaseRequest("CDF"), idUtilisateur: 1);
+
+            result.MontantNet.Should().Be(10m);
+            result.CodeDevisePaiement.Should().Be("CDF");
+            result.MontantPayeDevisePrincipale.Should().Be(10m);
+
+            var tx = await _context.TransactionsMoko.SingleAsync();
+            tx.AmountNet.Should().Be(28000m);
+            tx.Devise.Should().Be("CDF");
+
+            var payload = System.Text.Json.JsonDocument.Parse(tx.RawRequest!);
+            payload.RootElement.GetProperty("gateway").GetProperty("currency").GetString().Should().Be("CDF");
+        }
+
+        [Fact]
+        public async Task InitierPayIn_CdfFee_PrincipalUsd_MmCdf_DoesNotTreatAmountAsUsd()
+        {
+            var local = await CreateOrchestratorAsync(
+                principale: "USD",
+                gateway: "CDF",
+                deviseFrais: "CDF",
+                withTaux: true);
+            try
+            {
+                var request = BaseRequest("CDF");
+                request.MontantNet = 28000m;
+
+                var result = await local.Orchestrator.InitierPayInFraisScolaireAsync(request, idUtilisateur: 1);
+
+                result.CodeDevisePrincipale.Should().Be("USD");
+                result.CodeDevisePaiement.Should().Be("CDF");
+                result.MontantNet.Should().Be(28000m);
+                result.MontantPayeDevisePrincipale.Should().Be(10m);
+
+                var tx = await local.Context.TransactionsMoko.SingleAsync();
+                tx.Devise.Should().Be("CDF");
+                tx.AmountNet.Should().Be(28000m);
+                (await local.Context.Paiements.CountAsync()).Should().Be(0);
+            }
+            finally
+            {
+                await local.Context.DisposeAsync();
+            }
+        }
+
+        [Fact]
+        public async Task InitierPayIn_UsdFee_ExplicitCdfSettlement_ConvertsOnceToGateway()
+        {
+            var local = await CreateOrchestratorAsync(
+                principale: "USD",
+                gateway: "CDF",
+                deviseFrais: "USD",
+                withTaux: true);
+            try
+            {
+                var result = await local.Orchestrator.InitierPayInFraisScolaireAsync(BaseRequest("CDF"), idUtilisateur: 1);
+
+                result.MontantNet.Should().Be(10m);
+                result.CodeDevisePaiement.Should().Be("CDF");
+                result.MontantPayeDevisePrincipale.Should().Be(10m);
+
+                var tx = await local.Context.TransactionsMoko.SingleAsync();
+                tx.AmountNet.Should().Be(28000m);
+                tx.Devise.Should().Be("CDF");
+            }
+            finally
+            {
+                await local.Context.DisposeAsync();
+            }
         }
 
         [Fact]
@@ -262,6 +342,7 @@ namespace KelasiNaBiso.Tests.Unit.Services
         private static async Task<(PaiementMokoOrchestrator Orchestrator, Data.KelasiNaBisoDbContext Context)> CreateOrchestratorAsync(
             string principale,
             string gateway,
+            string deviseFrais,
             bool withTaux)
         {
             var context = TestDbContextFactory.CreateInMemoryContext();
@@ -303,7 +384,7 @@ namespace KelasiNaBiso.Tests.Unit.Services
                 IdFrais = 101,
                 LibelleFrais = "Minerval",
                 Montant = 10,
-                Devise = principale,
+                Devise = deviseFrais,
                 IdEcole = 13,
                 IdAnneeScolaire = 1,
                 Portee = PorteeFrais.Direction,
@@ -321,20 +402,11 @@ namespace KelasiNaBiso.Tests.Unit.Services
                 DateCreation = DateTime.Now
             });
 
-            SeedDevises(context, 13, principale, gateway);
+            SeedDevises(context, 13, principale, gateway, deviseFrais);
 
-            if (withTaux && !string.Equals(principale, gateway, StringComparison.OrdinalIgnoreCase))
+            if (withTaux)
             {
-                context.TauxChanges.Add(new TauxChange
-                {
-                    IdEcole = 13,
-                    CodeDeviseSource = principale,
-                    CodeDeviseCible = gateway,
-                    Taux = 2800m,
-                    DateEffet = DateTime.UtcNow.AddDays(-1),
-                    Statut = true,
-                    DateCreation = DateTime.UtcNow
-                });
+                AddBidirectionalTaux(context, 13, "USD", "CDF", 2800m);
             }
 
             await context.SaveChangesAsync();
@@ -364,6 +436,38 @@ namespace KelasiNaBiso.Tests.Unit.Services
                 NullLogger<PaiementMokoOrchestrator>.Instance);
 
             return (orchestrator, context);
+        }
+
+        private static void AddBidirectionalTaux(
+            Data.KelasiNaBisoDbContext context,
+            int idEcole,
+            string codeA,
+            string codeB,
+            decimal tauxAversB)
+        {
+            if (string.Equals(codeA, codeB, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            context.TauxChanges.Add(new TauxChange
+            {
+                IdEcole = idEcole,
+                CodeDeviseSource = codeA,
+                CodeDeviseCible = codeB,
+                Taux = tauxAversB,
+                DateEffet = DateTime.UtcNow.AddDays(-1),
+                Statut = true,
+                DateCreation = DateTime.UtcNow
+            });
+            context.TauxChanges.Add(new TauxChange
+            {
+                IdEcole = idEcole,
+                CodeDeviseSource = codeB,
+                CodeDeviseCible = codeA,
+                Taux = 1m / tauxAversB,
+                DateEffet = DateTime.UtcNow.AddDays(-1),
+                Statut = true,
+                DateCreation = DateTime.UtcNow
+            });
         }
 
         public void Dispose() => _context.Dispose();

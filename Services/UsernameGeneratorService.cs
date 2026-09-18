@@ -61,27 +61,16 @@ namespace KelasiNaBiso.Services
                 throw new ArgumentException("Le matricule ne peut pas être vide", nameof(matricule));
             }
 
-            string username;
-            int attempts = 0;
-            const int maxAttempts = 100;
+            var username = matricule.Trim();
 
-            do
+            // Login = matricule seul ; unicité garantie par l'index Eleves.Matricule + contrôle Utilisateurs.
+            if (await UsernameExistsAsync(username))
             {
-                // Générer 3 chiffres aléatoires
-                var randomDigits = _random.Next(100, 1000); // De 100 à 999
-                username = $"{matricule}{randomDigits}";
+                throw new InvalidOperationException(
+                    $"Un compte utilisateur existe déjà avec le username (matricule) '{username}'.");
+            }
 
-                attempts++;
-                if (attempts >= maxAttempts)
-                {
-                    _logger.LogError("Impossible de générer un DefaultUsername unique pour le matricule {Matricule} après {Attempts} tentatives", 
-                        matricule, maxAttempts);
-                    throw new InvalidOperationException($"Impossible de générer un DefaultUsername unique pour le matricule {matricule}");
-                }
-
-            } while (await UsernameExistsAsync(username));
-
-            _logger.LogInformation("DefaultUsername généré pour élève: {Username} (Matricule: {Matricule})", username, matricule);
+            _logger.LogInformation("DefaultUsername élève = matricule: {Username}", username);
             return username;
         }
 

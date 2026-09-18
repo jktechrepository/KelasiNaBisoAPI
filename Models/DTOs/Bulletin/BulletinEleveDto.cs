@@ -21,13 +21,24 @@ namespace KelasiNaBiso.Models.DTOs.Bulletin
         public int EffectifClasse { get; set; }
         public string? Decision { get; set; }
         public string? AppreciationGenerale { get; set; }
+
+        /// <summary>True si un snapshot figé existe pour élève/année/période.</summary>
+        public bool EstFige { get; set; }
+
+        public DateTime? DateValidation { get; set; }
     }
 
     public class BulletinLigneCoursDto
     {
         public int IdCours { get; set; }
         public string NomCours { get; set; } = string.Empty;
+
+        /// <summary>Somme des coefficients des évaluations (pondération interne des notes du cours).</summary>
         public double Coefficient { get; set; }
+
+        /// <summary>Pondération matière (<see cref="Models.Cours.Ponderation"/>) pour la moyenne générale. Défaut 1.</summary>
+        public double PonderationCours { get; set; } = 1;
+
         public List<BulletinNoteDetailDto> Notes { get; set; } = new();
         public double? MoyenneCours { get; set; }
     }

@@ -434,16 +434,25 @@ namespace KelasiNaBiso.Tests.Integration.Controllers
         }
 
         [Fact]
-        public async Task GetDashboardTuteur_MissingIdEcole_ShouldReturnBadRequest()
+        public async Task GetDashboardTuteur_MissingIdEcole_ShouldReturnOk_MultiEcoles()
         {
             var token = CreateToken(UserRoles.PARENT, idEcole: 1, idUtilisateur: 520, idTuteur: 11);
             _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
             var response = await _client.GetAsync("/api/Dashboard/DashbordTuteur?libelleAnneeScolaire=2025-2026");
 
-            response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-            var body = await response.Content.ReadAsStringAsync();
-            body.Should().Contain("idEcole");
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        [Fact]
+        public async Task GetDashboardTuteur_MissingIdEcole_DefaultYear_ShouldReturnOk()
+        {
+            var token = CreateToken(UserRoles.PARENT, idEcole: 1, idUtilisateur: 522, idTuteur: 11);
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _client.GetAsync("/api/Dashboard/tuteur");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
         }
 
         [Fact]

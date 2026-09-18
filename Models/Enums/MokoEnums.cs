@@ -4,7 +4,8 @@ namespace KelasiNaBiso.Models.Enums
     {
         public const string Debit = "debit";
         public const string Credit = "credit";
-        public const string Check = "check";
+        /// <summary>Valeur gateway MOKO pour consultation de statut (= <c>verify</c>, pas <c>check</c> — erreur 408 sinon).</summary>
+        public const string Check = "verify";
     }
 
     public static class MokoTransactionStatuses

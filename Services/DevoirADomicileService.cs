@@ -482,6 +482,15 @@ namespace KelasiNaBiso.Services
                 .Take(pageSize)
                 .ToList();
 
+            var idUser = _currentUserService.UserId;
+            if (idUser > 0 && page.Count > 0)
+            {
+                var telecharges = await GetDevoirIdsTelechargesParUtilisateurAsync(
+                    idUser, page.Select(d => d.IdDevoirADomicile));
+                foreach (var d in page)
+                    d.EstTelechargeParMoi = telecharges.Contains(d.IdDevoirADomicile);
+            }
+
             return new PagedResult<DevoirADomicilePourTuteurDto>(page, total, pageNumber, pageSize);
         }
 
@@ -706,22 +715,17 @@ namespace KelasiNaBiso.Services
                 }
             }
 
-            // Élève : Vérifier si l'utilisateur est lié à un élève dans la classe
-            // Note: Les élèves ne sont pas directement liés aux utilisateurs
-            // Un élève peut être lié via son tuteur (IdTuteur) qui a un utilisateur
-            if (role == UserRoles.ELEVE)
+            // Élève : inscription active dans la classe via IdEleve du compte
+            if (role == UserRoles.ELEVE && utilisateur.IdEleve.HasValue)
             {
-                // Chercher un élève lié au tuteur de l'utilisateur
-                if (utilisateur.IdTuteur.HasValue)
+                var eleveDansClasse = await _inscriptionResolver
+                    .FilterElevesInClasse(_context.Eleves, idClasse)
+                    .AnyAsync(e => e.IdEleve == utilisateur.IdEleve.Value);
+
+                if (eleveDansClasse)
                 {
-                    var eleve = await _inscriptionResolver
-                        .FilterElevesInClasse(_context.Eleves, idClasse)
-                        .FirstOrDefaultAsync(e => e.IdTuteur == utilisateur.IdTuteur.Value);
-                    if (eleve != null)
-                    {
-                        _logger.LogInformation($"Élève {idUtilisateur} est dans la classe {idClasse}");
-                        return true;
-                    }
+                    _logger.LogInformation($"Élève {idUtilisateur} (IdEleve={utilisateur.IdEleve}) a accès à la classe {idClasse}");
+                    return true;
                 }
             }
 
@@ -783,6 +787,73 @@ namespace KelasiNaBiso.Services
             _logger.LogInformation($"Téléchargement incrémenté pour devoir {idDevoirADomicile}. Total: {devoir.NombreTelechargements}");
 
             return true;
+        }
+
+        /// <inheritdoc />
+        public async Task<bool> EnregistrerTelechargementAsync(int idDevoirADomicile, int idUtilisateur)
+        {
+            var devoir = await _context.DevoirsADomicile.FindAsync(idDevoirADomicile);
+            if (devoir == null)
+                return false;
+
+            await using var tx = _context.Database.IsRelational()
+                ? await _context.Database.BeginTransactionAsync()
+                : null;
+            try
+            {
+                devoir.NombreTelechargements++;
+
+                if (idUtilisateur > 0)
+                {
+                    var deja = await _context.DevoirsADomicileTelechargements
+                        .AnyAsync(t => t.IdDevoirADomicile == idDevoirADomicile
+                            && t.IdUtilisateur == idUtilisateur);
+
+                    if (!deja)
+                    {
+                        _context.DevoirsADomicileTelechargements.Add(new DevoirADomicileTelechargement
+                        {
+                            IdDevoirADomicile = idDevoirADomicile,
+                            IdUtilisateur = idUtilisateur,
+                            DateTelechargement = DateTime.UtcNow
+                        });
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+                if (tx != null)
+                    await tx.CommitAsync();
+
+                _logger.LogInformation(
+                    "Téléchargement enregistré devoir {IdDevoir} user {IdUser}. Total global: {Total}",
+                    idDevoirADomicile, idUtilisateur, devoir.NombreTelechargements);
+
+                return true;
+            }
+            catch
+            {
+                if (tx != null)
+                    await tx.RollbackAsync();
+                throw;
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<HashSet<int>> GetDevoirIdsTelechargesParUtilisateurAsync(
+            int idUtilisateur,
+            IEnumerable<int> idDevoirs)
+        {
+            var ids = idDevoirs?.Distinct().ToList() ?? new List<int>();
+            if (idUtilisateur <= 0 || ids.Count == 0)
+                return new HashSet<int>();
+
+            var telecharges = await _context.DevoirsADomicileTelechargements
+                .AsNoTracking()
+                .Where(t => t.IdUtilisateur == idUtilisateur && ids.Contains(t.IdDevoirADomicile))
+                .Select(t => t.IdDevoirADomicile)
+                .ToListAsync();
+
+            return telecharges.ToHashSet();
         }
     }
 }

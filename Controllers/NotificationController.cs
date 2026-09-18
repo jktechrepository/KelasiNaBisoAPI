@@ -1,6 +1,7 @@
 using KelasiNaBiso.Models;
 using KelasiNaBisoAPI.Services.Repositories;
 using KelasiNaBiso.Attributes;
+using KelasiNaBiso.Helpers;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 
@@ -11,7 +12,7 @@ namespace KelasiNaBisoAPI.Controllers
     /// </summary>
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize] // 🔒 Notifications - Token JWT requis
+    [Authorize]
     public class NotificationController : ControllerBase
     {
         private readonly INotificationRepository _notificationRepository;
@@ -45,10 +46,11 @@ namespace KelasiNaBisoAPI.Controllers
         }
 
         /// <summary>
-        /// Récupère une notification par son ID
+        /// Récupère une notification par son ID (destinataire = soi, sauf admin).
         /// </summary>
         [HttpGet("{id}")]
-        public async Task<ActionResult<Notification>> GetById(int id)
+        [Permission("Notification.ReadOwn")]
+        public async Task<IActionResult> GetById(int id)
         {
             try
             {
@@ -57,6 +59,11 @@ namespace KelasiNaBisoAPI.Controllers
                 {
                     return NotFound(new { message = "Notification non trouvée" });
                 }
+
+                var deny = this.ForbidIfWrongNotificationDestinataire(notification.IdDestinataire);
+                if (deny != null)
+                    return deny;
+
                 return Ok(notification);
             }
             catch (Exception ex)
@@ -70,8 +77,13 @@ namespace KelasiNaBisoAPI.Controllers
         /// Récupère les notifications d'un destinataire
         /// </summary>
         [HttpGet("destinataire/{idDestinataire}")]
-        public async Task<ActionResult<IEnumerable<Notification>>> GetByDestinataire(int idDestinataire)
+        [Permission("Notification.ReadOwn")]
+        public async Task<IActionResult> GetByDestinataire(int idDestinataire)
         {
+            var deny = this.ForbidIfWrongNotificationDestinataire(idDestinataire);
+            if (deny != null)
+                return deny;
+
             try
             {
                 var notifications = await _notificationRepository.GetByDestinataireAsync(idDestinataire);
@@ -88,6 +100,7 @@ namespace KelasiNaBisoAPI.Controllers
         /// Récupère les notifications d'un expéditeur
         /// </summary>
         [HttpGet("expediteur/{idExpediteur}")]
+        [RequireGlobalAccess]
         public async Task<ActionResult<IEnumerable<Notification>>> GetByExpediteur(int idExpediteur)
         {
             try
@@ -106,6 +119,7 @@ namespace KelasiNaBisoAPI.Controllers
         /// Récupère les notifications d'une école
         /// </summary>
         [HttpGet("ecole/{idEcole}")]
+        [RequireGlobalAccess]
         public async Task<ActionResult<IEnumerable<Notification>>> GetByEcole(int idEcole)
         {
             try
@@ -124,6 +138,7 @@ namespace KelasiNaBisoAPI.Controllers
         /// Récupère les notifications d'une classe
         /// </summary>
         [HttpGet("classe/{idClasse}")]
+        [RequireGlobalAccess]
         public async Task<ActionResult<IEnumerable<Notification>>> GetByClasse(int idClasse)
         {
             try
@@ -142,6 +157,7 @@ namespace KelasiNaBisoAPI.Controllers
         /// Récupère les notifications par type
         /// </summary>
         [HttpGet("type/{type}")]
+        [RequireGlobalAccess]
         public async Task<ActionResult<IEnumerable<Notification>>> GetByType(string type)
         {
             try
@@ -160,8 +176,13 @@ namespace KelasiNaBisoAPI.Controllers
         /// Récupère les notifications non lues d'un destinataire
         /// </summary>
         [HttpGet("destinataire/{idDestinataire}/non-lues")]
-        public async Task<ActionResult<IEnumerable<Notification>>> GetNonLues(int idDestinataire)
+        [Permission("Notification.ReadOwn")]
+        public async Task<IActionResult> GetNonLues(int idDestinataire)
         {
+            var deny = this.ForbidIfWrongNotificationDestinataire(idDestinataire);
+            if (deny != null)
+                return deny;
+
             try
             {
                 var notifications = await _notificationRepository.GetNonLuesAsync(idDestinataire);
@@ -178,6 +199,7 @@ namespace KelasiNaBisoAPI.Controllers
         /// Crée une nouvelle notification
         /// </summary>
         [HttpPost]
+        [RequireGlobalAccess]
         public async Task<ActionResult<Notification>> Create([FromBody] Notification notification)
         {
             try
@@ -201,10 +223,21 @@ namespace KelasiNaBisoAPI.Controllers
         /// Marque une notification comme lue
         /// </summary>
         [HttpPut("{id}/marquer-lue")]
+        [Permission("Notification.UpdateOwn")]
         public async Task<IActionResult> MarquerCommeLue(int id)
         {
             try
             {
+                var notification = await _notificationRepository.GetByIdAsync(id);
+                if (notification == null)
+                {
+                    return NotFound(new { message = "Notification non trouvée" });
+                }
+
+                var deny = this.ForbidIfWrongNotificationDestinataire(notification.IdDestinataire);
+                if (deny != null)
+                    return deny;
+
                 var success = await _notificationRepository.MarquerCommeLueAsync(id);
                 if (!success)
                 {
@@ -223,8 +256,13 @@ namespace KelasiNaBisoAPI.Controllers
         /// Marque toutes les notifications d'un destinataire comme lues
         /// </summary>
         [HttpPut("destinataire/{idDestinataire}/marquer-toutes-lues")]
+        [Permission("Notification.UpdateOwn")]
         public async Task<IActionResult> MarquerToutesCommeLues(int idDestinataire)
         {
+            var deny = this.ForbidIfWrongNotificationDestinataire(idDestinataire);
+            if (deny != null)
+                return deny;
+
             try
             {
                 var success = await _notificationRepository.MarquerToutesCommeLuesAsync(idDestinataire);
@@ -245,6 +283,7 @@ namespace KelasiNaBisoAPI.Controllers
         /// Supprime une notification
         /// </summary>
         [HttpDelete("{id}")]
+        [RequireGlobalAccess]
         public async Task<IActionResult> Delete(int id)
         {
             try

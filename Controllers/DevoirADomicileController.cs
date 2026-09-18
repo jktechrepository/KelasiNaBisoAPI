@@ -368,9 +368,7 @@ namespace KelasiNaBiso.Controllers
                     resolvedEcole = idEcoleUtilisateur;
                 }
 
-                var devoirsDto = new List<DevoirADomicileDto>();
-                foreach (var devoir in pagedResult.Data)
-                    devoirsDto.Add(await MapToDtoAsync(devoir));
+                var devoirsDto = await MapManyToDtoAsync(pagedResult.Data);
 
                 var result = new PagedResult<DevoirADomicileDto>(
                     devoirsDto,
@@ -387,6 +385,55 @@ namespace KelasiNaBiso.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Erreur lors de la récupération des devoirs");
+                return StatusCode(500, new { message = "Erreur interne du serveur" });
+            }
+        }
+
+        /// <summary>
+        /// Devoirs de la classe de l'élève connecté (inscription active).
+        /// </summary>
+        [HttpGet("eleve/moi")]
+        [Authorize(Roles = UserRoles.ELEVE)]
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<PagedResult<DevoirADomicileDto>>), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(403)]
+        public async Task<IActionResult> GetMesDevoirsEleve(
+            [FromQuery] PagedRequest? request,
+            [FromQuery] int? idAnneeScolaire = null)
+        {
+            try
+            {
+                if (!_currentUserService.EleveId.HasValue || _currentUserService.EleveId.Value <= 0)
+                    return Forbid("Compte Élève non lié à une fiche (EleveId manquant)");
+
+                var idEleve = _currentUserService.EleveId.Value;
+                var inscription = await _inscriptionResolver.GetInscriptionActiveAsync(idEleve, idAnneeScolaire);
+                if (inscription == null)
+                    return BadRequest(new { message = "Aucune inscription active trouvée pour cet élève" });
+
+                var idClasse = inscription.IdClasse;
+                var (idEcole, idAnnee) = await _scope.ResolveClasseAnneeAsync(idClasse, idAnneeScolaire ?? inscription.IdAnneeScolaire);
+
+                var pagedRequest = request ?? new PagedRequest { PageNumber = 1, PageSize = 15 };
+                var pagedResult = await _devoirRepository.GetByClassePagedAsync(idClasse, pagedRequest, idAnnee);
+
+                var devoirsDto = await MapManyToDtoAsync(pagedResult.Data);
+
+                var result = new PagedResult<DevoirADomicileDto>(
+                    devoirsDto,
+                    pagedResult.TotalRecords,
+                    pagedResult.PageNumber,
+                    pagedResult.PageSize);
+
+                return Ok(EleveAnneeScopeHelper.Wrap(result, idEcole, idAnnee));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur lors de la récupération des devoirs de l'élève connecté");
                 return StatusCode(500, new { message = "Erreur interne du serveur" });
             }
         }
@@ -422,9 +469,7 @@ namespace KelasiNaBiso.Controllers
                     devoirs = await _devoirRepository.GetByClasseAsync(idClasse, idAnnee);
                 }
 
-                var devoirsDto = new List<DevoirADomicileDto>();
-                foreach (var devoir in devoirs)
-                    devoirsDto.Add(await MapToDtoAsync(devoir));
+                var devoirsDto = await MapManyToDtoAsync(devoirs);
 
                 return Ok(EleveAnneeScopeHelper.Wrap(devoirsDto, idEcole, idAnnee));
             }
@@ -441,10 +486,10 @@ namespace KelasiNaBiso.Controllers
 
         /// <summary>
         /// Devoirs des classes des enfants d'un tuteur (inscriptions confirmées, école + année).
-        /// Parent/Élève : uniquement leur propre IdTuteur.
+        /// Parent : uniquement leur propre IdTuteur. Élève : utiliser GET eleve/moi.
         /// </summary>
         [HttpGet("tuteur/{idTuteur}")]
-        [Authorize(Roles = $"{UserRoles.PARENT},{UserRoles.ELEVE},{UserRoles.ENSEIGNANT},{UserRoles.DIRECTEUR},{UserRoles.ADMIN},{UserRoles.SUPER_ADMIN}")]
+        [Authorize(Roles = $"{UserRoles.PARENT},{UserRoles.ENSEIGNANT},{UserRoles.DIRECTEUR},{UserRoles.ADMIN},{UserRoles.SUPER_ADMIN}")]
         [ProducesResponseType(typeof(PagedResult<DevoirADomicilePourTuteurDto>), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(403)]
@@ -454,7 +499,7 @@ namespace KelasiNaBiso.Controllers
             [FromQuery] string? libelleAnneeScolaire = null)
         {
             var role = _currentUserService.UserRole;
-            if (role == UserRoles.PARENT || role == UserRoles.ELEVE)
+            if (role == UserRoles.PARENT)
             {
                 if (!_currentUserService.TuteurId.HasValue || _currentUserService.TuteurId.Value != idTuteur)
                     return Forbid("Vous ne pouvez consulter que les devoirs de vos enfants");
@@ -511,18 +556,15 @@ namespace KelasiNaBiso.Controllers
                 // 4. Récupérer le fichier
                 var fileStream = await _fileStorageService.GetFileStreamAsync(devoir.CheminFichier);
 
-                // 5. Incrémenter le nombre de téléchargements
-                _ = Task.Run(async () =>
+                // 5. Compteur global + suivi utilisateur (premier téléchargement)
+                try
                 {
-                    try
-                    {
-                        await _devoirRepository.IncrementerTelechargementsAsync(id);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, $"Erreur lors de l'incrémentation des téléchargements pour devoir {id}");
-                    }
-                });
+                    await _devoirRepository.EnregistrerTelechargementAsync(id, idUtilisateur);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Erreur lors de l'enregistrement du téléchargement pour devoir {Id}", id);
+                }
 
                 // 6. Retourner le fichier
                 var contentType = devoir.TypeMIME ?? "application/octet-stream";
@@ -1063,6 +1105,40 @@ Votre enfant {(parent.Enfants.Count == 1 ? nomsEnfants : "vos enfants")} a un no
 
         private async Task<DevoirADomicileDto> MapToDtoAsync(DevoirADomicile devoir)
         {
+            var dto = await MapToDtoCoreAsync(devoir);
+            var idUser = _currentUserService.UserId;
+            if (idUser > 0)
+            {
+                var telecharges = await _devoirRepository.GetDevoirIdsTelechargesParUtilisateurAsync(
+                    idUser, new[] { devoir.IdDevoirADomicile });
+                dto.EstTelechargeParMoi = telecharges.Contains(devoir.IdDevoirADomicile);
+            }
+
+            return dto;
+        }
+
+        private async Task<List<DevoirADomicileDto>> MapManyToDtoAsync(IEnumerable<DevoirADomicile> devoirs)
+        {
+            var list = devoirs.ToList();
+            var idUser = _currentUserService.UserId;
+            var telecharges = idUser > 0
+                ? await _devoirRepository.GetDevoirIdsTelechargesParUtilisateurAsync(
+                    idUser, list.Select(d => d.IdDevoirADomicile))
+                : new HashSet<int>();
+
+            var result = new List<DevoirADomicileDto>(list.Count);
+            foreach (var devoir in list)
+            {
+                var dto = await MapToDtoCoreAsync(devoir);
+                dto.EstTelechargeParMoi = telecharges.Contains(devoir.IdDevoirADomicile);
+                result.Add(dto);
+            }
+
+            return result;
+        }
+
+        private async Task<DevoirADomicileDto> MapToDtoCoreAsync(DevoirADomicile devoir)
+        {
             var ecole = await _context.Ecoles.FindAsync(devoir.IdEcole);
             var direction = await _context.Directions.FindAsync(devoir.IdDirection);
             var agent = await _context.Agents.FindAsync(devoir.IdAgent);
@@ -1093,6 +1169,7 @@ Votre enfant {(parent.Enfants.Count == 1 ? nomsEnfants : "vos enfants")} a un no
                 DatePublication = devoir.DatePublication,
                 DateLimite = devoir.DateLimite,
                 NombreTelechargements = devoir.NombreTelechargements,
+                EstTelechargeParMoi = false,
                 Statut = devoir.Statut
             };
         }

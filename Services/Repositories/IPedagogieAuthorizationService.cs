@@ -9,6 +9,11 @@ namespace KelasiNaBiso.Services.Repositories
     public interface IPedagogieAuthorizationService
     {
         /// <summary>
+        /// True si l'agent est titulaire actif de la classe pour l'année (courante si null).
+        /// </summary>
+        Task<bool> AgentEstTitulaireClasseAsync(int idAgent, int idClasse, int? idAnneeScolaire = null, CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// True si l'agent peut enseigner / publier pour la classe (titulaire ou affectation active).
         /// Si <paramref name="idAnneeScolaire"/> est null, utilise l'année courante de l'école de la classe.
         /// </summary>

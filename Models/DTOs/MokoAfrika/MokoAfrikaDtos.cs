@@ -115,6 +115,15 @@ namespace KelasiNaBiso.Models.DTOs.MokoAfrika
         public bool IsDefinitive { get; set; }
         public string? GatewayTransactionId { get; set; }
         public DateTime DateCreation { get; set; }
+
+        /// <summary>Valeur brute Status / trans_status renvoyée par MOKO (ops / debug).</summary>
+        public string? GatewayStatusRaw { get; set; }
+        /// <summary>resultCodeError MOKO s'il est présent.</summary>
+        public string? ResultCodeError { get; set; }
+        /// <summary>Description d'erreur gateway (Comment / resultCodeErrorDescription).</summary>
+        public string? ResultCodeErrorDescription { get; set; }
+        /// <summary>true si un RawCallback a été reçu (webhook MOKO).</summary>
+        public bool HasCallback { get; set; }
     }
 
     public class PayInFraisScolaireRequestDto
@@ -124,7 +133,7 @@ namespace KelasiNaBiso.Models.DTOs.MokoAfrika
         public decimal? MontantNet { get; set; }
         public string Method { get; set; } = "airtel";
         public string TelephonePayeur { get; set; } = string.Empty;
-        /// <summary>Devise attendue par le client (principale école ou devise gateway MM).</summary>
+        /// <summary>Devise de règlement sollicitée (devise du frais, principale école ou devise MM). Défaut = devise du frais.</summary>
         public string? Devise { get; set; }
         /// <summary>Alias front de <see cref="Devise"/> (ex. Flutter <c>currency</c>).</summary>
         public string? Currency { get; set; }
@@ -133,16 +142,19 @@ namespace KelasiNaBiso.Models.DTOs.MokoAfrika
 
     public class PayInFraisScolaireResultDto
     {
-        public int IdPaiement { get; set; }
+        /// <summary>Null tant que le PayIn n'est pas confirmé (pas de ligne Paiements avant Confirme).</summary>
+        public int? IdPaiement { get; set; }
         public int IdEcole { get; set; }
         public string Reference { get; set; } = string.Empty;
         public string StatutPaiement { get; set; } = string.Empty;
         public string StatutGateway { get; set; } = string.Empty;
+        /// <summary>Montant net en devise du frais.</summary>
         public decimal MontantNet { get; set; }
         public decimal MontantCollecte { get; set; }
         public string? CodeDevisePrincipale { get; set; }
         public string? CodeDevisePaiement { get; set; }
         public decimal? TauxVersDevisePrincipale { get; set; }
+        /// <summary>Montant net converti en devise principale école (consolidation).</summary>
         public decimal? MontantPayeDevisePrincipale { get; set; }
         public MokoFeeEstimateDto Frais { get; set; } = new();
         public string? Message { get; set; }

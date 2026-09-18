@@ -10,6 +10,10 @@ namespace KelasiNaBiso.Models.DTOs
         [StringLength(200)]
         public string? TitreEvaluation { get; set; }
 
+        /// <summary>FK PeriodesCotation (préféré). Sinon résolution via Periode.</summary>
+        public int? IdPeriode { get; set; }
+
+        /// <summary>Libellé/code rétrocompat (ex. T1, Trimestre 1). Miroir si IdPeriode fourni.</summary>
         [StringLength(255)]
         public string? Periode { get; set; }
 

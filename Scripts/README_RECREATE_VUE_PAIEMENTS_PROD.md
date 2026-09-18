@@ -1,7 +1,9 @@
 # Correction production — vue VuePaiementsFraisParEcole
 
-Erreur corrigée : `Unknown column 'v.NomCompletFormate' in 'SELECT'` sur  
+Erreur corrigée historiquement : `Unknown column 'v.NomCompletFormate' in 'SELECT'` sur  
 `GET /api/VuePaiementsFraisParEcole/eleve-matricule/{matricule}` (et autres endpoints de la vue).
+
+**Mise à jour 2026-09-17** : la vue joint désormais la **classe via `Inscriptions`** (plus via `Eleves.IdClasse`, colonne supprimée après `DropEleveIdClasse`). L’école vient de **`Frais.IdEcole`**.
 
 Le déploiement **code API seul ne suffit pas** : il faut recréer la vue SQL en base.
 
@@ -21,7 +23,10 @@ mysql -h HOST -P 3306 -u USER -p VOTRE_BASE < Scripts/PRODUCTION_VUE_PAIEMENTS_F
 mysql -h HOST -P 3306 -u USER -p VOTRE_BASE < Scripts/PRODUCTION_VUE_PAIEMENTS_VERIFY.sql
 ```
 
-Script unique (sans `USE` ni migration history) : [`RECREATE_VUE_PAIEMENTS_FRAIS_PAR_ECOLE.sql`](RECREATE_VUE_PAIEMENTS_FRAIS_PAR_ECOLE.sql).
+Scripts uniques (sans `USE` ni migration history selon le fichier) :
+
+- [`RECREATE_VUE_PAIEMENTS_FRAIS_PAR_ECOLE.sql`](RECREATE_VUE_PAIEMENTS_FRAIS_PAR_ECOLE.sql)
+- Copie apply manuel : [`../docs/sql/20260917_RecreateVuePaiementsFraisParEcole_ViaInscription.sql`](../docs/sql/20260917_RecreateVuePaiementsFraisParEcole_ViaInscription.sql)
 
 ## Résultats attendus après correction
 
@@ -29,20 +34,22 @@ Script unique (sans `USE` ni migration history) : [`RECREATE_VUE_PAIEMENTS_FRAIS
 |--------------|---------|
 | `NomCompletFormate` | Colonne présente sur la vue |
 | `ReferenceTransaction` | Colonne présente sur la vue |
-| `__EFMigrationsHistory` | `20260831153000_RecreateVuePaiementsFraisParEcole` |
-| `SELECT ... LIMIT 5` | Lignes sans erreur SQL |
+| `SELECT COUNT(*)` / `LIMIT 5` | Sans erreur SQL (plus d’erreur 1356 liée à `Eleves.IdClasse`) |
+| `__EFMigrationsHistory` | `20260831153000_RecreateVuePaiementsFraisParEcole` (si FIX avec history) |
 
-## Prérequis — `Eleves.IdClasse`
+`IdClasse` / `NomClasse` peuvent être **NULL** pour un paiement dont l’élève n’a pas d’inscription confirmée active — le paiement reste visible.
 
-Le script de correction joint `Classes` via `e.IdClasse`. Si la colonne a été supprimée (`DropEleveIdClasse`), le `CREATE VIEW` échouera.
+## Prérequis
 
-Diagnostic :
+- Table `Inscriptions` avec `IdEleve`, `IdClasse`, `DateInscription`, `Statut`, `StatutInscription`
+- `Frais.IdEcole` présent
+- **Plus besoin** de `Eleves.IdClasse`
 
-```sql
-SHOW COLUMNS FROM Eleves LIKE 'IdClasse';
-```
+Inscription « active » (même logique que `V_Eleve`) :
 
-Si absent, contacter l'équipe backend avant d'exécuter le fix (variante vue via `Inscriptions` nécessaire).
+- `Statut = 1`
+- `StatutInscription` Confirmé / Confirme / Confirm%
+- dernière `DateInscription` par élève
 
 ## Test API
 
@@ -59,10 +66,12 @@ Réponse attendue : **HTTP 200** (tableau JSON).
 dotnet ef database update 20260831153000_RecreateVuePaiementsFraisParEcole --project KelasiNaBiso.csproj
 ```
 
-Ne pas utiliser si de nombreuses migrations sont `Pending` sans audit préalable de `__EFMigrationsHistory`.
+Ne pas utiliser si de nombreuses migrations sont `Pending` sans audit préalable de `__EFMigrationsHistory`.  
+Les migrations EF historiques de cette vue peuvent encore référencer `e.IdClasse` : **préférer le script SQL manuel** ci-dessus (comme pour `V_Eleve`).
 
 ## Références
 
-- Migration : `Migrations/20260831153000_RecreateVuePaiementsFraisParEcole.cs`
+- Script apply : `docs/sql/20260917_RecreateVuePaiementsFraisParEcole_ViaInscription.sql`
 - DTO : `Models/DTOs/VuePaiementsFraisParEcoleDTO.cs`
+- Vue élève (même pattern inscription) : `Scripts/PRODUCTION_RECREATE_V_ELEVE.sql`
 - Modèle prod similaire : [`README_PRODUCTION_DASHBOARD_FIX.md`](README_PRODUCTION_DASHBOARD_FIX.md)

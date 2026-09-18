@@ -184,6 +184,53 @@ namespace KelasiNaBiso.Services
             return query;
         }
 
+        /// <summary>
+        /// Aligne IdClasse/NomClasse sur l'inscription confirmée de l'année scopée
+        /// (la vue V_Eleve joint la dernière inscription tous ans confondus).
+        /// </summary>
+        private async Task ApplyClasseFromAnneeAsync(
+            IList<V_Eleve> eleves,
+            int idEcole,
+            int idAnneeScolaire)
+        {
+            if (eleves.Count == 0)
+                return;
+
+            var eleveIds = eleves.Select(e => e.IdEleve).Distinct().ToList();
+            var inscriptions = await _context.Inscriptions
+                .AsNoTracking()
+                .Include(i => i.Classe)
+                .Where(i => eleveIds.Contains(i.IdEleve)
+                    && i.IdEcole == idEcole
+                    && i.IdAnneeScolaire == idAnneeScolaire
+                    && i.Statut == true
+                    && i.StatutInscription != null
+                    && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                        || i.StatutInscription == "Confirme"
+                        || i.StatutInscription.StartsWith("Confirm")))
+                .ToListAsync();
+
+            var byEleve = inscriptions
+                .GroupBy(i => i.IdEleve)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderByDescending(i => i.DateInscription).First());
+
+            foreach (var eleve in eleves)
+            {
+                if (byEleve.TryGetValue(eleve.IdEleve, out var inscription))
+                {
+                    eleve.IdClasse = inscription.IdClasse;
+                    eleve.NomClasse = inscription.Classe?.NomClasse;
+                }
+                else
+                {
+                    eleve.IdClasse = null;
+                    eleve.NomClasse = null;
+                }
+            }
+        }
+
         // ✅ NOUVELLES MÉTHODES PAGINÉES
         public async Task<ElevesAnneeScopedResult<PagedResult<V_Eleve>>> GetAllPagedAsync(
             int idEcole, PagedRequest request, int? idAnneeScolaire = null, int? idClasse = null, int? idDirection = null)
@@ -203,6 +250,7 @@ namespace KelasiNaBiso.Services
             }
 
             var page = await query.ToPagedAsync(request);
+            await ApplyClasseFromAnneeAsync(page.Data, idEcole, resolvedAnnee);
             return Scoped(page, idEcole, resolvedAnnee);
         }
 
@@ -215,6 +263,7 @@ namespace KelasiNaBiso.Services
                 idEcole, resolvedAnnee, request.IncludeInactive, request.SearchTerm, idClasse, idDirection);
 
             var page = await query.ToCursorPagedAsync(request, e => e.IdEleve);
+            await ApplyClasseFromAnneeAsync(page.Data, idEcole, resolvedAnnee);
             return Scoped(page, idEcole, resolvedAnnee);
         }
 
@@ -724,6 +773,16 @@ namespace KelasiNaBiso.Services
                 .Include(e => e.Tuteur)
                 .Where(e => e.Statut == true)
                 .FirstOrDefaultAsync(e => e.SerialNumber == serialNumber);
+        }
+
+        public async Task<EleveSerialLookupDto?> GetBySerialNumberLookupAsync(string serialNumber)
+        {
+            var eleve = await GetBySerialNumberAsync(serialNumber);
+            if (eleve == null)
+                return null;
+
+            var inscription = await _inscriptionResolver.GetInscriptionActiveAsync(eleve.IdEleve);
+            return EleveSerialLookupDto.From(eleve, inscription);
         }
 
         // ✅ MISE À JOUR DU SERIAL NUMBER: Par IdEleve

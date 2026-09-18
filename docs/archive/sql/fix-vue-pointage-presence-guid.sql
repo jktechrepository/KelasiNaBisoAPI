@@ -1,6 +1,10 @@
 -- Script pour corriger la vue VuePointagePresenceParEcole
 -- Problème : ReferenceEleve est de type GUID dans la base mais string dans le DTO
 -- Solution : Convertir le GUID en string dans la vue
+--
+-- ARCHIVE / SQL Server — OBSOLÈTE pour MySQL prod (utilise e.IdClasse).
+-- Définition à jour :
+--   docs/sql/20260918_RecreateVuePointagePresenceParEcole_ViaInscription.sql
 
 -- Supprimer la vue existante
 IF EXISTS (SELECT * FROM sys.views WHERE name = 'VuePointagePresenceParEcole')

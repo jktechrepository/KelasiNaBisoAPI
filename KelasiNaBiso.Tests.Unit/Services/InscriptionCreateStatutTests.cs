@@ -54,7 +54,8 @@ namespace KelasiNaBiso.Tests.Unit.Services
                 Mock.Of<IUtilisateurRepository>(),
                 NullLogger<InscriptionService>.Instance,
                 resolver,
-                scope);
+                scope,
+                new EleveCompteService(_context, Mock.Of<ISmsNotificationService>(), NullLogger<EleveCompteService>.Instance));
         }
 
         private void Seed()

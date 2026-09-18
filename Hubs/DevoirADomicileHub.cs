@@ -80,6 +80,35 @@ namespace KelasiNaBisoAPI.Hubs
                             _logger.LogInformation($"Parent {userName} (ID: {userId}) ajouté aux groupes de {classesEnfantsList.Count} classe(s)");
                         }
                     }
+
+                    // 4b. Élève : classe via inscription active (IdEleve) — pas parents_classe_*
+                    if (utilisateur.IdEleve.HasValue && utilisateur.IdEleve.Value > 0)
+                    {
+                        var idEleve = utilisateur.IdEleve.Value;
+                        var classesEleve = await _context.Inscriptions
+                            .AsNoTracking()
+                            .Where(i =>
+                                i.IdEleve == idEleve
+                                && i.Statut == true
+                                && i.StatutInscription != null
+                                && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                                    || i.StatutInscription == "Confirme"
+                                    || i.StatutInscription.StartsWith("Confirm")))
+                            .Select(i => i.IdClasse)
+                            .Distinct()
+                            .ToListAsync();
+
+                        foreach (var idClasse in classesEleve)
+                        {
+                            await Groups.AddToGroupAsync(Context.ConnectionId, $"classe_{idClasse}");
+                        }
+
+                        if (classesEleve.Count > 0)
+                        {
+                            _logger.LogInformation(
+                                $"Élève {userName} (ID: {userId}, IdEleve={idEleve}) ajouté aux groupes de {classesEleve.Count} classe(s)");
+                        }
+                    }
                     
                     // 5. Si c'est un agent (enseignant), récupérer ses classes via AffectationsCours -> Cours
                     if (utilisateur.IdAgent.HasValue)

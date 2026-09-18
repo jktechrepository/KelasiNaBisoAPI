@@ -47,6 +47,7 @@ namespace KelasiNaBiso.Services.Repositories
         Task<bool> UpdateSerialNumberByMatriculeAsync(string matricule, string serialNumber);
         Task<Eleve> GetByMatriculeAsync(string matricule);
         Task<Eleve> GetBySerialNumberAsync(string serialNumber);
+        Task<EleveSerialLookupDto?> GetBySerialNumberLookupAsync(string serialNumber);
 
         Task<EleveReinscriptionPrefillDto?> GetReinscriptionPrefillByMatriculeAsync(
             int idEcole,

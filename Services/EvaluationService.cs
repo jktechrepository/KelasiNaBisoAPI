@@ -8,10 +8,12 @@ namespace KelasiNaBiso.Services
     public class EvaluationService : IEvaluationRepository
     {
         private readonly KelasiNaBisoDbContext _context;
+        private readonly PeriodeCotationResolver _periodeResolver;
 
-        public EvaluationService(KelasiNaBisoDbContext context)
+        public EvaluationService(KelasiNaBisoDbContext context, PeriodeCotationResolver periodeResolver)
         {
             _context = context;
+            _periodeResolver = periodeResolver;
         }
 
         public async Task<IEnumerable<Evaluation>> GetAllAsync()
@@ -19,6 +21,7 @@ namespace KelasiNaBiso.Services
             return await _context.Evaluations
                 .Include(e => e.Course)
                 .Include(e => e.Classe)
+                .Include(e => e.PeriodeCotation)
                 .Where(e => e.Statut == true) // ✅ Filtrer uniquement les évaluations actives
                 .OrderByDescending(e => e.DateCreation)
                 .ToListAsync();
@@ -29,6 +32,7 @@ namespace KelasiNaBiso.Services
             return await _context.Evaluations
                 .Include(e => e.Course)
                 .Include(e => e.Classe)
+                .Include(e => e.PeriodeCotation)
                 .FirstOrDefaultAsync(e => e.IdEvaluation == id);
         }
 
@@ -44,6 +48,7 @@ namespace KelasiNaBiso.Services
         {
             return await _context.Evaluations
                 .Include(e => e.Classe)
+                .Include(e => e.PeriodeCotation)
                 .Where(e => e.IdCours == idCours && e.Statut == true) // ✅ Filtrer actifs
                 .OrderByDescending(e => e.DateCreation)
                 .ToListAsync();
@@ -53,6 +58,7 @@ namespace KelasiNaBiso.Services
         {
             return await _context.Evaluations
                 .Include(e => e.Course)
+                .Include(e => e.PeriodeCotation)
                 .Where(e => e.IdClasse == idClasse && e.Statut == true) // ✅ Filtrer actifs
                 .OrderByDescending(e => e.DateCreation)
                 .ToListAsync();
@@ -63,6 +69,7 @@ namespace KelasiNaBiso.Services
             return await _context.Evaluations
                 .Include(e => e.Course)
                 .Include(e => e.Classe)
+                .Include(e => e.PeriodeCotation)
                 .Where(e => e.TypeEvaluation == type && e.Statut == true) // ✅ Filtrer actifs
                 .OrderByDescending(e => e.DateCreation)
                 .ToListAsync();
@@ -70,9 +77,25 @@ namespace KelasiNaBiso.Services
 
         public async Task<IEnumerable<Evaluation>> GetByPeriodeAsync(string periode)
         {
+            var resolved = await _periodeResolver.ResolveAsync(null, periode);
+            if (resolved != null)
+            {
+                var aliases = PeriodeCotationAliases.GetAliases(resolved.Code);
+                return await _context.Evaluations
+                    .Include(e => e.Course)
+                    .Include(e => e.Classe)
+                    .Include(e => e.PeriodeCotation)
+                    .Where(e => e.Statut == true
+                        && (e.IdPeriode == resolved.IdPeriode
+                            || (e.IdPeriode == null && e.Periode != null && aliases.Contains(e.Periode))))
+                    .OrderByDescending(e => e.DateCreation)
+                    .ToListAsync();
+            }
+
             return await _context.Evaluations
                 .Include(e => e.Course)
                 .Include(e => e.Classe)
+                .Include(e => e.PeriodeCotation)
                 .Where(e => e.Periode == periode && e.Statut == true)
                 .OrderByDescending(e => e.DateCreation)
                 .ToListAsync();
@@ -83,6 +106,7 @@ namespace KelasiNaBiso.Services
             return await _context.Evaluations
                 .Include(e => e.Course)
                 .Include(e => e.Classe)
+                .Include(e => e.PeriodeCotation)
                 .Where(e => e.Statut == statut)
                 .OrderByDescending(e => e.DateCreation)
                 .ToListAsync();
@@ -93,6 +117,7 @@ namespace KelasiNaBiso.Services
             return await _context.Evaluations
                 .Include(e => e.Course)
                 .Include(e => e.Classe)
+                .Include(e => e.PeriodeCotation)
                 .Where(e => e.DateCreation == date.Date && e.Statut == true) // ✅ Filtrer actifs
                 .OrderByDescending(e => e.DateCreation)
                 .ToListAsync();
@@ -103,6 +128,7 @@ namespace KelasiNaBiso.Services
             return await _context.Evaluations
                 .Include(e => e.Course)
                 .Include(e => e.Classe)
+                .Include(e => e.PeriodeCotation)
                 .Where(e => e.DateCreation >= dateDebut && e.DateCreation <= dateFin && e.Statut == true) // ✅ Filtrer actifs
                 .OrderByDescending(e => e.DateCreation)
                 .ToListAsync();
@@ -130,6 +156,7 @@ namespace KelasiNaBiso.Services
             existingEvaluation.TypeEvaluation = evaluation.TypeEvaluation;
             existingEvaluation.TitreEvaluation = evaluation.TitreEvaluation;
             existingEvaluation.Periode = evaluation.Periode;
+            existingEvaluation.IdPeriode = evaluation.IdPeriode;
             existingEvaluation.Coefficient = evaluation.Coefficient;
             existingEvaluation.IdCours = evaluation.IdCours;
             existingEvaluation.IdClasse = evaluation.IdClasse;

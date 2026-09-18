@@ -2,6 +2,10 @@
 -- SCRIPT SQL: RENOMMER ENSEIGNANT → AGENT
 -- Date: 17 Octobre 2025
 -- ========================================
+-- ARCHIVE HISTORIQUE — ne plus utiliser l'étape 7 (CREATE VIEW) en prod.
+-- Définition Vue_RepertoireAgentsParParent à jour (post–DropEleveIdClasse) :
+--   docs/sql/20260918_RecreateVue_RepertoireAgentsParParent_ViaInscription.sql
+-- ========================================
 
 -- Étape 1: Supprimer la vue qui dépend de la table Enseignants
 DROP VIEW IF EXISTS Vue_RepertoireEnseignantsParParent;
@@ -22,6 +26,8 @@ ALTER TABLE Agents CHANGE COLUMN EmailEnseignant EmailAgent VARCHAR(255);
 ALTER TABLE AffectationsCours CHANGE COLUMN IdEnseignant IdAgent INT NOT NULL;
 
 -- Étape 7: Recréer la vue SQL avec le nouveau nom
+-- OBSOLÈTE : utilise el.IdClasse + e.Numero AS TelephoneAgent + an.IdEcole.
+-- Remplacer par : docs/sql/20260918_RecreateVue_RepertoireAgentsParParent_ViaInscription.sql
 CREATE VIEW Vue_RepertoireAgentsParParent AS
 SELECT 
     e.IdAgent,

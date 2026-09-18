@@ -1,5 +1,6 @@
 using KelasiNaBiso.Data;
 using KelasiNaBiso.Models;
+using KelasiNaBiso.Models.DTOs;
 using KelasiNaBiso.Services.Repositories;
 using Microsoft.EntityFrameworkCore;
 
@@ -20,6 +21,7 @@ namespace KelasiNaBiso.Services
         {
             return await _context.Notes
                 .Include(n => n.AnneeScolaire)
+                .Include(n => n.Evaluation)
                 .Where(n => n.Statut == true)
                 .ToListAsync();
         }
@@ -34,6 +36,7 @@ namespace KelasiNaBiso.Services
         public async Task<IEnumerable<Note>> GetByEleveAsync(int idEleve)
         {
             return await _context.Notes
+                .Include(n => n.Evaluation)
                 .Where(n => n.IdEleve == idEleve)
                 .Where(n => n.Statut == true)
                 .ToListAsync();
@@ -68,6 +71,7 @@ namespace KelasiNaBiso.Services
         public async Task<IEnumerable<Note>> GetByAnneeScolaireAsync(int idAnneeScolaire)
         {
             return await _context.Notes
+                .Include(n => n.Evaluation)
                 .Where(n => n.IdAnneeScolaire == idAnneeScolaire)
                 .Where(n => n.Statut == true)
                 .ToListAsync();
@@ -75,6 +79,26 @@ namespace KelasiNaBiso.Services
 
         public async Task<IEnumerable<Note>> GetByPeriodeAsync(string periode)
         {
+            var code = PeriodeCotationAliases.ResolveCode(periode);
+            if (!string.IsNullOrEmpty(code))
+            {
+                var periodeEntity = await _context.PeriodesCotation.AsNoTracking()
+                    .FirstOrDefaultAsync(p => p.Code == code && p.Statut);
+                if (periodeEntity != null)
+                {
+                    var aliases = PeriodeCotationAliases.GetAliases(code).ToList();
+                    return await _context.Notes
+                        .Include(n => n.Evaluation)
+                        .Where(n => n.Statut == true
+                            && n.Evaluation != null
+                            && (n.Evaluation.IdPeriode == periodeEntity.IdPeriode
+                                || (n.Evaluation.IdPeriode == null
+                                    && n.Evaluation.Periode != null
+                                    && aliases.Contains(n.Evaluation.Periode))))
+                        .ToListAsync();
+                }
+            }
+
             return await _context.Notes
                 .Include(n => n.Evaluation)
                 .Where(n => n.Evaluation.Periode == periode)
@@ -96,6 +120,187 @@ namespace KelasiNaBiso.Services
             _context.Notes.Add(note);
             await _context.SaveChangesAsync();
             return note;
+        }
+
+        public async Task<BulkNoteResultDto> UpsertBulkAsync(
+            BulkNoteRequestDto request,
+            int idProfesseur,
+            CancellationToken cancellationToken = default)
+        {
+            if (request == null)
+                throw new InvalidOperationException("Corps de requête requis.");
+            if (request.Lignes == null || request.Lignes.Count == 0)
+                throw new InvalidOperationException("Au moins une ligne est requise.");
+            if (request.Lignes.Count > 80)
+                throw new InvalidOperationException("Maximum 80 notes par lot.");
+
+            var duplicateEleves = request.Lignes
+                .GroupBy(l => l.IdEleve)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToList();
+            if (duplicateEleves.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    $"Élèves en double dans le lot : {string.Join(", ", duplicateEleves)}.");
+            }
+
+            foreach (var ligne in request.Lignes)
+            {
+                if (ligne.NoteObtenue < 0 || ligne.NoteObtenue > 100)
+                    throw new InvalidOperationException(
+                        $"NoteObtenue invalide pour l'élève {ligne.IdEleve} (0–100).");
+            }
+
+            var evaluation = await _context.Evaluations.AsNoTracking()
+                .FirstOrDefaultAsync(e => e.IdEvaluation == request.IdEvaluation && e.Statut == true, cancellationToken)
+                ?? throw new InvalidOperationException($"Évaluation {request.IdEvaluation} introuvable ou inactive.");
+
+            var professeurExists = await _context.Utilisateurs.AsNoTracking()
+                .AnyAsync(u => u.IdUtilisateur == idProfesseur && u.Statut == true, cancellationToken);
+            if (!professeurExists)
+                throw new InvalidOperationException($"Professeur {idProfesseur} introuvable ou inactif.");
+
+            var idAnnee = request.IdAnneeScolaire;
+            if (idAnnee <= 0)
+            {
+                var idEcole = await _context.Classes.AsNoTracking()
+                    .Where(c => c.IdClasse == evaluation.IdClasse)
+                    .Select(c => c.Direction != null ? c.Direction.IdEcole : null)
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                if (!idEcole.HasValue || idEcole.Value <= 0)
+                    throw new InvalidOperationException(
+                        "Impossible de résoudre l'année scolaire : précisez IdAnneeScolaire.");
+
+                idAnnee = await _scope.ResolveIdAnneeScolaireAsync(idEcole.Value, null);
+            }
+            else
+            {
+                var anneeOk = await _context.AnneeScolaires.AsNoTracking()
+                    .AnyAsync(a => a.IdAnneeScolaire == idAnnee && a.Statut == true, cancellationToken);
+                if (!anneeOk)
+                    throw new InvalidOperationException($"Année scolaire {idAnnee} introuvable.");
+            }
+
+            var eleveIds = request.Lignes.Select(l => l.IdEleve).ToList();
+            var elevesOk = await _context.Eleves.AsNoTracking()
+                .Where(e => eleveIds.Contains(e.IdEleve) && e.Statut == true)
+                .Select(e => e.IdEleve)
+                .ToListAsync(cancellationToken);
+            var missingEleves = eleveIds.Except(elevesOk).ToList();
+            if (missingEleves.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    $"Élèves introuvables ou inactifs : {string.Join(", ", missingEleves)}.");
+            }
+
+            // Élèves inscrits dans la classe de l'évaluation pour l'année
+            var elevesInClasse = await _context.Inscriptions.AsNoTracking()
+                .Where(i => i.IdClasse == evaluation.IdClasse
+                    && i.IdAnneeScolaire == idAnnee
+                    && i.Statut == true
+                    && eleveIds.Contains(i.IdEleve))
+                .Select(i => i.IdEleve)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+            var horsClasse = eleveIds.Except(elevesInClasse).ToList();
+            if (horsClasse.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    $"Élèves hors classe de l'évaluation ({evaluation.IdClasse}) pour l'année {idAnnee} : {string.Join(", ", horsClasse)}.");
+            }
+
+            var existingNotes = await _context.Notes
+                .Where(n => n.IdEvaluation == request.IdEvaluation
+                    && n.Statut == true
+                    && eleveIds.Contains(n.IdEleve))
+                .ToListAsync(cancellationToken);
+            var byEleve = existingNotes.ToDictionary(n => n.IdEleve);
+
+            var dateEval = request.DateEvaluation ?? DateTime.Now;
+            var summaries = new List<NoteSummaryDto>();
+            var created = 0;
+            var updated = 0;
+
+            var useTransaction = _context.Database.IsRelational();
+            Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? tx = null;
+            if (useTransaction)
+                tx = await _context.Database.BeginTransactionAsync(cancellationToken);
+
+            try
+            {
+                foreach (var ligne in request.Lignes)
+                {
+                    if (byEleve.TryGetValue(ligne.IdEleve, out var existing))
+                    {
+                        existing.NoteObtenue = ligne.NoteObtenue;
+                        existing.Appreciation = ligne.Appreciation ?? string.Empty;
+                        existing.DateEvaluation = dateEval;
+                        existing.IdProfesseur = idProfesseur;
+                        existing.IdAnneeScolaire = idAnnee;
+                        updated++;
+                        summaries.Add(new NoteSummaryDto
+                        {
+                            IdNote = existing.IdNote,
+                            IdEleve = existing.IdEleve,
+                            NoteObtenue = existing.NoteObtenue,
+                            Appreciation = existing.Appreciation,
+                            Action = "updated"
+                        });
+                    }
+                    else
+                    {
+                        var note = new Note
+                        {
+                            NoteObtenue = ligne.NoteObtenue,
+                            Appreciation = ligne.Appreciation ?? string.Empty,
+                            DateEvaluation = dateEval,
+                            IdProfesseur = idProfesseur,
+                            IdEleve = ligne.IdEleve,
+                            IdEvaluation = request.IdEvaluation,
+                            IdAnneeScolaire = idAnnee,
+                            Statut = true,
+                            DateCreation = DateTime.Now
+                        };
+                        _context.Notes.Add(note);
+                        await _context.SaveChangesAsync(cancellationToken);
+                        created++;
+                        summaries.Add(new NoteSummaryDto
+                        {
+                            IdNote = note.IdNote,
+                            IdEleve = note.IdEleve,
+                            NoteObtenue = note.NoteObtenue,
+                            Appreciation = note.Appreciation,
+                            Action = "created"
+                        });
+                    }
+                }
+
+                await _context.SaveChangesAsync(cancellationToken);
+                if (tx != null)
+                    await tx.CommitAsync(cancellationToken);
+            }
+            catch
+            {
+                if (tx != null)
+                    await tx.RollbackAsync(cancellationToken);
+                throw;
+            }
+            finally
+            {
+                if (tx != null)
+                    await tx.DisposeAsync();
+            }
+
+            return new BulkNoteResultDto
+            {
+                IdEvaluation = request.IdEvaluation,
+                IdAnneeScolaire = idAnnee,
+                Created = created,
+                Updated = updated,
+                Notes = summaries
+            };
         }
 
         public async Task<Note> UpdateAsync(Note note)

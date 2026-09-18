@@ -1,10 +1,10 @@
 -- =============================================================================
 -- KelasiNaBiso — Correction vue VuePaiementsFraisParEcole (production)
--- Erreur corrigée : Unknown column 'v.NomCompletFormate' in 'SELECT'
+-- Aligné post–DropEleveIdClasse : classe via Inscriptions (comme V_Eleve)
+-- École via Frais.IdEcole (portée frais multi-écoles)
 -- Idempotent : DROP VIEW IF EXISTS + CREATE VIEW
 -- =============================================================================
 -- Prérequis : exécuter PRODUCTION_VUE_PAIEMENTS_DIAGNOSTIC.sql avant.
--- Eleves.IdClasse doit exister (SHOW COLUMNS FROM Eleves LIKE 'IdClasse').
 -- Remplacer knb_db par votre base production si différent.
 
 USE knb_db;
@@ -97,12 +97,25 @@ SELECT DISTINCT
 FROM Paiements p
 INNER JOIN Eleves e ON p.IdEleve = e.IdEleve
 INNER JOIN Tuteurs t ON e.IdTuteur = t.IdTuteur
-INNER JOIN Classes c ON e.IdClasse = c.IdClasse
+LEFT JOIN (
+    SELECT i.*
+    FROM Inscriptions i
+    INNER JOIN (
+        SELECT IdEleve, MAX(DateInscription) AS MaxDate
+        FROM Inscriptions
+        WHERE Statut = 1
+          AND (StatutInscription = 'Confirmé' OR StatutInscription = 'Confirme' OR StatutInscription LIKE 'Confirm%')
+        GROUP BY IdEleve
+    ) latest ON i.IdEleve = latest.IdEleve AND i.DateInscription = latest.MaxDate
+    WHERE i.Statut = 1
+      AND (i.StatutInscription = 'Confirmé' OR i.StatutInscription = 'Confirme' OR i.StatutInscription LIKE 'Confirm%')
+) ins ON ins.IdEleve = e.IdEleve
+LEFT JOIN Classes c ON ins.IdClasse = c.IdClasse
 LEFT JOIN Sections s ON c.IdSection = s.IdSection
-INNER JOIN Directions d ON c.IdDirection = d.IdDirection
+LEFT JOIN Directions d ON c.IdDirection = d.IdDirection
 LEFT JOIN Options o ON c.IdOption = o.IdOption
 INNER JOIN Frais f ON p.IdFrais = f.IdFrais
-INNER JOIN Ecoles ec ON d.IdEcole = ec.IdEcole;
+INNER JOIN Ecoles ec ON f.IdEcole = ec.IdEcole;
 
 INSERT IGNORE INTO `__EFMigrationsHistory` (MigrationId, ProductVersion)
 VALUES ('20260831153000_RecreateVuePaiementsFraisParEcole', '6.0.36');

@@ -52,6 +52,11 @@ namespace KelasiNaBiso.Data
         public DbSet<Document> Documents { get; set; }
         public DbSet<RessourcePedagogique> RessourcePedagogiques { get; set; }
         public DbSet<Evaluation> Evaluations { get; set; }
+        public DbSet<PeriodeCotation> PeriodesCotation { get; set; }
+        public DbSet<BulletinDecision> BulletinDecisions { get; set; }
+        public DbSet<BulletinFige> BulletinsFiges { get; set; }
+        public DbSet<CategorieDepense> CategoriesDepense { get; set; }
+        public DbSet<Depense> Depenses { get; set; }
         public DbSet<Notification> Notifications { get; set; }
         public DbSet<UserDevice> UserDevices { get; set; }
         public DbSet<SmsLog> SmsLogs { get; set; } // ✅ NOUVEAU : Historique des SMS Twilio
@@ -74,6 +79,7 @@ namespace KelasiNaBiso.Data
         public DbSet<VueRepertoireAgentsParParentDTO> VueRepertoireAgentsParParent { get; set; }
         // ❌ OBSOLÈTE: VueRepertoireEnseignantsParParentDTO supprimé - Remplacé par VueRepertoireAgentsParParentDTO
         public DbSet<DevoirADomicile> DevoirsADomicile { get; set; } // ✅ NOUVEAU : Devoirs à domicile
+        public DbSet<DevoirADomicileTelechargement> DevoirsADomicileTelechargements { get; set; }
         public DbSet<PaiementCrashed> PaiementsCrashed { get; set; } // ✅ NOUVEAU : Paiements échoués lors du bulk insert
 
         // MOKO Afrika — paiements Mobile Money / carte
@@ -122,6 +128,32 @@ namespace KelasiNaBiso.Data
                 .WithMany(e => e.Utilisateurs)
                 .HasForeignKey(u => u.IdEcole)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Utilisateur>()
+                .HasOne(u => u.Agent)
+                .WithMany(a => a.Utilisateurs)
+                .HasForeignKey(u => u.IdAgent)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Utilisateur>()
+                .HasOne(u => u.Tuteur)
+                .WithMany(t => t.Utilisateurs)
+                .HasForeignKey(u => u.IdTuteur)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Utilisateur>()
+                .HasOne(u => u.Eleve)
+                .WithMany()
+                .HasForeignKey(u => u.IdEleve)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Utilisateur>()
+                .HasIndex(u => u.IdEleve)
+                .IsUnique()
+                .HasDatabaseName("IX_Utilisateurs_IdEleve_Unique");
 
             // ✅ Rétrocompatibilité : Relation avec Role (optionnelle pour le système multi-rôles)
             modelBuilder.Entity<Utilisateur>()
@@ -755,6 +787,31 @@ namespace KelasiNaBiso.Data
                 .HasIndex(d => new { d.IdClasse, d.IdAnneeScolaire, d.Statut })
                 .HasDatabaseName("IX_DevoirADomicile_Classe_Annee_Statut");
 
+            modelBuilder.Entity<DevoirADomicileTelechargement>()
+                .HasOne(t => t.DevoirADomicile)
+                .WithMany()
+                .HasForeignKey(t => t.IdDevoirADomicile)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<DevoirADomicileTelechargement>()
+                .HasOne(t => t.Utilisateur)
+                .WithMany()
+                .HasForeignKey(t => t.IdUtilisateur)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<DevoirADomicileTelechargement>()
+                .HasIndex(t => new { t.IdDevoirADomicile, t.IdUtilisateur })
+                .IsUnique()
+                .HasDatabaseName("IX_DevoirADomicileTelechargement_Devoir_Utilisateur");
+
+            modelBuilder.Entity<DevoirADomicileTelechargement>()
+                .HasIndex(t => t.IdDevoirADomicile)
+                .HasDatabaseName("IX_DevoirADomicileTelechargement_IdDevoir");
+
+            modelBuilder.Entity<DevoirADomicileTelechargement>()
+                .HasIndex(t => t.IdUtilisateur)
+                .HasDatabaseName("IX_DevoirsADomicileTelechargements_IdUtilisateur");
+
             modelBuilder.Entity<Message>()
                 .HasOne(m => m.Expediteur)
                 .WithMany(u => u.MessagesEnvoyes)
@@ -954,10 +1011,113 @@ namespace KelasiNaBiso.Data
                 .OnDelete(DeleteBehavior.NoAction);
 
             modelBuilder.Entity<Evaluation>()
+                .HasOne(e => e.PeriodeCotation)
+                .WithMany(p => p.Evaluations)
+                .HasForeignKey(e => e.IdPeriode)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Evaluation>()
                 .HasMany(e => e.Notes)
                 .WithOne(n => n.Evaluation)
                 .HasForeignKey(n => n.IdEvaluation)
                 .OnDelete(DeleteBehavior.NoAction);
+
+            modelBuilder.Entity<PeriodeCotation>(entity =>
+            {
+                entity.ToTable("PeriodesCotation");
+                entity.HasIndex(p => p.Code).IsUnique();
+                entity.Property(p => p.Code).HasMaxLength(20).IsRequired();
+                entity.Property(p => p.Libelle).HasMaxLength(100).IsRequired();
+            });
+
+            modelBuilder.Entity<BulletinDecision>(entity =>
+            {
+                entity.ToTable("BulletinDecisions");
+                entity.HasIndex(d => new { d.IdEleve, d.IdAnneeScolaire, d.IdPeriode })
+                    .IsUnique()
+                    .HasDatabaseName("IX_BulletinDecisions_Eleve_Annee_Periode");
+                entity.Property(d => d.Decision).HasMaxLength(100);
+                entity.Property(d => d.AppreciationGenerale).HasMaxLength(1000);
+                entity.HasOne(d => d.Eleve)
+                    .WithMany()
+                    .HasForeignKey(d => d.IdEleve)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(d => d.AnneeScolaire)
+                    .WithMany()
+                    .HasForeignKey(d => d.IdAnneeScolaire)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(d => d.PeriodeCotation)
+                    .WithMany()
+                    .HasForeignKey(d => d.IdPeriode)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<BulletinFige>(entity =>
+            {
+                entity.ToTable("BulletinsFiges");
+                entity.HasIndex(f => new { f.IdEleve, f.IdAnneeScolaire, f.IdPeriode })
+                    .IsUnique()
+                    .HasDatabaseName("IX_BulletinsFiges_Eleve_Annee_Periode");
+                entity.Property(f => f.PayloadJson).HasColumnType("longtext").IsRequired();
+                entity.Property(f => f.Decision).HasMaxLength(100);
+                entity.Property(f => f.AppreciationGenerale).HasMaxLength(1000);
+                entity.HasOne(f => f.Eleve)
+                    .WithMany()
+                    .HasForeignKey(f => f.IdEleve)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(f => f.AnneeScolaire)
+                    .WithMany()
+                    .HasForeignKey(f => f.IdAnneeScolaire)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(f => f.PeriodeCotation)
+                    .WithMany()
+                    .HasForeignKey(f => f.IdPeriode)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<CategorieDepense>(entity =>
+            {
+                entity.ToTable("CategoriesDepense");
+                entity.HasIndex(c => c.IdEcole);
+                entity.Property(c => c.NomCategorie).HasMaxLength(150).IsRequired();
+                entity.Property(c => c.Description).HasMaxLength(500);
+                entity.HasOne(c => c.Ecole)
+                    .WithMany()
+                    .HasForeignKey(c => c.IdEcole)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<Depense>(entity =>
+            {
+                entity.ToTable("Depenses");
+                entity.HasIndex(d => new { d.IdEcole, d.DateDepense })
+                    .HasDatabaseName("IX_Depenses_IdEcole_DateDepense");
+                entity.HasIndex(d => d.StatutWorkflow);
+                entity.Property(d => d.Libelle).HasMaxLength(200).IsRequired();
+                entity.Property(d => d.Description).HasMaxLength(1000);
+                entity.Property(d => d.Beneficiaire).HasMaxLength(200);
+                entity.Property(d => d.ReferencePiece).HasMaxLength(100);
+                entity.Property(d => d.Montant).HasPrecision(18, 2);
+                entity.Property(d => d.CodeDeviseMontant).HasMaxLength(10).IsRequired();
+                entity.Property(d => d.CodeDevisePrincipale).HasMaxLength(10);
+                entity.Property(d => d.TauxVersDevisePrincipale).HasPrecision(18, 8);
+                entity.Property(d => d.MontantDevisePrincipale).HasPrecision(18, 2);
+                entity.Property(d => d.ModePaiement).HasMaxLength(50);
+                entity.Property(d => d.StatutWorkflow).HasMaxLength(20).IsRequired();
+                entity.Property(d => d.MotifAnnulation).HasMaxLength(500);
+                entity.HasOne(d => d.Ecole)
+                    .WithMany()
+                    .HasForeignKey(d => d.IdEcole)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(d => d.CategorieDepense)
+                    .WithMany()
+                    .HasForeignKey(d => d.IdCategorieDepense)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(d => d.UtilisateurCreateur)
+                    .WithMany()
+                    .HasForeignKey(d => d.IdUtilisateurCreateur)
+                    .OnDelete(DeleteBehavior.SetNull);
+            });
 
             // Configuration des relations pour Notification
             modelBuilder.Entity<Notification>()

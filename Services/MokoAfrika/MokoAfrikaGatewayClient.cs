@@ -95,7 +95,7 @@ namespace KelasiNaBiso.Services.MokoAfrika
     {
         private static readonly HashSet<string> SuccessStatuses = new(StringComparer.OrdinalIgnoreCase)
         {
-            "success", "successful", "approved", "paid"
+            "success", "successful", "approved", "paid", "completed", "succeeded"
         };
 
         private static readonly HashSet<string> PendingStatuses = new(StringComparer.OrdinalIgnoreCase)
@@ -105,24 +105,57 @@ namespace KelasiNaBiso.Services.MokoAfrika
 
         /// <summary>
         /// Statuts gateway ambigus sur un check précoce (USSD encore en cours).
-        /// Sans <c>resultCodeError</c>, ne constituent pas un échec définitif.
+        /// Uniquement <c>Status: Error|Failed</c> <b>sans</b> <c>Trans_Status</c> terminal.
         /// </summary>
         private static readonly HashSet<string> SoftAmbiguousFailureStatuses = new(StringComparer.OrdinalIgnoreCase)
         {
             "error", "failed"
         };
 
-        /// <summary>Refus / annulation client ou timeout — échec définitif même sans resultCodeError.</summary>
+        /// <summary>Refus / annulation explicite au niveau Status (sans Trans_Status).</summary>
         private static readonly HashSet<string> HardFailureStatuses = new(StringComparer.OrdinalIgnoreCase)
         {
             "cancelled", "rejected", "declined", "timeout"
+        };
+
+        /// <summary>Statuts finaux négatifs dans <c>Trans_Status</c> (annulation / échec MOKO).</summary>
+        private static readonly HashSet<string> TerminalTransFailureStatuses = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "failed", "cancelled", "rejected", "declined", "timeout"
         };
 
         /// <summary>Alias de IsDefinitiveSuccess — ne traite plus resultCode "0" seul comme succès.</summary>
         public static bool IsSuccess(JsonElement root) => IsDefinitiveSuccess(root);
 
         public static string? GetTransactionStatus(JsonElement root) =>
-            GetString(root, "Status", "trans_status", "status")?.ToLowerInvariant();
+            GetString(root, "Trans_Status", "trans_Status", "TransStatus", "Status", "trans_status", "status")
+                ?.ToLowerInvariant();
+
+        /// <summary>Valeur brute de <c>Trans_Status</c> uniquement (statut final MOKO).</summary>
+        public static string? GetTransStatus(JsonElement root) =>
+            GetString(root, "Trans_Status", "trans_Status", "TransStatus", "trans_status")?.ToLowerInvariant();
+
+        /// <summary>
+        /// Refus explicite côté Status (cancelled/rejected/…) — distinct du soft Error précoce.
+        /// </summary>
+        public static bool IsClientRefusalStatus(JsonElement root)
+        {
+            var statusOnly = GetString(root, "Status", "status")?.ToLowerInvariant();
+            return !string.IsNullOrEmpty(statusOnly) && HardFailureStatuses.Contains(statusOnly);
+        }
+
+        /// <summary>
+        /// Échec terminal : <c>Trans_Status</c> Failed/cancelled/… ou Status cancelled/rejected/…,
+        /// y compris pendant la fenêtre USSD (annulation client).
+        /// </summary>
+        public static bool IsTerminalFailureStatus(JsonElement root)
+        {
+            var trans = GetTransStatus(root);
+            if (!string.IsNullOrEmpty(trans) && TerminalTransFailureStatuses.Contains(trans))
+                return true;
+
+            return IsClientRefusalStatus(root);
+        }
 
         public static bool IsDefinitiveSuccess(JsonElement root)
         {
@@ -142,8 +175,8 @@ namespace KelasiNaBiso.Services.MokoAfrika
             if (!string.IsNullOrEmpty(status) && PendingStatuses.Contains(status))
                 return true;
 
-            // Status Error/Failed sans resultCodeError = souvent check trop tôt (USSD en cours)
-            if (!string.IsNullOrEmpty(status) && SoftAmbiguousFailureStatuses.Contains(status))
+            // Status Error/Failed sans Trans_Status terminal = souvent check trop tôt (USSD en cours)
+            if (IsSoftAmbiguousFailure(root))
                 return true;
 
             // resultCode "0" sans status explicite = requête acceptée (USSD envoyé), pas encore confirmée
@@ -156,20 +189,20 @@ namespace KelasiNaBiso.Services.MokoAfrika
             if (HasResultCodeError(root))
                 return true;
 
-            var status = GetTransactionStatus(root);
-            return !string.IsNullOrEmpty(status) && HardFailureStatuses.Contains(status);
+            return IsTerminalFailureStatus(root);
         }
 
         /// <summary>
-        /// Échec « soft » : Status Error/Failed sans resultCodeError — ne doit pas tuer un PayIn pending USSD.
+        /// Échec « soft » : Status Error/Failed sans Trans_Status terminal ni resultCodeError.
         /// </summary>
         public static bool IsSoftAmbiguousFailure(JsonElement root)
         {
             if (HasResultCodeError(root) || IsDefinitiveSuccess(root) || IsDefinitiveFailure(root))
                 return false;
 
-            var status = GetTransactionStatus(root);
-            return !string.IsNullOrEmpty(status) && SoftAmbiguousFailureStatuses.Contains(status);
+            // Soft uniquement si Status (pas Trans_Status) est Error/Failed
+            var statusOnly = GetString(root, "Status", "status")?.ToLowerInvariant();
+            return !string.IsNullOrEmpty(statusOnly) && SoftAmbiguousFailureStatuses.Contains(statusOnly);
         }
 
         public static bool HasResultCodeError(JsonElement root)

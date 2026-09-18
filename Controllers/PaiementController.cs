@@ -80,6 +80,10 @@ namespace KelasiNaBiso.Controllers
             [FromQuery] PagedRequest request,
             [FromQuery] int? idAnneeScolaire = null)
         {
+            var denyOwn = this.ForbidIfWrongEleve(idEleve);
+            if (denyOwn != null)
+                return denyOwn;
+
             try
             {
                 return Ok(await _paiementRepository.GetByElevePagedAsync(idEleve, request, idAnneeScolaire));
@@ -156,6 +160,10 @@ namespace KelasiNaBiso.Controllers
             int idEleve,
             [FromQuery] int? idAnneeScolaire = null)
         {
+            var denyOwn = this.ForbidIfWrongEleve(idEleve);
+            if (denyOwn != null)
+                return denyOwn;
+
             try
             {
                 return Ok(await _paiementRepository.GetByEleveAsync(idEleve, idAnneeScolaire));
@@ -597,13 +605,17 @@ namespace KelasiNaBiso.Controllers
         /// ✨ Obtient le taux de paiement d'un élève sur une période
         /// </summary>
         [HttpGet("eleves/{idEleve}/taux")]
-        public async Task<ActionResult> GetEleveTaux(
+        public async Task<IActionResult> GetEleveTaux(
             int idEleve,
             [FromQuery] DateTime? dateDebut,
             [FromQuery] DateTime? dateFin,
             [FromQuery] string? periode,
             [FromQuery] int? idAnneeScolaire = null)
         {
+            var denyOwn = this.ForbidIfWrongEleve(idEleve);
+            if (denyOwn != null)
+                return denyOwn;
+
             try
             {
                 var paiementService = _paiementRepository as PaiementService;

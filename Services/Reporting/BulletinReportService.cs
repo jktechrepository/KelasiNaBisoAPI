@@ -29,10 +29,12 @@ namespace KelasiNaBiso.Services.Reporting
         public async Task<byte[]> GetElevePdfAsync(
             int idEleve,
             int idAnneeScolaire,
-            string periode,
+            string? periode = null,
+            int? idPeriode = null,
             CancellationToken cancellationToken = default)
         {
-            var bulletin = await _bulletinService.GetBulletinEleveAsync(idEleve, idAnneeScolaire, periode, cancellationToken);
+            var bulletin = await _bulletinService.GetBulletinEleveAsync(
+                idEleve, idAnneeScolaire, periode, idPeriode, cancellationToken);
             if (bulletin == null)
                 throw new KeyNotFoundException($"Bulletin introuvable pour l'élève {idEleve}.");
 
@@ -141,7 +143,9 @@ namespace KelasiNaBiso.Services.Reporting
                 Periode = b.Periode,
                 MoyenneGeneraleTexte = FormatNote(b.MoyenneGenerale),
                 RangTexte = b.Rang.HasValue ? $"{b.Rang.Value} / {b.EffectifClasse}" : "-",
-                EffectifTexte = b.EffectifClasse > 0 ? b.EffectifClasse.ToString(CultureInfo.InvariantCulture) : "-"
+                EffectifTexte = b.EffectifClasse > 0 ? b.EffectifClasse.ToString(CultureInfo.InvariantCulture) : "-",
+                DecisionTexte = string.IsNullOrWhiteSpace(b.Decision) ? "-" : b.Decision,
+                AppreciationTexte = string.IsNullOrWhiteSpace(b.AppreciationGenerale) ? "-" : b.AppreciationGenerale
             };
         }
 
@@ -164,7 +168,7 @@ namespace KelasiNaBiso.Services.Reporting
                 {
                     NomCours = l.NomCours,
                     MoyenneCoursTexte = FormatNote(l.MoyenneCours),
-                    CoefficientTexte = FormatCoeff(l.Coefficient),
+                    CoefficientTexte = FormatCoeff(l.PonderationCours),
                     DetailNotes = details.Length > 0 ? details.ToString() : "-"
                 };
             }).ToList();

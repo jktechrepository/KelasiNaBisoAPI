@@ -5,7 +5,8 @@ namespace KelasiNaBiso.Services.Reporting
         Task<byte[]> GetElevePdfAsync(
             int idEleve,
             int idAnneeScolaire,
-            string periode,
+            string? periode = null,
+            int? idPeriode = null,
             CancellationToken cancellationToken = default);
     }
 }

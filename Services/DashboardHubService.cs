@@ -133,6 +133,11 @@ namespace KelasiNaBisoAPI.Services
             await BroadcastPayInEventAsync(idEcole, "payin_confirmed", notification);
         }
 
+        public async Task NotifyPayInFailedAsync(int idEcole, PayInSignalRNotification notification)
+        {
+            await BroadcastPayInEventAsync(idEcole, "payin_failed", notification);
+        }
+
         private async Task BroadcastPayInEventAsync(int idEcole, string eventType, PayInSignalRNotification notification)
         {
             try
@@ -148,6 +153,7 @@ namespace KelasiNaBisoAPI.Services
                     montantNet = notification.MontantNet,
                     statutPaiement = notification.StatutPaiement,
                     statutGateway = notification.StatutGateway,
+                    statusDescription = notification.StatusDescription,
                     timestamp = DateTime.UtcNow
                 };
 

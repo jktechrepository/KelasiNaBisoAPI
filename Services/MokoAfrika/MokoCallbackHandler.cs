@@ -4,6 +4,7 @@ using System.Text.Json;
 using KelasiNaBiso.Data;
 using KelasiNaBiso.Models.Enums;
 using KelasiNaBiso.Models.DTOs.MokoAfrika;
+using KelasiNaBisoAPI.Services.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -21,6 +22,7 @@ namespace KelasiNaBiso.Services.MokoAfrika
         private readonly IMokoAfrikaService _mokoService;
         private readonly IPaiementMokoOrchestrator _orchestrator;
         private readonly IMokoWalletService _walletService;
+        private readonly IDashboardHubService _dashboardHubService;
         private readonly MokoSettings _settings;
         private readonly ILogger<MokoCallbackHandler> _logger;
 
@@ -29,6 +31,7 @@ namespace KelasiNaBiso.Services.MokoAfrika
             IMokoAfrikaService mokoService,
             IPaiementMokoOrchestrator orchestrator,
             IMokoWalletService walletService,
+            IDashboardHubService dashboardHubService,
             IOptions<MokoSettings> settings,
             ILogger<MokoCallbackHandler> logger)
         {
@@ -36,20 +39,44 @@ namespace KelasiNaBiso.Services.MokoAfrika
             _mokoService = mokoService;
             _orchestrator = orchestrator;
             _walletService = walletService;
+            _dashboardHubService = dashboardHubService;
             _settings = settings.Value;
             _logger = logger;
         }
 
         public bool VerifySignature(string rawBody, string? signature)
         {
-            if (string.IsNullOrWhiteSpace(_settings.HmacKey) || string.IsNullOrWhiteSpace(signature))
-                return string.IsNullOrWhiteSpace(_settings.HmacKey);
+            if (string.IsNullOrWhiteSpace(_settings.HmacKey))
+                return true;
+
+            if (string.IsNullOrWhiteSpace(signature))
+            {
+                _logger.LogWarning(
+                    "Callback MOKO : en-tête X-Signature absent alors que HmacKey est configuré — webhook rejeté (401). " +
+                    "Sans callback accepté, le Paiement ne sera créé que via POST .../status/{{ref}}/check.");
+                return false;
+            }
 
             var keyBytes = Encoding.UTF8.GetBytes(_settings.HmacKey);
             var bodyBytes = Encoding.UTF8.GetBytes(rawBody);
             var hash = HMACSHA256.HashData(keyBytes, bodyBytes);
-            var computed = Convert.ToHexString(hash).ToLowerInvariant();
-            return string.Equals(computed, signature.Trim(), StringComparison.OrdinalIgnoreCase);
+            var computedHex = Convert.ToHexString(hash).ToLowerInvariant();
+            var computedBase64 = Convert.ToBase64String(hash);
+
+            var provided = signature.Trim();
+            if (provided.StartsWith("sha256=", StringComparison.OrdinalIgnoreCase))
+                provided = provided["sha256=".Length..].Trim();
+
+            var ok = string.Equals(computedHex, provided, StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(computedBase64, provided, StringComparison.Ordinal);
+
+            if (!ok)
+            {
+                _logger.LogWarning(
+                    "Callback MOKO : signature HMAC invalide (hex ou base64 attendu). Vérifier MokoSettings.HmacKey.");
+            }
+
+            return ok;
         }
 
         public async Task<MokoCallbackResultDto> HandleAsync(
@@ -59,7 +86,6 @@ namespace KelasiNaBiso.Services.MokoAfrika
         {
             if (!VerifySignature(rawBody, signature))
             {
-                _logger.LogWarning("Callback MOKO : signature HMAC invalide");
                 return new MokoCallbackResultDto { Accepted = false, Message = "Signature invalide" };
             }
 
@@ -94,8 +120,14 @@ namespace KelasiNaBiso.Services.MokoAfrika
                     return new MokoCallbackResultDto { Accepted = true, Reference = reference, Message = "Référence inconnue (ignoré)" };
                 }
 
-                if (tx.Status == MokoTransactionStatuses.Success && isSuccess)
+                // Idempotence : uniquement si déjà Success ET Paiement lié.
+                // Success sans IdPaiement = confirm précédent incomplet → retenter.
+                if (tx.Status == MokoTransactionStatuses.Success
+                    && tx.IdPaiement.HasValue
+                    && isSuccess)
+                {
                     return new MokoCallbackResultDto { Accepted = true, Reference = reference, Message = "Déjà traité" };
+                }
 
                 tx.RawCallback = rawBody;
                 tx.StatusDescription = MokoGatewayResponseParser.GetString(root, "trans_status_description", "Comment", "Status", "trans_status", "status")
@@ -154,13 +186,20 @@ namespace KelasiNaBiso.Services.MokoAfrika
             if (isSuccess)
             {
                 tx.Status = MokoTransactionStatuses.Success;
-                if (tx.IdPaiement.HasValue)
+                try
                 {
                     await _mokoService.ConfirmerPayInEtNotifierAsync(
-                        tx.IdPaiement.Value,
                         tx.Reference,
                         tx.GatewayTransactionId,
                         cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(
+                        ex,
+                        "Callback MOKO succès mais ConfirmerPayIn a échoué pour {Reference} — retenter via POST status/check",
+                        tx.Reference);
+                    throw;
                 }
 
                 return "Callback traité (succès)";
@@ -178,22 +217,35 @@ namespace KelasiNaBiso.Services.MokoAfrika
 
             if (isHardFailure || !isPendingLike)
             {
+                var previousStatus = tx.Status;
                 tx.Status = MokoTransactionStatuses.Error;
-                if (tx.IdPaiement.HasValue)
-                {
-                    var paiement = await _context.Paiements.FindAsync(new object[] { tx.IdPaiement.Value }, cancellationToken);
-                    if (paiement != null)
-                        paiement.StatutPaiement = "Echoue";
-                }
-
                 _logger.LogWarning(
-                    "Callback MOKO PayIn échec définitif pour {Reference} (desc={Desc})",
+                    "Callback MOKO PayIn échec définitif pour {Reference} (desc={Desc}) — pas de ligne Paiements",
                     tx.Reference, tx.StatusDescription);
+
+                if (previousStatus != MokoTransactionStatuses.Error)
+                    await NotifierPayInFailedAsync(tx, cancellationToken);
+
                 return "Callback traité (échec)";
             }
 
             tx.Status = MokoTransactionStatuses.Pending;
             return "Callback soft/pending — pending conservé (USSD)";
+        }
+
+        private async Task NotifierPayInFailedAsync(Models.TransactionMoko tx, CancellationToken cancellationToken)
+        {
+            var intent = PayInRawRequestHelper.TryReadIntent(tx.RawRequest);
+            await _dashboardHubService.NotifyPayInFailedAsync(tx.IdEcole, new PayInSignalRNotification
+            {
+                Reference = tx.Reference,
+                IdPaiement = null,
+                IdEleve = intent?.IdEleve,
+                MontantNet = intent?.MontantNet ?? tx.AmountNet ?? tx.Amount,
+                StatutPaiement = "Echoue",
+                StatutGateway = MokoTransactionStatuses.Error,
+                StatusDescription = tx.StatusDescription
+            });
         }
 
         private async Task<string> HandlePayOutCallbackAsync(

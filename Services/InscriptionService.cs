@@ -4,6 +4,7 @@ using KelasiNaBiso.Helpers;
 using KelasiNaBiso.Models;
 using KelasiNaBiso.Models.DTOs;
 using KelasiNaBiso.Models.DTOs.Pagination;
+using KelasiNaBiso.Models.Enums;
 using KelasiNaBiso.Services.Repositories;
 using KelasiNaBisoAPI.Services.Repositories;
 using KelasiNaBiso.Extensions;
@@ -27,6 +28,7 @@ namespace KelasiNaBiso.Services
         private readonly ILogger<InscriptionService> _logger;
         private readonly IInscriptionActiveResolver _inscriptionResolver;
         private readonly EleveAnneeScopeHelper _scope;
+        private readonly IEleveCompteService _eleveCompteService;
 
         public InscriptionService(
             KelasiNaBisoDbContext context, 
@@ -39,7 +41,8 @@ namespace KelasiNaBiso.Services
             IUtilisateurRepository utilisateurRepository,
             ILogger<InscriptionService> logger,
             IInscriptionActiveResolver inscriptionResolver,
-            EleveAnneeScopeHelper scope)
+            EleveAnneeScopeHelper scope,
+            IEleveCompteService eleveCompteService)
         {
             _context = context;
             _connectionString = configuration.GetConnectionString("KelasiConnection");
@@ -52,6 +55,7 @@ namespace KelasiNaBiso.Services
             _logger = logger;
             _inscriptionResolver = inscriptionResolver;
             _scope = scope;
+            _eleveCompteService = eleveCompteService;
         }
 
         public async Task<IEnumerable<Inscription>> GetAllAsync()
@@ -819,6 +823,37 @@ namespace KelasiNaBiso.Services
                                 eleve);  // ✨ Passer l'élève
                             
                             result.CompteUtilisateurTuteur = utilisateurInfo;
+                        }
+
+                        // Compte Élève : login = matricule, MDP initial 123456
+                        if (eleve != null && !string.IsNullOrWhiteSpace(eleve.Matricule))
+                        {
+                            var eleveCompte = await _eleveCompteService.CreateDefaultEleveUserAsync(
+                                eleve, inscriptionDto.IdEcole);
+                            result.CompteUtilisateurEleve = ToCompteElevePapier(eleveCompte);
+                        }
+                        else if (newIdEleve.HasValue)
+                        {
+                            var elevePourCompte = await _context.Eleves
+                                .FirstOrDefaultAsync(e => e.IdEleve == newIdEleve.Value);
+                            if (elevePourCompte != null && !string.IsNullOrWhiteSpace(elevePourCompte.Matricule))
+                            {
+                                var eleveCompte = await _eleveCompteService.CreateDefaultEleveUserAsync(
+                                    elevePourCompte, inscriptionDto.IdEcole);
+                                result.CompteUtilisateurEleve = ToCompteElevePapier(eleveCompte);
+                            }
+                        }
+                    }
+                    else if (newIdEleve.HasValue)
+                    {
+                        // Inscription sans nouveau tuteur (réinscription) : créer le compte Élève si absent
+                        var elevePourCompte = await _context.Eleves
+                            .FirstOrDefaultAsync(e => e.IdEleve == newIdEleve.Value);
+                        if (elevePourCompte != null && !string.IsNullOrWhiteSpace(elevePourCompte.Matricule))
+                        {
+                            var eleveCompte = await _eleveCompteService.CreateDefaultEleveUserAsync(
+                                elevePourCompte, inscriptionDto.IdEcole);
+                            result.CompteUtilisateurEleve = ToCompteElevePapier(eleveCompte);
                         }
                     }
 
@@ -1720,6 +1755,20 @@ namespace KelasiNaBiso.Services
                 
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Expose le compte Élève pour impression papier ; MDP uniquement si création réelle.
+        /// </summary>
+        private static UtilisateurInfo? ToCompteElevePapier(EleveCompteCreateResult createResult)
+        {
+            if (createResult.Info == null)
+                return null;
+
+            var info = createResult.Info;
+            if (createResult.Outcome != EleveCompteCreateOutcome.Created)
+                info.MotDePasseParDefaut = "";
+            return info;
         }
 
         /// <summary>

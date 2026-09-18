@@ -1,6 +1,7 @@
 using KelasiNaBiso.Helpers;
 using KelasiNaBiso.Models.DTOs.MokoAfrika;
 using KelasiNaBiso.Models.Enums;
+using KelasiNaBiso.Attributes;
 using KelasiNaBiso.Services.MokoAfrika;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -49,12 +50,17 @@ namespace KelasiNaBiso.Controllers
         /// <summary>Lance un PayIn MOKO pour le paiement de frais scolaires.</summary>
         [HttpPost("payin/frais-scolaire")]
         [Authorize(Roles = UserRoles.CashierPayInRoles)]
+        [Permission("Paiement.PayOwn", "Paiement.Create")]
         [ProducesResponseType(typeof(PayInFraisScolaireResultDto), 200)]
         [ProducesResponseType(400)]
-        public async Task<ActionResult<PayInFraisScolaireResultDto>> PayInFraisScolaire(
+        public async Task<IActionResult> PayInFraisScolaire(
             [FromBody] PayInFraisScolaireRequestDto request,
             CancellationToken cancellationToken)
         {
+            var denyOwn = this.ForbidIfWrongEleve(request.IdEleve);
+            if (denyOwn != null)
+                return denyOwn;
+
             try
             {
                 var idUtilisateur = this.GetCurrentUserId();
@@ -97,7 +103,9 @@ namespace KelasiNaBiso.Controllers
             }
             Request.Body.Position = 0;
 
-            var signature = Request.Headers["X-Signature"].FirstOrDefault();
+            var signature = Request.Headers["X-Signature"].FirstOrDefault()
+                ?? Request.Headers["X-Moko-Signature"].FirstOrDefault()
+                ?? Request.Headers["Signature"].FirstOrDefault();
             var result = await _callbackHandler.HandleAsync(rawBody, signature, cancellationToken);
 
             if (!result.Accepted)
@@ -106,7 +114,7 @@ namespace KelasiNaBiso.Controllers
             return Ok(new { message = result.Message, reference = result.Reference });
         }
 
-        /// <summary>Consulte le statut d'une transaction MOKO par référence.</summary>
+        /// <summary>Consulte le statut d'une transaction MOKO par référence (lecture DB seule — ne confirme pas).</summary>
         [HttpGet("status/{reference}")]
         [ProducesResponseType(typeof(TransactionMokoDto), 200)]
         [ProducesResponseType(404)]
@@ -118,7 +126,10 @@ namespace KelasiNaBiso.Controllers
             return Ok(tx);
         }
 
-        /// <summary>Interroge le gateway MOKO (action check) et met à jour la transaction locale.</summary>
+        /// <summary>
+        /// Interroge le gateway MOKO (action check) et met à jour la transaction locale.
+        /// Sur succès Debit : crée le Paiement Confirmé + notifie SignalR (filet si le callback n'a pas abouti).
+        /// </summary>
         [HttpPost("status/{reference}/check")]
         [ProducesResponseType(typeof(TransactionMokoDto), 200)]
         public async Task<ActionResult<TransactionMokoDto>> CheckGatewayStatus(string reference, CancellationToken cancellationToken)
@@ -127,10 +138,17 @@ namespace KelasiNaBiso.Controllers
             if (tx == null)
                 return NotFound(new { message = "Transaction introuvable." });
 
-            if (tx.Status == MokoTransactionStatuses.Success && tx.IdPaiement.HasValue && tx.Action == MokoActions.Debit)
+            if (tx.Status == MokoTransactionStatuses.Success && tx.Action == MokoActions.Debit)
             {
-                await _mokoService.ConfirmerPayInEtNotifierAsync(
-                    tx.IdPaiement.Value, tx.Reference, tx.GatewayTransactionId, cancellationToken);
+                try
+                {
+                    await _mokoService.ConfirmerPayInEtNotifierAsync(
+                        tx.Reference, tx.GatewayTransactionId, cancellationToken);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    return BadRequest(new { message = ex.Message, reference = tx.Reference });
+                }
             }
 
             return Ok(await _mokoService.GetTransactionByReferenceAsync(reference));

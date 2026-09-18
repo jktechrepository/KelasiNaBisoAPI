@@ -38,7 +38,8 @@ namespace KelasiNaBiso.Tests.Unit.Services
                 Mock.Of<IUtilisateurRepository>(),
                 NullLogger<InscriptionService>.Instance,
                 resolver,
-                _scope);
+                _scope,
+                new EleveCompteService(_context, Mock.Of<ISmsNotificationService>(), NullLogger<EleveCompteService>.Instance));
 
             _classeService = new ClasseService(_context, resolver, _scope);
             _paiementService = new PaiementService(

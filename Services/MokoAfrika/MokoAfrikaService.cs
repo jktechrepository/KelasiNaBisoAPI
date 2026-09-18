@@ -15,6 +15,10 @@ namespace KelasiNaBiso.Services.MokoAfrika
         Task<TransactionMokoDto?> GetTransactionByReferenceAsync(string reference);
         Task<TransactionMokoDto?> CheckStatusAsync(string reference, CancellationToken cancellationToken = default);
         Task ConfirmerPayInEtNotifierAsync(int idPaiement, string mokoReference, string? gatewayTransactionId, CancellationToken cancellationToken = default);
+        /// <summary>
+        /// Confirme un PayIn par référence MOKO : crée le Paiement (Confirmé) s'il n'existe pas encore, puis wallet / payout / notifs.
+        /// </summary>
+        Task<int> ConfirmerPayInEtNotifierAsync(string mokoReference, string? gatewayTransactionId, CancellationToken cancellationToken = default);
     }
 
     public class MokoAfrikaService : IMokoAfrikaService
@@ -57,7 +61,12 @@ namespace KelasiNaBiso.Services.MokoAfrika
         public async Task<TransactionMokoDto?> GetTransactionByReferenceAsync(string reference)
         {
             var tx = await _context.TransactionsMoko.FirstOrDefaultAsync(t => t.Reference == reference);
-            return tx == null ? null : MapTransaction(tx);
+            if (tx == null)
+                return null;
+
+            var dto = MapTransaction(tx);
+            EnrichGatewayDiagnostics(dto, root: null, tx.RawCallback, tx.RawResponse);
+            return dto;
         }
 
         public async Task<TransactionMokoDto?> CheckStatusAsync(string reference, CancellationToken cancellationToken = default)
@@ -77,70 +86,139 @@ namespace KelasiNaBiso.Services.MokoAfrika
                 tx.DateModification = DateTime.Now;
 
                 var withinUssdWindow = previousStatus == MokoTransactionStatuses.Pending
+                    && tx.Action == MokoActions.Debit
                     && (DateTime.Now - tx.DateCreation).TotalSeconds < _settings.PayInUssdWindowSeconds;
 
                 var softAmbiguous = false;
+                var hardFailure = false;
+                var terminalFailure = false;
                 if (response.Parsed != null)
-                    softAmbiguous = MokoGatewayResponseParser.IsSoftAmbiguousFailure(response.Parsed.RootElement);
+                {
+                    var root = response.Parsed.RootElement;
+                    softAmbiguous = MokoGatewayResponseParser.IsSoftAmbiguousFailure(root);
+                    hardFailure = MokoGatewayResponseParser.IsDefinitiveFailure(root);
+                    terminalFailure = MokoGatewayResponseParser.IsTerminalFailureStatus(root);
+                }
+                else
+                {
+                    hardFailure = response.IsFailure;
+                }
 
                 if (response.IsSuccess)
                 {
                     tx.Status = MokoTransactionStatuses.Success;
                 }
-                else if (response.IsPending || softAmbiguous)
+                else if (withinUssdWindow)
                 {
-                    tx.Status = MokoTransactionStatuses.Pending;
-                    if (softAmbiguous)
+                    // Fenêtre USSD : succès, ou échec terminal (Trans_Status Failed / cancelled).
+                    // resultCodeError technique seul → pending conservé.
+                    if (terminalFailure)
                     {
+                        tx.Status = MokoTransactionStatuses.Error;
                         _logger.LogWarning(
-                            "MOKO check soft/ambiguous (Status Error/Failed sans resultCodeError) pour {Reference} — pending conservé. Body={Body}",
-                            reference, Truncate(response.RawBody, 500));
-                    }
-                }
-                else if (response.IsFailure)
-                {
-                    // Pendant la fenêtre USSD : n'accepter que les échecs durs déjà classés IsFailure.
-                    // Soft Error est déjà filtré ci-dessus ; ici resultCodeError / cancelled / etc.
-                    if (withinUssdWindow && softAmbiguous)
-                    {
-                        tx.Status = MokoTransactionStatuses.Pending;
-                        _logger.LogWarning(
-                            "MOKO check failure soft ignorée dans fenêtre USSD ({Seconds}s) pour {Reference}",
-                            _settings.PayInUssdWindowSeconds, reference);
+                            "MOKO check échec terminal dans fenêtre USSD pour {Reference}. Description={Desc} Body={Body}",
+                            reference, tx.StatusDescription, Truncate(response.RawBody, 500));
                     }
                     else
                     {
-                        if (previousStatus == MokoTransactionStatuses.Pending)
+                        tx.Status = MokoTransactionStatuses.Pending;
+                        if (hardFailure || softAmbiguous || response.IsFailure)
                         {
                             _logger.LogWarning(
-                                "MOKO check pending→error pour {Reference}. Description={Desc} Body={Body}",
-                                reference, tx.StatusDescription, Truncate(response.RawBody, 500));
-                        }
-
-                        tx.Status = MokoTransactionStatuses.Error;
-                        if (tx.IdPaiement.HasValue)
-                        {
-                            var paiement = await _context.Paiements.FindAsync(new object[] { tx.IdPaiement.Value }, cancellationToken);
-                            if (paiement != null)
-                                paiement.StatutPaiement = "Echoue";
+                                "MOKO check échec technique ignoré dans fenêtre USSD ({Seconds}s) pour {Reference} — pending conservé. Body={Body}",
+                                _settings.PayInUssdWindowSeconds, reference, Truncate(response.RawBody, 500));
                         }
                     }
+                }
+                else if (response.IsPending && !softAmbiguous && !hardFailure)
+                {
+                    // Pending explicite hors fenêtre (processing…) — on laisse pending.
+                    tx.Status = MokoTransactionStatuses.Pending;
+                }
+                else if (softAmbiguous || hardFailure || response.IsFailure)
+                {
+                    // Hors fenêtre USSD : soft Error/Failed ne reste plus pending indéfiniment.
+                    if (previousStatus == MokoTransactionStatuses.Pending)
+                    {
+                        _logger.LogWarning(
+                            "MOKO check pending→error hors fenêtre USSD pour {Reference}. Soft={Soft} Hard={Hard} Desc={Desc} Body={Body}",
+                            reference, softAmbiguous, hardFailure, tx.StatusDescription, Truncate(response.RawBody, 500));
+                    }
+
+                    tx.Status = MokoTransactionStatuses.Error;
                 }
                 else
                 {
                     tx.Status = MokoTransactionStatuses.Pending;
-                    if (withinUssdWindow)
-                    {
-                        _logger.LogInformation(
-                            "MOKO check non classifié pour {Reference} — pending conservé (fenêtre USSD). Body={Body}",
-                            reference, Truncate(response.RawBody, 500));
-                    }
                 }
 
                 await _context.SaveChangesAsync(cancellationToken);
+
+                if (previousStatus == MokoTransactionStatuses.Pending
+                    && tx.Status == MokoTransactionStatuses.Error
+                    && tx.Action == MokoActions.Debit)
+                {
+                    await NotifierPayInFailedAsync(tx, cancellationToken);
+                }
+
+                var dto = MapTransaction(tx);
+                EnrichGatewayDiagnostics(dto, response.Parsed?.RootElement, tx.RawCallback, response.RawBody);
+                return dto;
             }
 
-            return tx == null ? null : MapTransaction(tx);
+            return null;
+        }
+
+        private async Task NotifierPayInFailedAsync(TransactionMoko tx, CancellationToken cancellationToken)
+        {
+            var intent = PayInRawRequestHelper.TryReadIntent(tx.RawRequest);
+            await _dashboardHubService.NotifyPayInFailedAsync(tx.IdEcole, new PayInSignalRNotification
+            {
+                Reference = tx.Reference,
+                IdPaiement = null,
+                IdEleve = intent?.IdEleve,
+                MontantNet = intent?.MontantNet ?? tx.AmountNet ?? tx.Amount,
+                StatutPaiement = "Echoue",
+                StatutGateway = MokoTransactionStatuses.Error,
+                StatusDescription = tx.StatusDescription
+            });
+        }
+
+        private static void EnrichGatewayDiagnostics(
+            TransactionMokoDto dto,
+            System.Text.Json.JsonElement? root,
+            string? rawCallback,
+            string? rawResponse)
+        {
+            dto.HasCallback = !string.IsNullOrWhiteSpace(rawCallback);
+
+            System.Text.Json.JsonElement el;
+            if (root is { ValueKind: System.Text.Json.JsonValueKind.Object } r)
+            {
+                el = r;
+            }
+            else if (!string.IsNullOrWhiteSpace(rawResponse))
+            {
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(rawResponse);
+                    el = doc.RootElement.Clone();
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    return;
+                }
+            }
+            else
+            {
+                return;
+            }
+
+            dto.GatewayStatusRaw = MokoGatewayResponseParser.GetString(
+                el, "Trans_Status", "trans_Status", "TransStatus", "Status", "trans_status", "status");
+            dto.ResultCodeError = MokoGatewayResponseParser.GetString(el, "resultCodeError");
+            dto.ResultCodeErrorDescription = MokoGatewayResponseParser.GetString(
+                el, "resultCodeErrorDescription", "Comment", "trans_status_description", "Trans_Status_Description");
         }
 
         private static string Truncate(string? value, int max)
@@ -150,47 +228,80 @@ namespace KelasiNaBiso.Services.MokoAfrika
             return value.Length <= max ? value : value[..max] + "…";
         }
 
-        /// <summary>
-        /// Appelé après succès PayIn (callback ou réponse synchrone) :
-        /// confirme le paiement, crédite le wallet, planifie PayOut, envoie notification tuteur.
-        /// </summary>
         public async Task ConfirmerPayInEtNotifierAsync(
             int idPaiement,
             string mokoReference,
             string? gatewayTransactionId,
             CancellationToken cancellationToken = default)
         {
-            var paiement = await _context.Paiements
-                .Include(p => p.Eleve)
-                    .ThenInclude(e => e!.Inscriptions)
-                        .ThenInclude(i => i.Classe)
-                            .ThenInclude(c => c.Direction)
-                .FirstOrDefaultAsync(p => p.IdPaiement == idPaiement, cancellationToken);
+            await ConfirmerPayInEtNotifierAsync(mokoReference, gatewayTransactionId, cancellationToken);
+        }
 
-            if (paiement == null)
-                throw new KeyNotFoundException($"Paiement {idPaiement} introuvable.");
-
+        /// <summary>
+        /// Appelé après succès PayIn (callback ou check) :
+        /// crée le Paiement Confirmé si besoin, crédite le wallet, planifie PayOut, notifie.
+        /// </summary>
+        public async Task<int> ConfirmerPayInEtNotifierAsync(
+            string mokoReference,
+            string? gatewayTransactionId,
+            CancellationToken cancellationToken = default)
+        {
             var tx = await _context.TransactionsMoko.FirstOrDefaultAsync(t => t.Reference == mokoReference, cancellationToken)
                 ?? throw new KeyNotFoundException($"Transaction MOKO {mokoReference} introuvable.");
 
-            if (tx.Status == MokoTransactionStatuses.Success && paiement.StatutPaiement == "Confirme")
+            Paiement? paiement = null;
+            if (tx.IdPaiement.HasValue)
             {
-                _logger.LogInformation("PayIn déjà confirmé pour paiement {IdPaiement} ref {Reference}", idPaiement, mokoReference);
-                return;
+                paiement = await _context.Paiements
+                    .Include(p => p.Eleve)
+                        .ThenInclude(e => e!.Inscriptions)
+                            .ThenInclude(i => i.Classe)
+                                .ThenInclude(c => c.Direction)
+                    .FirstOrDefaultAsync(p => p.IdPaiement == tx.IdPaiement.Value, cancellationToken);
+            }
+
+            if (paiement != null
+                && tx.Status == MokoTransactionStatuses.Success
+                && paiement.StatutPaiement == "Confirme")
+            {
+                _logger.LogInformation("PayIn déjà confirmé pour paiement {IdPaiement} ref {Reference}", paiement.IdPaiement, mokoReference);
+                return paiement.IdPaiement;
+            }
+
+            if (paiement == null)
+            {
+                var intent = PayInRawRequestHelper.TryReadIntent(tx.RawRequest)
+                    ?? throw new InvalidOperationException(
+                        $"Impossible de créer le paiement : intent absent pour la référence {mokoReference}.");
+
+                paiement = PayInRawRequestHelper.CreateConfirmedPaiement(intent, mokoReference);
+                _context.Paiements.Add(paiement);
+                await _context.SaveChangesAsync(cancellationToken);
+                tx.IdPaiement = paiement.IdPaiement;
+            }
+            else
+            {
+                paiement.StatutPaiement = "Confirme";
+                paiement.ReferenceTransaction = mokoReference;
+                paiement.DatePaiement = DateTime.Now;
             }
 
             tx.Status = MokoTransactionStatuses.Success;
             tx.GatewayTransactionId = gatewayTransactionId ?? tx.GatewayTransactionId;
             tx.DateModification = DateTime.Now;
 
-            paiement.StatutPaiement = "Confirme";
-            paiement.ReferenceTransaction = mokoReference;
-            paiement.DatePaiement = DateTime.Now;
-
-            var montantNet = tx.AmountNet ?? (decimal)paiement.Montant;
+            var idPaiement = paiement.IdPaiement;
+            var montantNetGateway = tx.AmountNet ?? paiement.MontantNet ?? (decimal)paiement.Montant;
             var idEcole = tx.IdEcole;
 
-            await _walletService.CrediterApresPayInAsync(idEcole, idPaiement, tx.IdTransactionMoko, montantNet, mokoReference, cancellationToken);
+            var credit = await _walletService.CrediterApresPayInAsync(
+                idEcole,
+                idPaiement,
+                tx.IdTransactionMoko,
+                montantNetGateway,
+                mokoReference,
+                tx.Devise,
+                cancellationToken);
 
             var info = await _context.EcolesInfoPaiementMobile.FirstOrDefaultAsync(i => i.IdEcole == idEcole, cancellationToken);
             var delai = info?.DelaiReglementMinutes ?? _settings.PayoutSettlementDelayMinutes;
@@ -204,8 +315,8 @@ namespace KelasiNaBiso.Services.MokoAfrika
                     IdTransactionMokoPayIn = tx.IdTransactionMoko,
                     IdEcole = idEcole,
                     IdPaiement = idPaiement,
-                    MontantNet = montantNet,
-                    Devise = tx.Devise,
+                    MontantNet = credit.MontantWallet,
+                    Devise = credit.DeviseWallet,
                     Methode = tx.Method,
                     NumeroBeneficiaire = beneficiaire?.Numero,
                     ScheduledAt = DateTime.Now.AddMinutes(delai),
@@ -221,12 +332,23 @@ namespace KelasiNaBiso.Services.MokoAfrika
                 Reference = mokoReference,
                 IdPaiement = idPaiement,
                 IdEleve = paiement.IdEleve,
-                MontantNet = montantNet,
+                MontantNet = IntentMontantNetPourSignalR(paiement, tx),
                 StatutPaiement = "Confirme",
                 StatutGateway = MokoTransactionStatuses.Success
             });
 
             await _paiementRepository.NotifierPaiementConfirmeAsync(idPaiement, cancellationToken);
+            return idPaiement;
+        }
+
+        private static decimal IntentMontantNetPourSignalR(Paiement paiement, TransactionMoko tx)
+        {
+            // Préférer le montant métier (devise frais) pour l'UI ; fallback gateway.
+            if (paiement.MontantNet.HasValue && paiement.MontantNet.Value > 0)
+                return paiement.MontantNet.Value;
+            if (paiement.Montant > 0)
+                return (decimal)paiement.Montant;
+            return tx.AmountNet ?? tx.Amount;
         }
 
         private Dictionary<string, object?> BuildMerchantPayload() => new()

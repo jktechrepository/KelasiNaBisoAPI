@@ -233,6 +233,7 @@ builder.Services.AddScoped<ICacheService, CacheService>();
 
 // Enregistrement des repositories (suppression des duplications)
 builder.Services.AddScoped<IEleveRepository, EleveService>();
+builder.Services.AddScoped<IEleveCompteService, EleveCompteService>();
 builder.Services.AddScoped<IEcoleRepository, EcoleService>();
 builder.Services.AddScoped<IVitrineService, VitrineService>();
 builder.Services.AddScoped<IVitrineContactService, VitrineContactService>();
@@ -263,6 +264,8 @@ builder.Services.AddScoped<IAgentRepository, AgentService>();
 builder.Services.AddScoped<IAnneeScolaireRepository, AnneeScolaireService>();
 builder.Services.AddScoped<IFraisRepository, FraisService>();
 builder.Services.AddScoped<IPaiementRepository, PaiementService>();
+builder.Services.AddScoped<IDepenseService, DepenseService>();
+builder.Services.AddScoped<ICategorieDepenseService, CategorieDepenseService>();
 builder.Services.AddScoped<IRoleRepository, RoleService>();
 builder.Services.AddScoped<ISectionRepository, SectionService>();
 builder.Services.AddScoped<IOptionRepository, OptionService>();
@@ -271,6 +274,7 @@ builder.Services.AddScoped<IGroupeMessageRepository, GroupeMessageService>();
 builder.Services.AddScoped<IDocumentRepository, DocumentService>();
 builder.Services.AddScoped<IRessourcePedagogiqueRepository, RessourcePedagogiqueService>();
 builder.Services.AddScoped<IEvaluationRepository, EvaluationService>();
+builder.Services.AddScoped<PeriodeCotationResolver>();
 // ✅ DEVOIRS À DOMICILE: Services pour la gestion des devoirs à domicile
 // Configuration AWS S3
 var awsAccessKeyId = builder.Configuration["AWS:S3:AccessKeyId"];
@@ -356,6 +360,8 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<ISignalRNotificationService, SignalRNotificationService>();
 builder.Services.AddScoped<IDashboardCaissierService, DashboardCaissierService>();
 builder.Services.AddScoped<IDashboardFinancierService, DashboardFinancierService>();
+builder.Services.AddScoped<IDashboardTuteurService, DashboardTuteurService>();
+builder.Services.AddScoped<IDashboardEleveService, DashboardEleveService>();
 builder.Services.AddScoped<IDashboardHubService, DashboardHubService>(); // ✨ Service pour dashboards en temps réel
 builder.Services.AddScoped<IUsernameGeneratorService, UsernameGeneratorService>(); // Service de génération de noms d'utilisateur
 
@@ -546,6 +552,12 @@ if (!app.Environment.IsEnvironment("Testing"))
             logger.LogInformation("Initialisation des permissions RBAC...");
             await PermissionSeeder.SeedPermissionsAsync(context);
             logger.LogInformation("Permissions RBAC initialisées avec succès.");
+
+            // 4. Référentiel périodes de cotation (T1/T2/T3)
+            logger.LogInformation("Initialisation des périodes de cotation...");
+            var periodeResolver = services.GetRequiredService<PeriodeCotationResolver>();
+            await periodeResolver.EnsureSeedAsync();
+            logger.LogInformation("Périodes de cotation initialisées.");
         }
         catch (Exception ex)
         {

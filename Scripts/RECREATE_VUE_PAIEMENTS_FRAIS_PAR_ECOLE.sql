@@ -1,8 +1,8 @@
--- Resynchronise VuePaiementsFraisParEcole avec VuePaiementsFraisParEcoleDTO (EF).
--- Production (recommandé) : voir Scripts/README_RECREATE_VUE_PAIEMENTS_PROD.md
---   PRODUCTION_VUE_PAIEMENTS_DIAGNOSTIC.sql → FIX.sql → VERIFY.sql
--- Usage direct : mysql -u ... -p VOTRE_BASE < Scripts/RECREATE_VUE_PAIEMENTS_FRAIS_PAR_ECOLE.sql
--- Migration EF : 20260831153000_RecreateVuePaiementsFraisParEcole
+-- =============================================================================
+-- Recréation vue VuePaiementsFraisParEcole
+-- Aligné post–DropEleveIdClasse : classe via Inscriptions (comme V_Eleve)
+-- École via Frais.IdEcole
+-- =============================================================================
 
 DROP VIEW IF EXISTS `VuePaiementsFraisParEcole`;
 
@@ -92,13 +92,22 @@ SELECT DISTINCT
 FROM Paiements p
 INNER JOIN Eleves e ON p.IdEleve = e.IdEleve
 INNER JOIN Tuteurs t ON e.IdTuteur = t.IdTuteur
-INNER JOIN Classes c ON e.IdClasse = c.IdClasse
+LEFT JOIN (
+    SELECT i.*
+    FROM Inscriptions i
+    INNER JOIN (
+        SELECT IdEleve, MAX(DateInscription) AS MaxDate
+        FROM Inscriptions
+        WHERE Statut = 1
+          AND (StatutInscription = 'Confirmé' OR StatutInscription = 'Confirme' OR StatutInscription LIKE 'Confirm%')
+        GROUP BY IdEleve
+    ) latest ON i.IdEleve = latest.IdEleve AND i.DateInscription = latest.MaxDate
+    WHERE i.Statut = 1
+      AND (i.StatutInscription = 'Confirmé' OR i.StatutInscription = 'Confirme' OR i.StatutInscription LIKE 'Confirm%')
+) ins ON ins.IdEleve = e.IdEleve
+LEFT JOIN Classes c ON ins.IdClasse = c.IdClasse
 LEFT JOIN Sections s ON c.IdSection = s.IdSection
-INNER JOIN Directions d ON c.IdDirection = d.IdDirection
+LEFT JOIN Directions d ON c.IdDirection = d.IdDirection
 LEFT JOIN Options o ON c.IdOption = o.IdOption
 INNER JOIN Frais f ON p.IdFrais = f.IdFrais
 INNER JOIN Ecoles ec ON f.IdEcole = ec.IdEcole;
-
--- Vérification
--- SHOW COLUMNS FROM VuePaiementsFraisParEcole LIKE 'NomCompletFormate';
--- SHOW COLUMNS FROM VuePaiementsFraisParEcole LIKE 'ReferenceTransaction';

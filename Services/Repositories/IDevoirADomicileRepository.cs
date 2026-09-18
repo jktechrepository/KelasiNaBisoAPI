@@ -43,6 +43,18 @@ namespace KelasiNaBiso.Services.Repositories
         
         // Incrémenter le nombre de téléchargements
         Task<bool> IncrementerTelechargementsAsync(int idDevoirADomicile);
+
+        /// <summary>
+        /// Incrémente le compteur global et enregistre le premier téléchargement de l'utilisateur (idempotent).
+        /// </summary>
+        Task<bool> EnregistrerTelechargementAsync(int idDevoirADomicile, int idUtilisateur);
+
+        /// <summary>
+        /// IDs de devoirs déjà téléchargés au moins une fois par l'utilisateur (parmi la liste fournie).
+        /// </summary>
+        Task<HashSet<int>> GetDevoirIdsTelechargesParUtilisateurAsync(
+            int idUtilisateur,
+            IEnumerable<int> idDevoirs);
     }
 }
 

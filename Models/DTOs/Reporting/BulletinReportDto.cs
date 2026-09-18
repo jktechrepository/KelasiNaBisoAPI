@@ -10,6 +10,8 @@ namespace KelasiNaBiso.Models.DTOs.Reporting
         public string MoyenneGeneraleTexte { get; set; } = "-";
         public string RangTexte { get; set; } = "-";
         public string EffectifTexte { get; set; } = "-";
+        public string DecisionTexte { get; set; } = "-";
+        public string AppreciationTexte { get; set; } = "-";
     }
 
     public class BulletinLigneReportDto

@@ -1,7 +1,9 @@
 using KelasiNaBiso.Models;
 using KelasiNaBiso.Models.DTOs;
+using KelasiNaBiso.Services;
 using KelasiNaBiso.Services.Repositories;
 using KelasiNaBiso.Attributes;
+using KelasiNaBiso.Helpers;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 
@@ -13,10 +15,17 @@ namespace KelasiNaBiso.Controllers
     public class EvaluationController : ControllerBase
     {
         private readonly IEvaluationRepository _evaluationRepository;
+        private readonly PeriodeCotationResolver _periodeResolver;
+        private readonly IPedagogieAuthorizationService _pedagogie;
 
-        public EvaluationController(IEvaluationRepository evaluationRepository)
+        public EvaluationController(
+            IEvaluationRepository evaluationRepository,
+            PeriodeCotationResolver periodeResolver,
+            IPedagogieAuthorizationService pedagogie)
         {
             _evaluationRepository = evaluationRepository;
+            _periodeResolver = periodeResolver;
+            _pedagogie = pedagogie;
         }
 
         [HttpGet]
@@ -24,31 +33,44 @@ namespace KelasiNaBiso.Controllers
         public async Task<ActionResult<IEnumerable<Evaluation>>> GetEvaluations()
         {
             var evaluations = await _evaluationRepository.GetAllAsync();
-            return Ok(evaluations);
+            return Ok(await FilterEvaluationsForEnseignantAsync(evaluations));
         }
 
         [HttpGet("{id}")]
         [Permission("Evaluation.Read")]
-        public async Task<ActionResult<Evaluation>> GetEvaluation(int id)
+        public async Task<IActionResult> GetEvaluation(int id)
         {
             var evaluation = await _evaluationRepository.GetByIdAsync(id);
             if (evaluation == null)
                 return NotFound();
+
+            var deny = await this.ForbidIfHorsScopeCoursAsync(evaluation.IdCours);
+            if (deny != null)
+                return deny;
+
             return Ok(evaluation);
         }
 
         [HttpGet("cours/{idCours}")]
         [Permission("Evaluation.Read")]
-        public async Task<ActionResult<IEnumerable<Evaluation>>> GetEvaluationsByCours(int idCours)
+        public async Task<IActionResult> GetEvaluationsByCours(int idCours)
         {
+            var deny = await this.ForbidIfHorsScopeCoursAsync(idCours);
+            if (deny != null)
+                return deny;
+
             var evaluations = await _evaluationRepository.GetByCoursAsync(idCours);
             return Ok(evaluations);
         }
 
         [HttpGet("classe/{idClasse}")]
         [Permission("Evaluation.Read")]
-        public async Task<ActionResult<IEnumerable<Evaluation>>> GetEvaluationsByClasse(int idClasse)
+        public async Task<IActionResult> GetEvaluationsByClasse(int idClasse)
         {
+            var deny = await this.ForbidIfHorsScopeClasseAsync(idClasse);
+            if (deny != null)
+                return deny;
+
             var evaluations = await _evaluationRepository.GetByClasseAsync(idClasse);
             return Ok(evaluations);
         }
@@ -58,7 +80,7 @@ namespace KelasiNaBiso.Controllers
         public async Task<ActionResult<IEnumerable<Evaluation>>> GetEvaluationsByType(string type)
         {
             var evaluations = await _evaluationRepository.GetByTypeAsync(type);
-            return Ok(evaluations);
+            return Ok(await FilterEvaluationsForEnseignantAsync(evaluations));
         }
 
         [HttpGet("periode/{periode}")]
@@ -66,7 +88,7 @@ namespace KelasiNaBiso.Controllers
         public async Task<ActionResult<IEnumerable<Evaluation>>> GetEvaluationsByPeriode(string periode)
         {
             var evaluations = await _evaluationRepository.GetByPeriodeAsync(periode);
-            return Ok(evaluations);
+            return Ok(await FilterEvaluationsForEnseignantAsync(evaluations));
         }
 
         [HttpGet("statut/{statut}")]
@@ -74,29 +96,39 @@ namespace KelasiNaBiso.Controllers
         public async Task<ActionResult<IEnumerable<Evaluation>>> GetEvaluationsByStatut(bool statut)
         {
             var evaluations = await _evaluationRepository.GetByStatutAsync(statut);
-            return Ok(evaluations);
+            return Ok(await FilterEvaluationsForEnseignantAsync(evaluations));
         }
 
         [HttpGet("exists/{id}")]
         [Permission("Evaluation.Read")]
         public async Task<ActionResult<bool>> EvaluationExists(int id)
         {
-            var exists = await _evaluationRepository.ExistsAsync(id);
-            return Ok(exists);
+            var evaluation = await _evaluationRepository.GetByIdAsync(id);
+            if (evaluation == null)
+                return Ok(false);
+
+            var deny = await this.ForbidIfHorsScopeCoursAsync(evaluation.IdCours);
+            if (deny != null)
+                return Ok(false);
+
+            return Ok(true);
         }
 
         [HttpPost]
         [Permission("Evaluation.Create")]
-        public async Task<ActionResult<Evaluation>> CreateEvaluation([FromBody] CreateEvaluationDto dto)
+        public async Task<IActionResult> CreateEvaluation([FromBody] CreateEvaluationDto dto)
         {
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
+
+            var deny = await this.ForbidIfHorsScopeCoursAsync(dto.IdCours);
+            if (deny != null)
+                return deny;
 
             var evaluation = new Evaluation
             {
                 TypeEvaluation = dto.TypeEvaluation,
                 TitreEvaluation = dto.TitreEvaluation,
-                Periode = dto.Periode,
                 Coefficient = dto.Coefficient,
                 IdCours = dto.IdCours,
                 IdClasse = dto.IdClasse,
@@ -105,6 +137,7 @@ namespace KelasiNaBiso.Controllers
 
             try
             {
+                await _periodeResolver.ApplyToEvaluationAsync(evaluation, dto.IdPeriode, dto.Periode);
                 var createdEvaluation = await _evaluationRepository.CreateAsync(evaluation);
                 return CreatedAtAction(nameof(GetEvaluation), new { id = createdEvaluation.IdEvaluation }, createdEvaluation);
             }
@@ -116,9 +149,9 @@ namespace KelasiNaBiso.Controllers
 
         [HttpPut("{id}")]
         [Permission("Evaluation.Update")]
-        [Authorize(Roles = "Admin,Super-Admin,Enseignant")]
+        [Authorize(Roles = "Admin,Super-Admin,Enseignant,Directeur,Sous-Directeur")]
         [ProducesResponseType(typeof(Evaluation), 200)]
-        public async Task<ActionResult<Evaluation>> UpdateEvaluation(int id, [FromBody] UpdateEvaluationDto dto)
+        public async Task<IActionResult> UpdateEvaluation(int id, [FromBody] UpdateEvaluationDto dto)
         {
             if (id != dto.IdEvaluation)
                 return BadRequest(new { message = "L'ID ne correspond pas" });
@@ -130,15 +163,23 @@ namespace KelasiNaBiso.Controllers
             if (existing == null)
                 return NotFound(new { message = "Évaluation non trouvée" });
 
+            var denyExisting = await this.ForbidIfHorsScopeCoursAsync(existing.IdCours);
+            if (denyExisting != null)
+                return denyExisting;
+
+            var denyTarget = await this.ForbidIfHorsScopeCoursAsync(dto.IdCours);
+            if (denyTarget != null)
+                return denyTarget;
+
             existing.TypeEvaluation = dto.TypeEvaluation;
             existing.TitreEvaluation = dto.TitreEvaluation;
-            existing.Periode = dto.Periode;
             existing.Coefficient = dto.Coefficient;
             existing.IdCours = dto.IdCours;
             existing.IdClasse = dto.IdClasse;
 
             try
             {
+                await _periodeResolver.ApplyToEvaluationAsync(existing, dto.IdPeriode, dto.Periode);
                 var updated = await _evaluationRepository.UpdateAsync(existing);
                 return Ok(updated);
             }
@@ -152,6 +193,10 @@ namespace KelasiNaBiso.Controllers
         [Permission("Evaluation.Delete")]
         public async Task<IActionResult> DeleteEvaluation(int id)
         {
+            var deny = await this.ForbidIfHorsScopeEvaluationAsync(id);
+            if (deny != null)
+                return deny;
+
             var success = await _evaluationRepository.DeleteAsync(id);
             if (!success)
                 return NotFound();
@@ -160,10 +205,14 @@ namespace KelasiNaBiso.Controllers
 
         [HttpPut("toggle-statut/{id}")]
         [Permission("Evaluation.Update")]
-        public async Task<ActionResult<object>> ToggleStatut(int id)
+        public async Task<IActionResult> ToggleStatut(int id)
         {
             try
             {
+                var deny = await this.ForbidIfHorsScopeEvaluationAsync(id);
+                if (deny != null)
+                    return deny;
+
                 var success = await _evaluationRepository.ToggleStatutAsync(id);
                 if (!success)
                     return NotFound(new { message = "Évaluation non trouvée" });
@@ -180,6 +229,26 @@ namespace KelasiNaBiso.Controllers
             {
                 return StatusCode(500, new { message = "Erreur", error = ex.Message });
             }
+        }
+
+        private async Task<IReadOnlyList<Evaluation>> FilterEvaluationsForEnseignantAsync(
+            IEnumerable<Evaluation> evaluations,
+            CancellationToken cancellationToken = default)
+        {
+            if (!User.IsInRole(Models.Enums.UserRoles.ENSEIGNANT) || this.IsCotationSchoolBypassRole())
+                return evaluations.ToList();
+
+            var idAgent = this.GetCurrentAgentId();
+            if (!idAgent.HasValue)
+                return Array.Empty<Evaluation>();
+
+            var idEcole = this.GetCurrentUserSchoolId();
+            var classIds = await _pedagogie.GetClassesEnseignantAsync(
+                idAgent.Value, idAnneeScolaire: null, idEcole: idEcole, cancellationToken);
+            if (classIds.Count == 0)
+                return Array.Empty<Evaluation>();
+
+            return evaluations.Where(e => classIds.Contains(e.IdClasse)).ToList();
         }
     }
 }

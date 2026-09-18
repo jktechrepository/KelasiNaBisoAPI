@@ -1,6 +1,7 @@
 using KelasiNaBiso.Models.DTOs;
 using KelasiNaBiso.Services.Repositories;
 using KelasiNaBiso.Attributes;
+using KelasiNaBiso.Helpers;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 
@@ -64,10 +65,14 @@ namespace KelasiNaBiso.Controllers
         // Filtres par élève
         [HttpGet("eleve/{idEleve}")]
         [ProducesResponseType(typeof(IEnumerable<VuePaiementsFraisParEcoleDTO>), 200)]
-        public async Task<ActionResult<IEnumerable<VuePaiementsFraisParEcoleDTO>>> GetByEleve(
+        public async Task<IActionResult> GetByEleve(
             int idEleve,
             [FromQuery] int? idAnneeScolaire = null)
         {
+            var denyOwn = this.ForbidIfWrongEleve(idEleve);
+            if (denyOwn != null)
+                return denyOwn;
+
             try
             {
                 var paiements = await _vuePaiementsRepository.GetByEleveAsync(idEleve, idAnneeScolaire);
@@ -80,17 +85,25 @@ namespace KelasiNaBiso.Controllers
         }
 
         [HttpGet("eleve-reference/{referenceEleve}")]
-        public async Task<ActionResult<IEnumerable<VuePaiementsFraisParEcoleDTO>>> GetByEleveReference(Guid referenceEleve)
+        public async Task<IActionResult> GetByEleveReference(Guid referenceEleve)
         {
+            var denyOwn = await this.ForbidIfWrongEleveReferenceAsync(referenceEleve);
+            if (denyOwn != null)
+                return denyOwn;
+
             var paiements = await _vuePaiementsRepository.GetByEleveReferenceAsync(referenceEleve);
             return Ok(paiements);
         }
 
         [HttpGet("eleve-matricule/{matricule}")]
-        public async Task<ActionResult<IEnumerable<VuePaiementsFraisParEcoleDTO>>> GetByEleveMatricule(
+        public async Task<IActionResult> GetByEleveMatricule(
             string matricule,
             [FromQuery] int? idAnneeScolaire = null)
         {
+            var denyOwn = await this.ForbidIfWrongEleveMatriculeAsync(matricule);
+            if (denyOwn != null)
+                return denyOwn;
+
             try
             {
                 var paiements = await _vuePaiementsRepository.GetByEleveMatriculeAsync(matricule, idAnneeScolaire);

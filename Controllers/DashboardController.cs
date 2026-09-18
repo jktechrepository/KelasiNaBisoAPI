@@ -27,6 +27,8 @@ namespace KelasiNaBiso.Controllers
         private readonly IInscriptionActiveResolver _inscriptionResolver;
         private readonly IDashboardCaissierService _dashboardCaissierService;
         private readonly IDashboardFinancierService _dashboardFinancierService;
+        private readonly IDashboardTuteurService _dashboardTuteurService;
+        private readonly IDashboardEleveService _dashboardEleveService;
         private readonly IPedagogieAuthorizationService _pedagogieAuthorizationService;
 
         public DashboardController(
@@ -39,6 +41,8 @@ namespace KelasiNaBiso.Controllers
             IInscriptionActiveResolver inscriptionResolver,
             IDashboardCaissierService dashboardCaissierService,
             IDashboardFinancierService dashboardFinancierService,
+            IDashboardTuteurService dashboardTuteurService,
+            IDashboardEleveService dashboardEleveService,
             IPedagogieAuthorizationService pedagogieAuthorizationService)
         {
             _presenceReportingService = presenceReportingService;
@@ -50,6 +54,8 @@ namespace KelasiNaBiso.Controllers
             _inscriptionResolver = inscriptionResolver;
             _dashboardCaissierService = dashboardCaissierService;
             _dashboardFinancierService = dashboardFinancierService;
+            _dashboardTuteurService = dashboardTuteurService;
+            _dashboardEleveService = dashboardEleveService;
             _pedagogieAuthorizationService = pedagogieAuthorizationService;
         }
 
@@ -184,8 +190,8 @@ namespace KelasiNaBiso.Controllers
 
         /// <summary>
         /// Dashboard parent/tuteur — vue consolidée des enfants et de leurs paiements.
-        /// Filtre année par libellé (stable multi-écoles) ; défaut = année courante de l'école.
-        /// idEcole est obligatoire ; Parent multi-écoles autorisé si enfant inscrit dans l'école cible.
+        /// idEcole optionnel : fourni = mono-école ; omis = agrégat multi-écoles du tuteur JWT.
+        /// Filtre année par libellé (stable cross-école) ; défaut = année(s) courante(s).
         /// </summary>
         [HttpGet("tuteur")]
         [HttpGet("DashbordTuteur")]
@@ -195,169 +201,21 @@ namespace KelasiNaBiso.Controllers
             [FromQuery] int? idEcole = null,
             [FromQuery] string? libelleAnneeScolaire = null)
         {
-            if (!idEcole.HasValue || idEcole.Value <= 0)
-            {
-                return BadRequest(new
-                {
-                    message = "Le paramètre idEcole est obligatoire."
-                });
-            }
-
-            var deny = await this.ForbidIfWrongSchoolAsync(idEcole.Value, _inscriptionResolver);
-            if (deny != null)
-                return deny;
-
             var idTuteur = _currentUserService.TuteurId;
             if (!idTuteur.HasValue)
                 return BadRequest(new { message = "Identité du tuteur non disponible dans le token." });
 
+            if (idEcole.HasValue && idEcole.Value > 0)
+            {
+                var deny = await this.ForbidIfWrongSchoolAsync(idEcole.Value, _inscriptionResolver);
+                if (deny != null)
+                    return deny;
+            }
+
             try
             {
-                var resolvedEcole = idEcole.Value;
-                int idAnnee;
-                string? libelleAnnee;
-
-                if (string.IsNullOrWhiteSpace(libelleAnneeScolaire))
-                {
-                    idAnnee = await _scope.ResolveIdAnneeScolaireAsync(resolvedEcole, null);
-                    libelleAnnee = await _context.AnneeScolaires.AsNoTracking()
-                        .Where(a => a.IdAnneeScolaire == idAnnee)
-                        .Select(a => a.LibelleAnneeScolaire)
-                        .FirstOrDefaultAsync();
-                }
-                else
-                {
-                    var libelle = libelleAnneeScolaire.Trim().ToLower();
-                    var annee = await _context.AnneeScolaires.AsNoTracking()
-                        .Where(a => a.IdEcole == resolvedEcole
-                            && a.Statut == true
-                            && a.LibelleAnneeScolaire.ToLower() == libelle)
-                        .FirstOrDefaultAsync();
-
-                    if (annee == null)
-                    {
-                        return BadRequest(new
-                        {
-                            message = $"Aucune année scolaire active avec le libellé '{libelleAnneeScolaire.Trim()}' pour l'école {resolvedEcole}."
-                        });
-                    }
-
-                    idAnnee = annee.IdAnneeScolaire;
-                    libelleAnnee = annee.LibelleAnneeScolaire;
-                }
-
-                var ecole = await _context.Ecoles.AsNoTracking()
-                    .FirstOrDefaultAsync(e => e.IdEcole == resolvedEcole);
-
-                if (ecole == null)
-                    return NotFound(new { message = $"École avec l'ID {resolvedEcole} introuvable." });
-
-                var targetDate = DateTime.Now.Date;
-                var periode = BuildJourPeriode(targetDate);
-
-                var inscriptions = await _context.Inscriptions
-                    .AsNoTracking()
-                    .Include(i => i.Eleve)
-                    .Include(i => i.Classe)
-                    .Where(i => i.IdEcole == resolvedEcole
-                        && i.IdAnneeScolaire == idAnnee
-                        && i.Statut == true
-                        && i.Eleve != null
-                        && i.Eleve.IdTuteur == idTuteur.Value
-                        && i.Eleve.Statut == true
-                        && i.StatutInscription != null
-                        && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
-                            || i.StatutInscription == "Confirme"
-                            || i.StatutInscription.StartsWith("Confirm")))
-                    .OrderByDescending(i => i.DateInscription)
-                    .ToListAsync();
-
-                var dernieresInscriptionsParEleve = inscriptions
-                    .GroupBy(i => i.IdEleve)
-                    .ToDictionary(g => g.Key, g => g.OrderByDescending(i => i.DateInscription).First());
-
-                var enfants = new List<EnfantTuteurDto>();
-                var eleveIds = dernieresInscriptionsParEleve.Keys.ToList();
-
-                var paiements = await _context.Paiements
-                    .AsNoTracking()
-                    .Where(p => p.Statut == true
-                        && p.IdEleve != null
-                        && eleveIds.Contains(p.IdEleve.Value)
-                        && p.IdFrais != null)
-                    .ToListAsync();
-
-                var paiementsParEleve = paiements
-                    .GroupBy(p => p.IdEleve!.Value)
-                    .ToDictionary(g => g.Key, g => new
-                    {
-                        Nombre = g.Count(),
-                        Montant = g.Sum(p => (decimal)p.Montant)
-                    });
-
-                foreach (var pair in dernieresInscriptionsParEleve)
-                {
-                    var inscription = pair.Value;
-                    var eleve = inscription.Eleve;
-                    var elevePaiements = paiementsParEleve.TryGetValue(pair.Key, out var stats)
-                        ? stats
-                        : new { Nombre = 0, Montant = 0m };
-
-                    var statutPaiement = elevePaiements.Nombre > 0
-                        ? "Paiements enregistrés"
-                        : "Aucun paiement";
-
-                    enfants.Add(new EnfantTuteurDto
-                    {
-                        IdEleve = eleve.IdEleve,
-                        Matricule = eleve.Matricule,
-                        NomComplet = eleve.NomComplet,
-                        IdClasse = inscription.IdClasse,
-                        NomClasse = inscription.Classe?.NomClasse,
-                        StatutInscription = inscription.StatutInscription,
-                        NombrePaiements = elevePaiements.Nombre,
-                        MontantPaye = elevePaiements.Montant,
-                        AlertePaiement = statutPaiement
-                    });
-                }
-
-                var elevesAyantPaye = paiementsParEleve.Count;
-                var elevesEnRetardPaiement = enfants.Count(e => e.NombrePaiements == 0);
-                var alertes = new List<AlerteDto>();
-                if (elevesEnRetardPaiement > 0)
-                {
-                    alertes.Add(new AlerteDto
-                    {
-                        Type = "warning",
-                        Message = $"{elevesEnRetardPaiement} enfant(s) n'ont pas encore de paiement enregistré pour l'année scolaire.",
-                        Action = "Consulter les élèves concernés"
-                    });
-                }
-
-                var dashboard = new DashboardTuteurDto
-                {
-                    Ecole = new EcoleInfoDto
-                    {
-                        IdEcole = ecole.IdEcole,
-                        NomEcole = ecole.Nom ?? string.Empty,
-                        Logo = ecole.Logo
-                    },
-                    IdAnneeScolaire = idAnnee,
-                    LibelleAnneeScolaire = libelleAnnee,
-                    Periode = periode,
-                    Resume = new ResumeTuteurDto
-                    {
-                        NombreEnfants = enfants.Count,
-                        ElevesActifs = enfants.Count,
-                        ElevesAyantPaye = elevesAyantPaye,
-                        ElevesEnRetardPaiement = elevesEnRetardPaiement,
-                        MontantTotalPaye = enfants.Sum(e => e.MontantPaye),
-                        NombreClasses = enfants.Select(e => e.IdClasse).Distinct().Count()
-                    },
-                    Enfants = enfants,
-                    Alertes = alertes
-                };
-
+                var dashboard = await _dashboardTuteurService.BuildAsync(
+                    idTuteur.Value, idEcole, libelleAnneeScolaire);
                 return Ok(dashboard);
             }
             catch (InvalidOperationException ex)
@@ -366,8 +224,46 @@ namespace KelasiNaBiso.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erreur dashboard tuteur pour école {IdEcole}", idEcole.Value);
+                _logger.LogError(ex, "Erreur dashboard tuteur (idEcole={IdEcole})", idEcole);
                 return StatusCode(500, new { message = "Erreur lors de la récupération du dashboard tuteur", error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Dashboard élève — vue soi-même (classe, paiements année, alertes).
+        /// </summary>
+        [HttpGet("eleve")]
+        [Authorize(Roles = UserRoles.ELEVE)]
+        [ProducesResponseType(typeof(DashboardEleveDto), 200)]
+        public async Task<IActionResult> GetDashboardEleve(
+            [FromQuery] int? idEcole = null,
+            [FromQuery] string? libelleAnneeScolaire = null)
+        {
+            var idEleve = _currentUserService.EleveId;
+            if (!idEleve.HasValue || idEleve.Value <= 0)
+                return BadRequest(new { message = "Identité de l'élève non disponible dans le token (EleveId)." });
+
+            if (idEcole.HasValue && idEcole.Value > 0)
+            {
+                var deny = await this.ForbidIfWrongSchoolAsync(idEcole.Value, _inscriptionResolver);
+                if (deny != null)
+                    return deny;
+            }
+
+            try
+            {
+                var dashboard = await _dashboardEleveService.BuildAsync(
+                    idEleve.Value, idEcole, libelleAnneeScolaire);
+                return Ok(dashboard);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur dashboard élève (idEleve={IdEleve})", idEleve);
+                return StatusCode(500, new { message = "Erreur lors de la récupération du dashboard élève", error = ex.Message });
             }
         }
 

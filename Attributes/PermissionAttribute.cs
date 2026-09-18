@@ -8,38 +8,39 @@ using System.Security.Claims;
 namespace KelasiNaBiso.Attributes
 {
     /// <summary>
-    /// Attribut d'autorisation personnalisé basé sur les permissions RBAC
-    /// Utilisation: [Permission("Ecole.Create")]
+    /// Attribut d'autorisation basé sur les permissions RBAC.
+    /// Une seule permission : [Permission("Ecole.Create")]
+    /// Plusieurs (OU logique) : [Permission("Note.Read", "Note.ReadOwn")]
     /// </summary>
     [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = true)]
     public class PermissionAttribute : AuthorizeAttribute, IAuthorizationFilter
     {
-        private readonly string _permission;
+        private readonly string[] _permissions;
 
         /// <summary>
-        /// Initialise un nouvel attribut de permission
+        /// Une ou plusieurs permissions acceptées (OU logique).
         /// </summary>
-        /// <param name="permission">Nom de la permission requise (ex: "Ecole.Create", "Paiement.Delete")</param>
-        public PermissionAttribute(string permission)
+        public PermissionAttribute(params string[] permissions)
         {
-            _permission = permission ?? throw new ArgumentNullException(nameof(permission));
+            if (permissions == null || permissions.Length == 0)
+                throw new ArgumentException("Au moins une permission est requise.", nameof(permissions));
+
+            if (permissions.Any(string.IsNullOrWhiteSpace))
+                throw new ArgumentException("Les noms de permission ne peuvent pas être vides.", nameof(permissions));
+
+            _permissions = permissions;
         }
 
-        /// <summary>
-        /// Méthode appelée par ASP.NET Core pour vérifier l'autorisation
-        /// </summary>
         public void OnAuthorization(AuthorizationFilterContext context)
         {
-            // Vérifier si l'utilisateur est authentifié
             var user = context.HttpContext.User;
-            
+
             if (!user.Identity?.IsAuthenticated ?? true)
             {
                 context.Result = new UnauthorizedResult();
                 return;
             }
 
-            // Récupérer l'ID de l'utilisateur
             var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier)
                            ?? user.FindFirst("IdUtilisateur")
                            ?? user.FindFirst(JwtRegisteredClaimNames.Sub);
@@ -49,27 +50,34 @@ namespace KelasiNaBiso.Attributes
                 return;
             }
 
-            // Récupérer le service de permissions
             var permissionService = context.HttpContext.RequestServices
                 .GetRequiredService<IPermissionService>();
 
-            // Vérifier si l'utilisateur a la permission
-            var hasPermission = permissionService.UserHasPermissionAsync(userId, _permission)
-                .GetAwaiter()
-                .GetResult();
+            var hasPermission = false;
+            foreach (var permission in _permissions)
+            {
+                if (permissionService.UserHasPermissionAsync(userId, permission)
+                    .GetAwaiter()
+                    .GetResult())
+                {
+                    hasPermission = true;
+                    break;
+                }
+            }
 
             if (!hasPermission)
             {
-                // Log de l'accès refusé
                 var logger = context.HttpContext.RequestServices
                     .GetRequiredService<ILogger<PermissionAttribute>>();
 
                 var userRole = user.FindFirst(ClaimTypes.Role)?.Value ?? "Inconnu";
-                logger.LogWarning($"❌ Accès refusé: Utilisateur {userId} ({userRole}) n'a pas la permission '{_permission}' pour {context.HttpContext.Request.Method} {context.HttpContext.Request.Path}");
+                var required = string.Join(" | ", _permissions);
+                logger.LogWarning(
+                    "❌ Accès refusé: Utilisateur {UserId} ({Role}) n'a aucune des permissions [{Required}] pour {Method} {Path}",
+                    userId, userRole, required, context.HttpContext.Request.Method, context.HttpContext.Request.Path);
 
                 context.Result = new ForbidResult();
             }
         }
     }
 }
-

@@ -30,12 +30,6 @@ namespace KelasiNaBiso.Models
         [JsonIgnore]
         [ValidateNever]
         public ICollection<AffectationCours> AffectationsCours { get; set; }
-        // ⚠️ DEPRECATED : Les notes sont maintenant liées à Evaluation, pas directement à Cours
-        // Utiliser Evaluation.Notes pour accéder aux notes via les évaluations
-        [JsonIgnore]
-        [ValidateNever]
-        [Obsolete("Les notes sont maintenant liées à Evaluation. Utiliser Evaluation.Notes")]
-        public ICollection<Note> Notes { get; set; }
         [JsonIgnore]
         [ValidateNever]
         public ICollection<Evaluation> Evaluations { get; set; }

@@ -18,15 +18,21 @@ namespace KelasiNaBiso.Controllers
         private readonly IEleveRepository _eleveRepository;
         private readonly IAuditService _auditService;
         private readonly IInscriptionActiveResolver _inscriptionResolver;
+        private readonly IEleveCompteService _eleveCompteService;
+        private readonly ICurrentUserService _currentUserService;
 
         public EleveController(
             IEleveRepository eleveRepository,
             IAuditService auditService,
-            IInscriptionActiveResolver inscriptionResolver)
+            IInscriptionActiveResolver inscriptionResolver,
+            IEleveCompteService eleveCompteService,
+            ICurrentUserService currentUserService)
         {
             _eleveRepository = eleveRepository;
             _auditService = auditService;
             _inscriptionResolver = inscriptionResolver;
+            _eleveCompteService = eleveCompteService;
+            _currentUserService = currentUserService;
         }
 
         /// <summary>
@@ -138,8 +144,13 @@ namespace KelasiNaBiso.Controllers
         }
 
         // ✅ GET: api/Eleve/serial-number/{serialNumber}
-        // Récupérer un élève par son numéro de série
+        /// <summary>
+        /// Récupère un élève actif par SerialNumber, avec IdClasse/NomClasse de l'inscription active.
+        /// </summary>
         [HttpGet("serial-number/{serialNumber}")]
+        [ProducesResponseType(typeof(EleveSerialLookupDto), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(404)]
         public async Task<IActionResult> GetEleveBySerialNumber(string serialNumber)
         {
             if (string.IsNullOrWhiteSpace(serialNumber))
@@ -147,17 +158,17 @@ namespace KelasiNaBiso.Controllers
                 return BadRequest(new { message = "Le numéro de série ne peut pas être vide" });
             }
 
-            var eleve = await _eleveRepository.GetBySerialNumberAsync(serialNumber);
-            if (eleve == null)
+            var lookup = await _eleveRepository.GetBySerialNumberLookupAsync(serialNumber);
+            if (lookup == null)
             {
                 return NotFound(new { message = $"Aucun élève trouvé avec le numéro de série '{serialNumber}'" });
             }
 
-            var idEcole = await _inscriptionResolver.GetEcoleCouranteAsync(eleve.IdEleve);
+            var idEcole = await _inscriptionResolver.GetEcoleCouranteAsync(lookup.IdEleve);
             var deny = this.ForbidIfWrongSchool(idEcole);
             if (deny != null) return deny;
 
-            return Ok(eleve);
+            return Ok(lookup);
         }
 
         // GET: api/Eleve/reference/ELEVE-20240814-ABC12345
@@ -897,6 +908,45 @@ namespace KelasiNaBiso.Controllers
             catch (Exception ex)
             {
                 return StatusCode(500, new { message = "Erreur lors de la mise à jour du numéro de série", error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Backfill des comptes Élève manquants pour une école (login = matricule, MDP = 123456).
+        /// dryRun=true : simule sans écrire. sendSms=true : SMS tuteur uniquement pour les créations (défaut false).
+        /// </summary>
+        [HttpPost("backfill-comptes")]
+        [Authorize(Roles = $"{UserRoles.SUPER_ADMIN},{UserRoles.ADMIN},{UserRoles.DIRECTEUR}")]
+        [ProducesResponseType(typeof(EleveCompteBackfillResult), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(403)]
+        public async Task<IActionResult> BackfillComptes(
+            [FromQuery] int idEcole,
+            [FromQuery] bool dryRun = true,
+            [FromQuery] bool sendSms = false)
+        {
+            if (idEcole <= 0)
+                return BadRequest(new { message = "idEcole est requis" });
+
+            var role = _currentUserService.UserRole;
+            if (role != UserRoles.SUPER_ADMIN)
+            {
+                if (_currentUserService.EcoleId == 0 || _currentUserService.EcoleId != idEcole)
+                    return Forbid("Vous ne pouvez backfiller que les comptes de votre école");
+            }
+
+            try
+            {
+                var result = await _eleveCompteService.BackfillByEcoleAsync(idEcole, dryRun, sendSms);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    message = "Erreur lors du backfill des comptes Élève",
+                    error = ex.Message
+                });
             }
         }
     }

@@ -59,6 +59,8 @@ namespace KelasiNaBiso.Tests.Unit.Services
                 resolver,
                 Mock.Of<IDashboardCaissierService>(),
                 Mock.Of<IDashboardFinancierService>(),
+                Mock.Of<IDashboardTuteurService>(),
+                Mock.Of<IDashboardEleveService>(),
                 Mock.Of<IPedagogieAuthorizationService>());
 
             SeedCurrentYearScenario();
@@ -202,6 +204,8 @@ namespace KelasiNaBiso.Tests.Unit.Services
                 resolver,
                 Mock.Of<IDashboardCaissierService>(),
                 Mock.Of<IDashboardFinancierService>(),
+                Mock.Of<IDashboardTuteurService>(),
+                Mock.Of<IDashboardEleveService>(),
                 Mock.Of<IPedagogieAuthorizationService>());
 
             var actionResult = await controller.GetDashboardGlobal(1);

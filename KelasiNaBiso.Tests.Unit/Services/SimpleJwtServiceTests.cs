@@ -163,6 +163,31 @@ namespace KelasiNaBiso.Tests.Unit.Services
             userIdClaim.Should().NotBeNull();
             userIdClaim!.Value.Should().Be("1");
         }
+
+        [Fact]
+        public void GenerateToken_ShouldIncludeEleveId_WhenUtilisateurHasIdEleve()
+        {
+            var utilisateur = TestDataBuilder.CreateUtilisateur(10, "eleve@test.com");
+            utilisateur.IdEleve = 42;
+            var role = TestDataBuilder.CreateRole(6, "Eleve", niveau: 6);
+            utilisateur.UserRoles = new List<UserRole>
+            {
+                TestDataBuilder.CreateUserRole(10, 6, isPrimary: true)
+            };
+            utilisateur.UserRoles.First().Role = role;
+
+            var token = _jwtService.GenerateToken(utilisateur);
+
+            var handler = new JwtSecurityTokenHandler();
+            var jsonToken = handler.ReadJwtToken(token);
+
+            var eleveIdClaim = jsonToken.Claims.FirstOrDefault(c => c.Type == "EleveId");
+            eleveIdClaim.Should().NotBeNull();
+            eleveIdClaim!.Value.Should().Be("42");
+
+            var roleClaims = jsonToken.Claims.Where(c => c.Type == System.Security.Claims.ClaimTypes.Role).ToList();
+            roleClaims.Should().Contain(c => c.Value == "Eleve");
+        }
     }
 }
 

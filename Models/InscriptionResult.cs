@@ -15,5 +15,8 @@ namespace KelasiNaBiso.Models
         
         // Informations du compte utilisateur créé automatiquement pour le tuteur
         public UtilisateurInfo? CompteUtilisateurTuteur { get; set; }
+
+        // Informations du compte utilisateur créé automatiquement pour l'élève (matricule / MDP)
+        public UtilisateurInfo? CompteUtilisateurEleve { get; set; }
     }
 }

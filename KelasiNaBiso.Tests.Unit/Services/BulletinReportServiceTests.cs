@@ -22,7 +22,7 @@ namespace KelasiNaBiso.Tests.Unit.Services
             _context = TestDbContextFactory.CreateInMemoryContext();
             var resolver = new InscriptionActiveResolver(_context);
             var scopeFactory = new Mock<Microsoft.Extensions.DependencyInjection.IServiceScopeFactory>();
-            var bulletinService = new BulletinService(_context, resolver, scopeFactory.Object);
+            var bulletinService = new BulletinService(_context, resolver, scopeFactory.Object, new PeriodeCotationResolver(_context));
 
             var env = new Mock<IWebHostEnvironment>();
             env.Setup(e => e.ContentRootPath).Returns(Path.GetTempPath());

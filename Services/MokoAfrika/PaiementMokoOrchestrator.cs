@@ -124,16 +124,38 @@ namespace KelasiNaBiso.Services.MokoAfrika
             if (isCard && !infoPaiement.CarteActif)
                 throw new InvalidOperationException("Paiement par carte désactivé pour cette école.");
             if (!isCard && !infoPaiement.MobileMoneyActif)
-                throw new InvalidOperationException("Paiement Mobile Money désactivé pour cette école.");
+                throw new InvalidOperationException(
+                    "Paiement Mobile non disponible. Veuillez contacter la direction de votre école.");
 
-            var pendingExists = await _context.Paiements.AnyAsync(p =>
+            var pendingPaiementExists = await _context.Paiements.AnyAsync(p =>
                 p.IdEleve == request.IdEleve &&
                 p.IdFrais == request.IdFrais &&
                 p.StatutPaiement == "En attente" &&
                 p.Statut == true, cancellationToken);
 
-            if (pendingExists)
+            if (pendingPaiementExists)
                 throw new InvalidOperationException("Un paiement est déjà en attente pour ce frais et cet élève.");
+
+            var pendingTxCandidates = await _context.TransactionsMoko
+                .AsNoTracking()
+                .Where(t => t.IdEcole == idEcole
+                    && t.Action == MokoActions.Debit
+                    && t.Status == MokoTransactionStatuses.Pending
+                    && t.IdPaiement == null)
+                .OrderByDescending(t => t.DateCreation)
+                .Take(50)
+                .ToListAsync(cancellationToken);
+
+            if (pendingTxCandidates.Any(t =>
+            {
+                var intent = PayInRawRequestHelper.TryReadIntent(t.RawRequest);
+                return intent != null
+                    && intent.IdEleve == request.IdEleve
+                    && intent.IdFrais == request.IdFrais;
+            }))
+            {
+                throw new InvalidOperationException("Un paiement mobile est déjà en attente pour ce frais et cet élève.");
+            }
 
             var montantNet = request.MontantNet ?? (decimal)frais.Montant;
             if (montantNet <= 0)
@@ -143,12 +165,24 @@ namespace KelasiNaBiso.Services.MokoAfrika
                 .AsNoTracking()
                 .FirstOrDefaultAsync(e => e.IdEcole == idEcole, cancellationToken);
 
+            var deviseFrais = NormalizeDeviseCode(frais.Devise)
+                ?? throw new InvalidOperationException($"Le frais {frais.IdFrais} n'a pas de devise.");
             var codePrincipale = NormalizeDeviseCode(ecole?.CodeDevisePrincipale)
                 ?? NormalizeDeviseCode(infoPaiement.Devise)
-                ?? "USD";
-            var deviseGateway = NormalizeDeviseCode(infoPaiement.Devise) ?? codePrincipale;
+                ?? deviseFrais;
+            // Devise MM préférée = allowlist de règlement alternatif (pas gateway forcé).
+            var deviseMmPreferee = NormalizeDeviseCode(infoPaiement.Devise) ?? codePrincipale;
+            var deviseReglement = NormalizeDeviseCode(request.Devise ?? request.Currency) ?? deviseFrais;
+            // PayIn / USSD = devise de règlement (défaut = devise du frais).
+            var deviseGateway = deviseReglement;
 
-            ValidateClientDevise(request.Devise ?? request.Currency, codePrincipale, deviseGateway);
+            ValidateClientDevise(deviseReglement, deviseFrais, codePrincipale, deviseMmPreferee);
+
+            if (!await _currencyConversion.IsActiveDeviseAsync(idEcole, deviseFrais, cancellationToken))
+            {
+                throw new InvalidOperationException(
+                    $"La devise du frais {deviseFrais} est absente ou inactive pour l'école {idEcole}.");
+            }
 
             if (!await _currencyConversion.IsActiveDeviseAsync(idEcole, codePrincipale, cancellationToken))
             {
@@ -159,50 +193,55 @@ namespace KelasiNaBiso.Services.MokoAfrika
             if (!await _currencyConversion.IsActiveDeviseAsync(idEcole, deviseGateway, cancellationToken))
             {
                 throw new InvalidOperationException(
-                    $"La devise Mobile Money {deviseGateway} est absente ou inactive pour l'école {idEcole}.");
+                    $"La devise de règlement {deviseGateway} est absente ou inactive pour l'école {idEcole}.");
             }
 
-            var (montantGateway, tauxVersPrincipale) = await ConvertMontantNetVersGatewayAsync(
-                idEcole, codePrincipale, deviseGateway, montantNet, cancellationToken);
+            if (!await _currencyConversion.IsActiveDeviseAsync(idEcole, deviseMmPreferee, cancellationToken))
+            {
+                throw new InvalidOperationException(
+                    $"La devise Mobile Money {deviseMmPreferee} est absente ou inactive pour l'école {idEcole}.");
+            }
+
+            // Conversion uniquement si le client choisit une devise de règlement ≠ devise du frais.
+            var montantReglement = deviseReglement == deviseFrais
+                ? montantNet
+                : await ConvertMontantAsync(idEcole, deviseFrais, deviseReglement, montantNet, cancellationToken);
+
+            var montantGateway = montantReglement;
+
+            var (montantPayePrincipale, tauxVersPrincipale) = await ConvertVersPrincipaleAsync(
+                idEcole, deviseFrais, codePrincipale, montantNet, cancellationToken);
 
             var fees = _feeCalculator.Estimate(montantGateway, method, deviseGateway);
             var reference = MokoReferenceGenerator.NewReference();
             var phone = NormaliserTelephone(request.TelephonePayeur);
             var modePaiement = isCard ? "Carte" : "Mobile Money";
 
-            var paiement = new Paiement
+            var intent = new PayInIntentSnapshot
             {
                 IdEleve = request.IdEleve,
                 IdFrais = request.IdFrais,
                 IdUtilisateur = idUtilisateur,
-                Montant = (double)montantNet,
                 MontantNet = montantNet,
                 MontantCollecte = fees.MontantCollecte,
-                Devise = codePrincipale,
-                CodeDevisePaiement = deviseGateway,
+                MontantGatewayNet = montantGateway,
+                CodeDeviseFrais = deviseFrais,
                 CodeDevisePrincipale = codePrincipale,
+                CodeDevisePaiement = deviseGateway,
                 TauxVersDevisePrincipale = tauxVersPrincipale,
-                MontantPayeDevisePrincipale = montantNet,
+                MontantPayeDevisePrincipale = montantPayePrincipale,
                 ModePaiement = modePaiement,
                 OperateurMobileMoney = method,
-                StatutPaiement = "En attente",
-                Statut = true,
                 Commentaire = request.Commentaire,
-                DatePaiement = DateTime.Now,
-                DateCreation = DateTime.Now,
-                ReferencePaiemenet = reference
+                TelephonePayeur = phone
             };
 
-            _context.Paiements.Add(paiement);
-            await _context.SaveChangesAsync(cancellationToken);
-
             var payload = BuildGatewayPayload(MokoActions.Debit, reference, fees.MontantCollecte, deviseGateway, phone, method);
-            var payloadJson = JsonSerializer.Serialize(payload);
 
             var tx = new TransactionMoko
             {
                 Reference = reference,
-                IdPaiement = paiement.IdPaiement,
+                IdPaiement = null,
                 IdEcole = idEcole,
                 Action = MokoActions.Debit,
                 Amount = fees.MontantCollecte,
@@ -213,7 +252,7 @@ namespace KelasiNaBiso.Services.MokoAfrika
                 CustomerPhone = phone,
                 Method = method,
                 Status = MokoTransactionStatuses.Pending,
-                RawRequest = payloadJson,
+                RawRequest = PayInRawRequestHelper.Serialize(intent, payload),
                 DateCreation = DateTime.Now
             };
 
@@ -228,7 +267,7 @@ namespace KelasiNaBiso.Services.MokoAfrika
 
             var result = new PayInFraisScolaireResultDto
             {
-                IdPaiement = paiement.IdPaiement,
+                IdPaiement = null,
                 IdEcole = idEcole,
                 Reference = reference,
                 MontantNet = montantNet,
@@ -236,7 +275,7 @@ namespace KelasiNaBiso.Services.MokoAfrika
                 CodeDevisePrincipale = codePrincipale,
                 CodeDevisePaiement = deviseGateway,
                 TauxVersDevisePrincipale = tauxVersPrincipale,
-                MontantPayeDevisePrincipale = montantNet,
+                MontantPayeDevisePrincipale = montantPayePrincipale,
                 Frais = fees,
                 GatewayTransactionId = response.TransactionId
             };
@@ -244,7 +283,6 @@ namespace KelasiNaBiso.Services.MokoAfrika
             if (response.IsFailure || response.HttpStatusCode < 200 || response.HttpStatusCode >= 300)
             {
                 tx.Status = MokoTransactionStatuses.Error;
-                paiement.StatutPaiement = "Echoue";
                 await _context.SaveChangesAsync(cancellationToken);
 
                 result.StatutPaiement = "Echoue";
@@ -256,7 +294,6 @@ namespace KelasiNaBiso.Services.MokoAfrika
             {
                 // Mobile Money : confirmation uniquement via callback ou polling status/check
                 tx.Status = MokoTransactionStatuses.Pending;
-                paiement.ReferenceTransaction = reference;
                 await _context.SaveChangesAsync(cancellationToken);
 
                 result.StatutPaiement = "En attente";
@@ -266,16 +303,17 @@ namespace KelasiNaBiso.Services.MokoAfrika
                     : (response.ErrorMessage ?? "Transaction initiée — en attente de confirmation USSD/callback.");
                 result.RequiresUssdConfirmation = true;
 
-                await NotifierPayInPendingSignalRAsync(idEcole, reference, paiement, montantNet);
+                await NotifierPayInPendingSignalRAsync(idEcole, reference, intent.IdEleve, montantNet);
             }
             else if (response.IsSuccess)
             {
                 tx.Status = MokoTransactionStatuses.Success;
                 await _context.SaveChangesAsync(cancellationToken);
 
-                await _mokoService.ConfirmerPayInEtNotifierAsync(
-                    paiement.IdPaiement, reference, response.TransactionId, cancellationToken);
+                var idPaiement = await _mokoService.ConfirmerPayInEtNotifierAsync(
+                    reference, response.TransactionId, cancellationToken);
 
+                result.IdPaiement = idPaiement;
                 result.StatutPaiement = "Confirme";
                 result.StatutGateway = MokoTransactionStatuses.Success;
                 result.Message = "PayIn confirmé avec succès.";
@@ -284,7 +322,6 @@ namespace KelasiNaBiso.Services.MokoAfrika
             else
             {
                 tx.Status = MokoTransactionStatuses.Pending;
-                paiement.ReferenceTransaction = reference;
                 await _context.SaveChangesAsync(cancellationToken);
 
                 result.StatutPaiement = "En attente";
@@ -292,7 +329,7 @@ namespace KelasiNaBiso.Services.MokoAfrika
                 result.Message = response.ErrorMessage ?? "Transaction initiée — en attente de confirmation.";
                 result.RequiresUssdConfirmation = true;
 
-                await NotifierPayInPendingSignalRAsync(idEcole, reference, paiement, montantNet);
+                await NotifierPayInPendingSignalRAsync(idEcole, reference, intent.IdEleve, montantNet);
             }
 
             return result;
@@ -301,14 +338,14 @@ namespace KelasiNaBiso.Services.MokoAfrika
         private async Task NotifierPayInPendingSignalRAsync(
             int idEcole,
             string reference,
-            Paiement paiement,
+            int idEleve,
             decimal montantNet)
         {
             await _dashboardHubService.NotifyPayInPendingAsync(idEcole, new PayInSignalRNotification
             {
                 Reference = reference,
-                IdPaiement = paiement.IdPaiement,
-                IdEleve = paiement.IdEleve,
+                IdPaiement = null,
+                IdEleve = idEleve,
                 MontantNet = montantNet,
                 StatutPaiement = "En attente",
                 StatutGateway = MokoTransactionStatuses.Pending
@@ -465,14 +502,20 @@ namespace KelasiNaBiso.Services.MokoAfrika
                     .FirstOrDefaultAsync(t => t.Reference == payInReference && t.Action == MokoActions.Debit, cancellationToken)
                     ?? throw new KeyNotFoundException($"Aucun PayIn trouvé pour {payInReference}.");
 
+                var (montantWallet, deviseWallet) = await _walletService.ConvertirVersDeviseWalletAsync(
+                    payInTx.IdEcole,
+                    payInTx.AmountNet ?? payInTx.Amount,
+                    payInTx.Devise,
+                    cancellationToken);
+
                 file = new FilePayoutMoko
                 {
                     PayInReference = payInReference,
                     IdTransactionMokoPayIn = payInTx.IdTransactionMoko,
                     IdEcole = payInTx.IdEcole,
                     IdPaiement = payInTx.IdPaiement,
-                    MontantNet = payInTx.AmountNet ?? payInTx.Amount,
-                    Devise = payInTx.Devise,
+                    MontantNet = montantWallet,
+                    Devise = deviseWallet,
                     Methode = payInTx.Method,
                     ScheduledAt = DateTime.Now,
                     Status = MokoPayoutQueueStatuses.Pending,
@@ -570,56 +613,77 @@ namespace KelasiNaBiso.Services.MokoAfrika
         private static string? NormalizeDeviseCode(string? code) =>
             string.IsNullOrWhiteSpace(code) ? null : code.Trim().ToUpperInvariant();
 
-        private static void ValidateClientDevise(string? clientDeviseRaw, string codePrincipale, string deviseGateway)
+        private static void ValidateClientDevise(
+            string deviseReglement,
+            string deviseFrais,
+            string codePrincipale,
+            string deviseMmPreferee)
         {
-            var clientDevise = NormalizeDeviseCode(clientDeviseRaw);
-            if (string.IsNullOrEmpty(clientDevise))
-                return;
-
-            if (clientDevise == codePrincipale || clientDevise == deviseGateway)
+            if (deviseReglement == deviseFrais
+                || deviseReglement == codePrincipale
+                || deviseReglement == deviseMmPreferee)
                 return;
 
             throw new InvalidOperationException(
-                $"Devise non supportée pour ce PayIn : {clientDevise}. " +
-                $"Utilisez la devise principale de l'école ({codePrincipale}) ou la devise Mobile Money ({deviseGateway}).");
+                $"Devise non supportée pour ce PayIn : {deviseReglement}. " +
+                $"Utilisez la devise du frais ({deviseFrais}), la devise principale ({codePrincipale}) " +
+                $"ou la devise Mobile Money ({deviseMmPreferee}).");
         }
 
-        private async Task<(decimal MontantGateway, decimal TauxVersPrincipale)> ConvertMontantNetVersGatewayAsync(
+        private async Task<decimal> ConvertMontantAsync(
             int idEcole,
+            string source,
+            string cible,
+            decimal montant,
+            CancellationToken cancellationToken)
+        {
+            if (source == cible)
+                return montant;
+
+            var result = await _currencyConversion.ConvertAsync(
+                idEcole,
+                source,
+                cible,
+                montant,
+                DateTime.UtcNow,
+                cancellationToken);
+
+            if (!result.Success)
+            {
+                throw new InvalidOperationException(
+                    result.ErrorMessage
+                    ?? $"Impossible de convertir {source} → {cible} pour le PayIn.");
+            }
+
+            return result.MontantConverti;
+        }
+
+        private async Task<(decimal MontantPrincipale, decimal TauxVersPrincipale)> ConvertVersPrincipaleAsync(
+            int idEcole,
+            string deviseFrais,
             string codePrincipale,
-            string deviseGateway,
             decimal montantNet,
             CancellationToken cancellationToken)
         {
-            if (codePrincipale == deviseGateway)
+            if (deviseFrais == codePrincipale)
                 return (montantNet, 1m);
 
-            var toGateway = await _currencyConversion.ConvertAsync(
+            var toPrincipal = await _currencyConversion.ConvertAsync(
                 idEcole,
+                deviseFrais,
                 codePrincipale,
-                deviseGateway,
                 montantNet,
                 DateTime.UtcNow,
                 cancellationToken);
 
-            if (!toGateway.Success)
+            if (!toPrincipal.Success)
             {
                 throw new InvalidOperationException(
-                    toGateway.ErrorMessage
-                    ?? $"Impossible de convertir {codePrincipale} → {deviseGateway} pour le PayIn.");
+                    toPrincipal.ErrorMessage
+                    ?? $"Impossible de convertir {deviseFrais} → {codePrincipale} pour la consolidation.");
             }
 
-            var toPrincipal = await _currencyConversion.ConvertAsync(
-                idEcole,
-                deviseGateway,
-                codePrincipale,
-                1m,
-                DateTime.UtcNow,
-                cancellationToken);
-
-            var tauxVersPrincipale = toPrincipal.Success ? toPrincipal.Taux : (toGateway.Taux == 0 ? 0 : 1m / toGateway.Taux);
-
-            return (toGateway.MontantConverti, tauxVersPrincipale);
+            return (toPrincipal.MontantConverti, toPrincipal.Taux);
         }
 
         private Dictionary<string, object?> BuildGatewayPayload(

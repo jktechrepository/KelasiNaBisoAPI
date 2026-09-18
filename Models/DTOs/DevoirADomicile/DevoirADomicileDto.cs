@@ -38,7 +38,12 @@ namespace KelasiNaBiso.Models.DTOs.DevoirADomicile
         
         // Statistiques
         public int NombreTelechargements { get; set; }
-        
+
+        /// <summary>
+        /// True si l'utilisateur JWT a déjà téléchargé ce devoir au moins une fois.
+        /// </summary>
+        public bool EstTelechargeParMoi { get; set; }
+
         // Statut
         public bool Statut { get; set; }
     }

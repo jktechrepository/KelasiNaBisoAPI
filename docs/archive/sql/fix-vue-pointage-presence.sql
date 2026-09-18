@@ -1,5 +1,9 @@
 -- Script pour corriger la vue VuePointagePresenceParEcole
 -- Ce script recrée la vue avec les bonnes colonnes qui correspondent au DTO
+--
+-- ARCHIVE / SQL Server — OBSOLÈTE pour MySQL prod (utilise e.IdClasse).
+-- Définition à jour :
+--   docs/sql/20260918_RecreateVuePointagePresenceParEcole_ViaInscription.sql
 
 -- Supprimer la vue existante
 IF EXISTS (SELECT * FROM sys.views WHERE name = 'VuePointagePresenceParEcole')

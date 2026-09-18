@@ -80,7 +80,31 @@ namespace KelasiNaBiso.Tests.Unit.Services
             var root = doc.RootElement;
 
             MokoGatewayResponseParser.IsDefinitiveFailure(root).Should().BeTrue();
+            MokoGatewayResponseParser.IsTerminalFailureStatus(root).Should().BeTrue();
             MokoGatewayResponseParser.IsPending(root).Should().BeFalse();
+        }
+
+        [Fact]
+        public void IsTerminalFailure_ShouldBeTrue_WhenTransStatusFailed()
+        {
+            using var doc = JsonDocument.Parse("{\"Trans_Status\":\"Failed\",\"Comment\":\"Customer cancelled\"}");
+            var root = doc.RootElement;
+
+            MokoGatewayResponseParser.IsTerminalFailureStatus(root).Should().BeTrue();
+            MokoGatewayResponseParser.IsDefinitiveFailure(root).Should().BeTrue();
+            MokoGatewayResponseParser.IsSoftAmbiguousFailure(root).Should().BeFalse();
+            MokoGatewayResponseParser.IsPending(root).Should().BeFalse();
+        }
+
+        [Fact]
+        public void IsSoftAmbiguous_ShouldBeTrue_WhenStatusFailedWithoutTransStatus()
+        {
+            using var doc = JsonDocument.Parse("{\"Status\":\"Failed\",\"Comment\":\"USSD pending\"}");
+            var root = doc.RootElement;
+
+            MokoGatewayResponseParser.IsSoftAmbiguousFailure(root).Should().BeTrue();
+            MokoGatewayResponseParser.IsTerminalFailureStatus(root).Should().BeFalse();
+            MokoGatewayResponseParser.IsPending(root).Should().BeTrue();
         }
 
         [Fact]
@@ -101,6 +125,27 @@ namespace KelasiNaBiso.Tests.Unit.Services
 
             MokoGatewayResponseParser.GetTransactionStatus(root).Should().Be("success");
             MokoGatewayResponseParser.IsSuccess(root).Should().BeTrue();
+        }
+
+        [Fact]
+        public void IsSuccess_ShouldBeTrue_WhenTransStatusSuccessful()
+        {
+            using var doc = JsonDocument.Parse("{\"Comment\":\"Transaction Found\",\"Trans_Status\":\"Successful\"}");
+            var root = doc.RootElement;
+
+            MokoGatewayResponseParser.GetTransactionStatus(root).Should().Be("successful");
+            MokoGatewayResponseParser.IsDefinitiveSuccess(root).Should().BeTrue();
+            MokoGatewayResponseParser.IsPending(root).Should().BeFalse();
+        }
+
+        [Fact]
+        public void IsSuccess_ShouldBeTrue_WhenStatusCompleted()
+        {
+            using var doc = JsonDocument.Parse("{\"Status\":\"Completed\"}");
+            var root = doc.RootElement;
+
+            MokoGatewayResponseParser.IsDefinitiveSuccess(root).Should().BeTrue();
+            MokoGatewayResponseParser.IsPending(root).Should().BeFalse();
         }
     }
 }

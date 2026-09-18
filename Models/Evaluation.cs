@@ -11,7 +11,11 @@ namespace KelasiNaBiso.Models
         public string? TypeEvaluation { get; set; } //
         public string? TitreEvaluation { get; set; } // Titre de l'évaluation (ex: titre du devoir)
         [MaxLength(255)]
-        public string? Periode { get; set; } // Période ou session (ex: "Trimestre 1", "Semestre 1")
+        public string? Periode { get; set; } // Miroir du libellé (rétrocompat) — préférer IdPeriode
+
+        /// <summary>FK vers PeriodesCotation (période normalisée).</summary>
+        public int? IdPeriode { get; set; }
+
         public double? Coefficient { get; set; }
         public int IdCours { get; set; }
         public int IdClasse { get; set; }
@@ -30,6 +34,9 @@ namespace KelasiNaBiso.Models
         [JsonIgnore]
         [ValidateNever]
         public Classe? Classe { get; set; }
+
+        [ValidateNever]
+        public PeriodeCotation? PeriodeCotation { get; set; }
         
         [JsonIgnore]
         [ValidateNever]

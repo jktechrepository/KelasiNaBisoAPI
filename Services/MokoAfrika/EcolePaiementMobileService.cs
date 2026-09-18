@@ -98,6 +98,14 @@ namespace KelasiNaBiso.Services.MokoAfrika
                 info.DelaiReglementMinutes = dto.DelaiReglementMinutes;
                 info.PayoutAutomatique = dto.PayoutAutomatique;
                 info.DateModification = DateTime.Now;
+
+                var wallet = await _context.EcolesWallets.FirstOrDefaultAsync(w => w.IdEcole == idEcole);
+                if (wallet != null && !string.Equals(wallet.Devise, dto.Devise, StringComparison.OrdinalIgnoreCase))
+                {
+                    wallet.Devise = dto.Devise;
+                    wallet.DateModification = DateTime.Now;
+                }
+
                 await _context.SaveChangesAsync();
             }
 
@@ -111,7 +119,16 @@ namespace KelasiNaBiso.Services.MokoAfrika
 
             if (dto.MobileMoneyActif.HasValue) info.MobileMoneyActif = dto.MobileMoneyActif.Value;
             if (dto.CarteActif.HasValue) info.CarteActif = dto.CarteActif.Value;
-            if (!string.IsNullOrWhiteSpace(dto.Devise)) info.Devise = dto.Devise;
+            if (!string.IsNullOrWhiteSpace(dto.Devise))
+            {
+                info.Devise = dto.Devise;
+                var wallet = await _context.EcolesWallets.FirstOrDefaultAsync(w => w.IdEcole == idEcole);
+                if (wallet != null && !string.Equals(wallet.Devise, dto.Devise, StringComparison.OrdinalIgnoreCase))
+                {
+                    wallet.Devise = dto.Devise;
+                    wallet.DateModification = DateTime.Now;
+                }
+            }
             if (dto.DelaiReglementMinutes.HasValue) info.DelaiReglementMinutes = dto.DelaiReglementMinutes.Value;
             if (dto.PayoutAutomatique.HasValue) info.PayoutAutomatique = dto.PayoutAutomatique.Value;
             if (dto.Statut.HasValue) info.Statut = dto.Statut.Value;

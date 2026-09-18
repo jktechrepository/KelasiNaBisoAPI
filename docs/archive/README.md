@@ -19,4 +19,13 @@ Les scripts SQL one-shot sont dans `docs/archive/sql/`.
 
 **Source de vérité schéma :** migrations EF (`Migrations/*.cs`), dont `AddReportingViews`.
 
+**Vues SQL apply manuel (post–DropEleveIdClasse) :** ne pas réutiliser les CREATE VIEW
+archivés (ex. `docs/archive/sql/rename-enseignant-to-agent.sql` étape 7,
+`fix-vue-pointage-presence*.sql`). Utiliser :
+
+- `docs/sql/20260918_RecreateVuePointagePresenceParEcole_ViaInscription.sql`
+- `docs/sql/20260918_RecreateVue_RepertoireAgentsParParent_ViaInscription.sql`
+- `docs/sql/20260917_RecreateVuePaiementsFraisParEcole_ViaInscription.sql`
+- `Scripts/PRODUCTION_RECREATE_V_ELEVE.sql`
+
 Ne pas committer de secrets dans ces archives ; utiliser des placeholders.

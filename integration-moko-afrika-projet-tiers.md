@@ -37,7 +37,7 @@ MOKO Afrika est un agrégateur de paiements en RDC (Mobile Money + carte).
 |--------|----------------|------|-----------------------------|
 | **PayIn** | `debit` | Client → Marchand (C2B) | **Téléphone du client** qui paie |
 | **PayOut** | `credit` | Marchand → Bénéficiaire (B2C) | **Téléphone du bénéficiaire** (ex. mobile du site) |
-| **Check** | `check` | Consultation statut | — |
+| **Check / Verify** | `verify` | Consultation statut | — |
 
 ### URLs du gateway
 
@@ -144,7 +144,7 @@ Content-Type: application/json
   "merchant_code": "string",
   "amount": "string",
   "currency": "CDF",
-  "action": "debit | credit | check",
+  "action": "debit | credit | verify",
   "customer_number": "string",
   "firstname": "string",
   "lastname": "string",
@@ -162,7 +162,7 @@ Content-Type: application/json
 | `merchant_id` | ✓ | ✓ | ✓ |
 | `merchant_secrete` | ✓ | ✓ | ✓ |
 | `merchant_code` | ✓ | ✓ | ✓ |
-| `action` | `debit` | `credit` | `check` |
+| `action` | `debit` | `credit` | `verify` |
 | `amount` | ✓ | ✓ | — |
 | `currency` | ✓ | ✓ | — |
 | `customer_number` | ✓ | ✓ | — |
@@ -371,17 +371,22 @@ curl -X POST "https://paydrc.gofreshbakery.net/api/v5/" \
 
 ## 7. Vérification de statut
 
+Côté gateway MOKO, l’action officielle est **`verify`** (pas `check` — sinon `resultCodeError: 408` *action not recognized*).  
+Côté API KelasiNaBiso, l’endpoint reste `POST /api/MokoAfrika/status/{reference}/check` (il envoie `action: verify` à MOKO).
+
 ```json
 {
   "merchant_id": "VOTRE_MERCHANT_ID",
   "merchant_secrete": "VOTRE_SECRET_KEY",
   "merchant_code": "VOTRE_MERCHANT_CODE",
-  "action": "check",
+  "action": "verify",
   "reference": "MOKO_20260630155307_8897"
 }
 ```
 
-Utile après timeout HTTP ou en polling jusqu'à confirmation callback.
+Le statut final se lit souvent dans **`Trans_Status`** (`Successful` / `Failed` / `Pending`), pas seulement `Status`.
+
+Utile après timeout HTTP ou en polling jusqu’à confirmation callback.
 
 ---
 
@@ -646,7 +651,7 @@ Points clés :
 | `customer_number` incorrect | Confusion client vs bénéficiaire | PayIn = payeur ; PayOut = mobile du site |
 | Montant PayOut rejeté | Envoi du montant collecté au lieu du net | PayOut = `montantNet` uniquement |
 | Callback non reçu | URL incorrecte ou non HTTPS | `callback_url` → `/api/MokoAfrika/callback` exposé |
-| Timeout | Push USSD client lent | Timeout 120 s + `action: check` |
+| Timeout | Push USSD client lent | Timeout 120 s + `action: verify` |
 | Référence dupliquée | Réutilisation d'une ref PayOut échouée | Générer une nouvelle ref à chaque tentative |
 
 ---

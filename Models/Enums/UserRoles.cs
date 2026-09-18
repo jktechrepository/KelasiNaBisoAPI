@@ -84,7 +84,7 @@ namespace KelasiNaBiso.Models.Enums
         /// <summary>
         /// Élève - Consultation de ses propres données
         /// </summary>
-        public const string ELEVE = "Élève";
+        public const string ELEVE = "Eleve";
 
         /// <summary>
         /// Bailleur/Sponsor - Consultation des rapports financiers
@@ -169,10 +169,10 @@ namespace KelasiNaBiso.Models.Enums
             $"{SUPER_ADMIN},{ADMIN},{DIRECTEUR},{ENSEIGNANT},{PREFET},{CONTROLEUR}";
 
         /// <summary>
-        /// Rôles autorisés à encaisser au guichet (PayIn Moko, création paiement).
+        /// Rôles autorisés à encaisser / payer via PayIn Moko (création paiement mobile).
         /// </summary>
         public const string CashierPayInRoles =
-            $"{PARENT},{SUPER_ADMIN},{ADMIN},{FINANCIER},{CAISSIER}";
+            $"{PARENT},{ELEVE},{SUPER_ADMIN},{ADMIN},{FINANCIER},{CAISSIER}";
 
         /// <summary>
         /// Rôles autorisés à consulter l'overview paiement mobile (sans trésorerie).

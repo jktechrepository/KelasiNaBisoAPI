@@ -2,6 +2,10 @@
 -- Script de correction de la vue VuePointagePresenceParEcole
 -- Corrige le problème de conversion StatutTuteur (bool vers string)
 -- =============================================
+-- ARCHIVE / SQL Server — OBSOLÈTE pour MySQL prod (utilise e.IdClasse, IdHoraire).
+-- Définition à jour :
+--   docs/sql/20260918_RecreateVuePointagePresenceParEcole_ViaInscription.sql
+-- =============================================
 
 DROP VIEW IF EXISTS VuePointagePresenceParEcole;
 GO

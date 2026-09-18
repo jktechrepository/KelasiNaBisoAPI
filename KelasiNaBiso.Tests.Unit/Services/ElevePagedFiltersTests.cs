@@ -63,6 +63,7 @@ namespace KelasiNaBiso.Tests.Unit.Services
                     IdEleve = 1,
                     NomComplet = "Classe10 Test",
                     IdClasse = 10,
+                    NomClasse = "6e A",
                     IdEcole = 1,
                     Statut = true,
                     DateNaissance = new DateTime(2015, 1, 1),
@@ -74,6 +75,7 @@ namespace KelasiNaBiso.Tests.Unit.Services
                     IdEleve = 2,
                     NomComplet = "Classe20 Test",
                     IdClasse = 20,
+                    NomClasse = "1ère B",
                     IdEcole = 1,
                     Statut = true,
                     DateNaissance = new DateTime(2016, 1, 1),
@@ -147,6 +149,57 @@ namespace KelasiNaBiso.Tests.Unit.Services
 
             await act.Should().ThrowAsync<InvalidOperationException>()
                 .WithMessage("*n'appartient pas à l'école*");
+        }
+
+        [Fact]
+        public async Task GetAllPagedAsync_OverlaysClasseFromRequestedYear_NotLatestInscription()
+        {
+            _context.AnneeScolaires.Add(TestDataBuilder.CreateAnneeScolaire(
+                99, 1, "Precedente",
+                debut: _now.AddYears(-1),
+                fin: _now.AddMonths(-4)));
+
+            var inscriptionAnneeCourante = _context.Inscriptions.Single(i => i.IdInscription == 1);
+            inscriptionAnneeCourante.DateInscription = _now.AddMonths(-2);
+
+            // Inscription plus récente (N-1 / autre classe) → ce que V_Eleve exposerait comme "latest"
+            _context.Inscriptions.Add(
+                TestDataBuilder.CreateInscription(3, 1, 1, 20, 99, dateInscription: _now));
+
+            var vue = _context.V_Eleves.Single(v => v.IdEleve == 1);
+            vue.IdClasse = 20;
+            vue.NomClasse = "1ère B";
+            await _context.SaveChangesAsync();
+
+            var result = await _service.GetAllPagedAsync(
+                1, new PagedRequest { PageNumber = 1, PageSize = 20 }, idAnneeScolaire: 100);
+
+            var eleve = result.Data.Data.Should().ContainSingle(e => e.IdEleve == 1).Subject;
+            eleve.IdClasse.Should().Be(10);
+            eleve.NomClasse.Should().Be("6e A");
+        }
+
+        [Fact]
+        public async Task GetAllCursorPagedAsync_OverlaysClasseFromRequestedYear()
+        {
+            _context.AnneeScolaires.Add(TestDataBuilder.CreateAnneeScolaire(
+                99, 1, "Precedente",
+                debut: _now.AddYears(-1),
+                fin: _now.AddMonths(-4)));
+            _context.Inscriptions.Single(i => i.IdInscription == 1).DateInscription = _now.AddMonths(-2);
+            _context.Inscriptions.Add(
+                TestDataBuilder.CreateInscription(3, 1, 1, 20, 99, dateInscription: _now));
+            var vue = _context.V_Eleves.Single(v => v.IdEleve == 1);
+            vue.IdClasse = 20;
+            vue.NomClasse = "1ère B";
+            await _context.SaveChangesAsync();
+
+            var result = await _service.GetAllCursorPagedAsync(
+                1, new CursorPaginationRequest { Limit = 20 }, idAnneeScolaire: 100);
+
+            var eleve = result.Data.Data.Should().ContainSingle(e => e.IdEleve == 1).Subject;
+            eleve.IdClasse.Should().Be(10);
+            eleve.NomClasse.Should().Be("6e A");
         }
 
         public void Dispose() => _context.Dispose();
