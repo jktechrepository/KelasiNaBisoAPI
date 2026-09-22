@@ -9,6 +9,7 @@ using BCrypt.Net;
 using KelasiNaBiso.Models.DTOs.Pagination;
 using KelasiNaBiso.Helpers;
 using KelasiNaBiso.Models.DTOs.Vitrine;
+using KelasiNaBiso.Models.DTOs;
 using System.Linq;
 
 namespace KelasiNaBiso.Services
@@ -251,7 +252,8 @@ namespace KelasiNaBiso.Services
             return await _context.AnneeScolaires
               //  .Include(a => a.Inscriptions)
               //  .Include(a => a.Notes)
-                .Where(a => a.IdEcole == idEcole)
+                .Where(a => a.IdEcole == idEcole && a.Statut == true)
+                .OrderByDescending(a => a.DateCreation)
                 .ToListAsync();
         }
 
@@ -702,6 +704,57 @@ namespace KelasiNaBiso.Services
                 Type = e.Type,
                 Ville = e.Ville
             }).ToList();
+        }
+
+        /// <inheritdoc />
+        public async Task<IReadOnlyList<RegistreEcoleDto>> GetRegistreEcoleAsync(
+            string nom,
+            string? province = null,
+            string? ville = null,
+            int limit = 10,
+            CancellationToken cancellationToken = default)
+        {
+            const int minChars = 3;
+            const int maxLimit = 20;
+            if (limit < 1) limit = 10;
+            if (limit > maxLimit) limit = maxLimit;
+
+            if (string.IsNullOrWhiteSpace(nom) || nom.Trim().Length < minChars)
+                return Array.Empty<RegistreEcoleDto>();
+
+            var term = nom.Trim().ToLowerInvariant();
+
+            var query = _context.Ecoles.AsNoTracking()
+                .Where(e => e.Statut == true
+                    && e.Nom != null
+                    && e.Nom.ToLower().Contains(term));
+
+            if (!string.IsNullOrWhiteSpace(province))
+            {
+                var p = province.Trim().ToLowerInvariant();
+                query = query.Where(e => e.Province != null && e.Province.ToLower().Contains(p));
+            }
+
+            if (!string.IsNullOrWhiteSpace(ville))
+            {
+                var v = ville.Trim().ToLowerInvariant();
+                query = query.Where(e => e.Ville != null && e.Ville.ToLower().Contains(v));
+            }
+
+            return await query
+                .OrderBy(e => e.Nom)
+                .ThenBy(e => e.Ville)
+                .Take(limit)
+                .Select(e => new RegistreEcoleDto
+                {
+                    Nom = e.Nom,
+                    Type = e.Type,
+                    Province = e.Province,
+                    Ville = e.Ville,
+                    Commune = e.Commune,
+                    ProvinceEducationnel = e.ProvinceEducationnel
+                })
+                .ToListAsync(cancellationToken);
         }
     }
 }

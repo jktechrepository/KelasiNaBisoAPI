@@ -27,6 +27,16 @@ namespace KelasiNaBiso.Services.Repositories
         Task<bool> UpdateSerialNumberByIdAsync(int idAgent, string serialNumber);
         Task<bool> UpdateSerialNumberByMatriculeAsync(string matricule, string serialNumber);
         Task<Agent> GetBySerialNumberAsync(string serialNumber);
+
+        /// <summary>
+        /// Registre public des enseignants (données minimales, anonymes).
+        /// Filtres optionnels province / ville. Limite plafonnée.
+        /// </summary>
+        Task<IReadOnlyList<RegistreEnseignantDto>> GetRegistreEnseignantAsync(
+            string? province = null,
+            string? ville = null,
+            int limit = 50,
+            CancellationToken cancellationToken = default);
         
         // ✅ MULTI-RÔLES : Ajouter un rôle à un agent
         /// <summary>

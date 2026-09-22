@@ -27,12 +27,11 @@ namespace KelasiNaBiso.Controllers
             return Ok(anneeScolaires);
         }
 
-        // GET: api/AnneeScolaire/5
+        // GET: api/AnneeScolaire/ecole/{idEcole}
         [HttpGet("ecole/{idEcole}")]
         public async Task<ActionResult<IEnumerable<AnneeScolaire>>> GetAnneeScolaireByEcole(int idEcole)
         {
-            var annees = await _anneeScolaireRepository.GetAllAsync();
-            var anneesByEcole = annees.Where(a => a.IdEcole == idEcole).ToList();
+            var anneesByEcole = await _anneeScolaireRepository.GetByEcoleAsync(idEcole);
             return Ok(anneesByEcole);
         }
 

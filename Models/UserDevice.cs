@@ -37,6 +37,10 @@ namespace KelasiNaBiso.Models
 
         public DateTime? DateDerniereUtilisation { get; set; }
 
+        /// <summary>Version de l'app mobile installée (semver, ex. 1.2.3).</summary>
+        [MaxLength(20)]
+        public string? AppVersion { get; set; }
+
         // Navigation
         public virtual Utilisateur Utilisateur { get; set; } = null!;
     }

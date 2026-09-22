@@ -547,6 +547,96 @@ namespace KelasiNaBiso.Services
             };
         }
 
+        /// <summary>
+        /// Feuille d'appel nominative pour les agents d'une école et une date.
+        /// </summary>
+        public async Task<FeuilleAppelAgentsDto> GetFeuilleAppelAgentsAsync(
+            int idEcole,
+            DateTime date,
+            string? fonction = null)
+        {
+            var jour = date.Date;
+
+            var ecole = await _context.Ecoles
+                .AsNoTracking()
+                .FirstOrDefaultAsync(e => e.IdEcole == idEcole);
+
+            if (ecole == null)
+                throw new KeyNotFoundException($"École avec l'ID {idEcole} introuvable");
+
+            var agentsQuery = _context.Agents
+                .AsNoTracking()
+                .Where(a => a.IdEcole == idEcole && a.Statut == true);
+
+            if (!string.IsNullOrWhiteSpace(fonction))
+            {
+                var fonctionNorm = fonction.Trim();
+                agentsQuery = agentsQuery.Where(a => a.Fonction == fonctionNorm);
+            }
+
+            var agents = await agentsQuery
+                .OrderBy(a => a.Nom)
+                .ThenBy(a => a.Postnom)
+                .ThenBy(a => a.Prenom)
+                .ToListAsync();
+
+            var agentIds = agents.Select(a => a.IdAgent).ToList();
+
+            var presencesDuJour = agentIds.Count == 0
+                ? new List<Presence>()
+                : await _context.Presences
+                    .AsNoTracking()
+                    .Where(p => p.IdAgent != null
+                        && agentIds.Contains(p.IdAgent.Value)
+                        && p.DateDuJour.Date == jour
+                        && p.Statut == true)
+                    .ToListAsync();
+
+            var presenceByAgent = presencesDuJour
+                .GroupBy(p => p.IdAgent!.Value)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderByDescending(p => p.DateCreation).First());
+
+            var lignes = new List<FeuilleAppelAgentLigneDto>();
+            foreach (var agent in agents)
+            {
+                presenceByAgent.TryGetValue(agent.IdAgent, out var presence);
+                var statutJour = ResolveStatutJour(presence);
+                var nomComplet = string.Join(" ",
+                    new[] { agent.Prenom, agent.Nom, agent.Postnom }
+                        .Where(s => !string.IsNullOrWhiteSpace(s))).Trim();
+
+                lignes.Add(new FeuilleAppelAgentLigneDto
+                {
+                    IdAgent = agent.IdAgent,
+                    Matricule = agent.Matricule,
+                    NomComplet = nomComplet,
+                    Fonction = agent.Fonction,
+                    Genre = agent.Genre,
+                    StatutJour = statutJour,
+                    IdPresence = presence?.IdPresence,
+                    IsPresent = presence?.IsPresent,
+                    HeureArrivee = presence != null ? presence.HeureArrivee : null,
+                    HeureDepart = presence?.HeureDepart,
+                    Observation = presence?.Observation
+                });
+            }
+
+            return new FeuilleAppelAgentsDto
+            {
+                IdEcole = idEcole,
+                NomEcole = ecole.Nom,
+                FonctionFiltre = string.IsNullOrWhiteSpace(fonction) ? null : fonction.Trim(),
+                Date = jour,
+                Effectif = lignes.Count,
+                NbPresents = lignes.Count(l => l.StatutJour == FeuilleAppelStatutJour.Present),
+                NbAbsents = lignes.Count(l => l.StatutJour == FeuilleAppelStatutJour.Absent),
+                NbRetards = lignes.Count(l => l.StatutJour == FeuilleAppelStatutJour.Retard),
+                Lignes = lignes
+            };
+        }
+
         private static string ResolveStatutJour(Presence? presence)
         {
             if (presence == null || presence.IsPresent != true)

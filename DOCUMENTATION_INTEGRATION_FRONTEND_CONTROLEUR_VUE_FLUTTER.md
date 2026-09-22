@@ -5,6 +5,8 @@ Guide d'implémentation pour l'**écran contrôle à l'entrée** côté **Vue 3*
 **Références API :**
 - [DOCUMENTATION_FRONTEND_ROLE_CONTROLEUR.md](DOCUMENTATION_FRONTEND_ROLE_CONTROLEUR.md) — endpoints et parcours métier
 - [DOCUMENTATION_FRONTEND_VITRINE_VUE.md](DOCUMENTATION_FRONTEND_VITRINE_VUE.md) — conventions client API Vue
+- [DOCUMENTATION_INTEGRATION_FRONTEND_FEUILLE_APPEL_VUE_FLUTTER.md](DOCUMENTATION_INTEGRATION_FRONTEND_FEUILLE_APPEL_VUE_FLUTTER.md) — feuille d'appel élèves & agents
+- [DOCUMENTATION_INTEGRATION_FRONTEND_OFFLINE_SYNC_VUE_FLUTTER.md](DOCUMENTATION_INTEGRATION_FRONTEND_OFFLINE_SYNC_VUE_FLUTTER.md) — mode offline / sync
 - [Scripts/README_ROLE_CONTROLEUR.md](Scripts/README_ROLE_CONTROLEUR.md) — migration prod + reconnexion JWT
 
 **Base URL dev :** `https://dev-knb.asdc-rdc.org`  
@@ -27,7 +29,7 @@ Guide d'implémentation pour l'**écran contrôle à l'entrée** côté **Vue 3*
 9. [Flutter — state et écrans](#9-flutter--state-et-écrans)
 10. [Flux pointage](#10-flux-pointage)
 11. [Dashboard présence](#11-dashboard-présence)
-12. [Feuille d'appel (optionnel v1)](#12-feuille-dappel-optionnel-v1)
+12. [Feuille d'appel](#12-feuille-dappel)
 13. [Gestion des erreurs](#13-gestion-des-erreurs)
 14. [Checklist d'intégration](#14-checklist-dintégration)
 
@@ -146,7 +148,7 @@ GoRoute(
 | Accueil | `/controle-entree` | Liens vers scan + dashboard |
 | Scan / pointage | `/controle-entree/scan` | `GET /api/Eleve/reinscription`, `GET /api/Eleve/serial-number/{serial}`, `GET /api/VuePaiementsFraisParEcole/eleve-matricule/{matricule}`, `POST /api/Presence` |
 | Dashboard jour | `/controle-entree/dashboard` | `GET /api/Presence/dashboard/ecole/{idEcole}` |
-| Feuille d'appel | `/controle-entree/feuille-appel` | `GET /api/Presence/eleves/classe/{idClasse}/feuille-appel`, export xlsx |
+| Feuille d'appel | `/controle-entree/feuille-appel` | Voir [guide feuille d'appel](DOCUMENTATION_INTEGRATION_FRONTEND_FEUILLE_APPEL_VUE_FLUTTER.md) (élèves + agents, xlsx/pdf) |
 
 **Règle :** toujours passer `idEcole` depuis le JWT, jamais saisi librement par l'utilisateur.
 
@@ -1296,27 +1298,22 @@ Rafraîchissement manuel ou auto toutes les 60 s (optionnel).
 
 ---
 
-## 12. Feuille d'appel (optionnel v1)
+## 12. Feuille d'appel
 
-### Consultation
+Documentation complète (élèves **et** agents, JSON + export **xlsx/pdf**, snippets Vue & Flutter) :
 
-```
-GET /api/Presence/eleves/classe/{idClasse}/feuille-appel?date={yyyy-MM-dd}
-```
+→ [DOCUMENTATION_INTEGRATION_FRONTEND_FEUILLE_APPEL_VUE_FLUTTER.md](DOCUMENTATION_INTEGRATION_FRONTEND_FEUILLE_APPEL_VUE_FLUTTER.md)
 
-Afficher `lignes[]` avec `statutJour` : `Present`, `Absent`, `Retard`.
+**Rappel des 4 routes :**
 
-### Export Excel
+| Usage | Route |
+|-------|-------|
+| JSON élèves | `GET /api/Presence/eleves/classe/{idClasse}/feuille-appel` |
+| Export élèves | `GET /api/Presence/eleves/classe/{idClasse}/feuille-appel/export?format=xlsx\|pdf` |
+| JSON agents | `GET /api/Presence/agents/ecole/{idEcole}/feuille-appel` |
+| Export agents | `GET /api/Presence/agents/ecole/{idEcole}/feuille-appel/export?format=xlsx\|pdf` |
 
-```
-GET /api/Presence/eleves/classe/{idClasse}/feuille-appel/export?date=&format=xlsx
-```
-
-Vue : `downloadFeuilleAppelExport()` → blob → lien téléchargement.
-
-Flutter : `dio.download` ou ouvrir URL signée si vous ajoutez un proxy.
-
-**Note :** le Controleur peut consulter et exporter ; il ne peut pas `PUT` pour corriger une ligne.
+Le Controleur peut consulter et exporter ; il ne peut pas `PUT` pour corriger une ligne.
 
 ---
 
@@ -1370,7 +1367,7 @@ if (res.status === 401) {
 - [ ] Provider scan / pointage
 - [ ] Écran scan tablette
 - [ ] Dashboard présence (écran secondaire)
-- [ ] Feuille d'appel (optionnel v1)
+- [ ] Feuille d'appel élèves + agents (xlsx/pdf) — [guide dédié](DOCUMENTATION_INTEGRATION_FRONTEND_FEUILLE_APPEL_VUE_FLUTTER.md)
 
 ### Déploiement
 

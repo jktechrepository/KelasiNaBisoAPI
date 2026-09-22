@@ -16,7 +16,7 @@ namespace KelasiNaBisoAPI.Services.Repositories
         Task<IEnumerable<string>> GetActiveTokensByEcoleAsync(int idEcole);
         Task<IEnumerable<string>> GetActiveTokensByClasseAsync(int idClasse);
         Task<UserDevice> CreateAsync(UserDevice userDevice);
-        Task<UserDevice> CreateOrUpdateAsync(int idUtilisateur, string fcmToken, string? deviceType = null, string? deviceModel = null, string? osVersion = null);
+        Task<UserDevice> CreateOrUpdateAsync(int idUtilisateur, string fcmToken, string? deviceType = null, string? deviceModel = null, string? osVersion = null, string? appVersion = null);
         Task<UserDevice?> UpdateAsync(UserDevice userDevice);
         Task<bool> DeleteAsync(int id);
         Task<bool> DeleteByFcmTokenAsync(string fcmToken);

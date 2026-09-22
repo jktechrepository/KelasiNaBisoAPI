@@ -18,6 +18,9 @@ namespace KelasiNaBiso.Models.DTOs
         
         [StringLength(50)]
         public string? OsVersion { get; set; }
+
+        [StringLength(20)]
+        public string? AppVersion { get; set; }
         
         public bool? Statut { get; set; } = true;
     }

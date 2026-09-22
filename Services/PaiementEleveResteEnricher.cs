@@ -1,13 +1,15 @@
 using KelasiNaBiso.Data;
 using KelasiNaBiso.Models;
 using KelasiNaBiso.Models.DTOs;
+using KelasiNaBiso.Services.Tarif;
 using Microsoft.EntityFrameworkCore;
 
 namespace KelasiNaBiso.Services
 {
     /// <summary>
     /// Enrichit des lignes de paiement élève avec le solde restant par frais
-    /// (paged, Eleve/paiements, Vue paiements).
+    /// (paged, Eleve/paiements, Vue paiements), en utilisant le dû effectif
+    /// (catalogue − exonération catégorie).
     /// </summary>
     public static class PaiementEleveResteEnricher
     {
@@ -15,7 +17,8 @@ namespace KelasiNaBiso.Services
             KelasiNaBisoDbContext context,
             int idEleve,
             IReadOnlyList<Paiement> paiements,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            IFraisDuCalculator? fraisDuCalculator = null)
         {
             if (paiements.Count == 0)
                 return new List<PaiementElevePagedItemDto>();
@@ -38,30 +41,43 @@ namespace KelasiNaBiso.Services
             var totalPayeByFrais = await LoadTotalPayeByFraisAsync(
                 context, idEleve, fraisIds, cancellationToken);
 
+            IReadOnlyDictionary<int, decimal>? dusByFrais = null;
+            if (fraisDuCalculator != null && fraisIds.Count > 0)
+            {
+                dusByFrais = await fraisDuCalculator.GetMontantsDuEffectifsByFraisAsync(
+                    idEleve, fraisIds, cancellationToken: cancellationToken);
+            }
+
             return paiements.Select(p =>
             {
                 if (!p.IdFrais.HasValue || !fraisById.TryGetValue(p.IdFrais.Value, out var frais))
                     return PaiementElevePagedItemDto.FromEntity(p);
 
                 totalPayeByFrais.TryGetValue(p.IdFrais.Value, out var totalPaye);
-                return PaiementElevePagedItemDto.FromEntity(
+                var dto = PaiementElevePagedItemDto.FromEntity(
                     p,
                     frais.Libelle,
                     frais.Montant,
                     frais.Devise,
                     totalPaye);
+
+                if (dusByFrais != null && dusByFrais.TryGetValue(p.IdFrais.Value, out var duEffectif))
+                    dto.ResteAPayer = Math.Max(0m, duEffectif - totalPaye);
+
+                return dto;
             }).ToList();
         }
 
         /// <summary>
         /// Remplit TotalPayeSurFrais / ResteAPayer / CodeDeviseReste sur des lignes Vue
-        /// (MontantFrais / DeviseFrais déjà fournis par la vue).
+        /// (MontantFrais / DeviseFrais déjà fournis par la vue = catalogue).
         /// </summary>
         public static async Task EnrichVueAsync(
             KelasiNaBisoDbContext context,
             int idEleve,
             IList<VuePaiementsFraisParEcoleDTO> rows,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            IFraisDuCalculator? fraisDuCalculator = null)
         {
             if (rows.Count == 0)
                 return;
@@ -75,6 +91,13 @@ namespace KelasiNaBiso.Services
             var totalPayeByFrais = await LoadTotalPayeByFraisAsync(
                 context, idEleve, fraisIds, cancellationToken);
 
+            IReadOnlyDictionary<int, decimal>? dusByFrais = null;
+            if (fraisDuCalculator != null && fraisIds.Count > 0)
+            {
+                dusByFrais = await fraisDuCalculator.GetMontantsDuEffectifsByFraisAsync(
+                    idEleve, fraisIds, cancellationToken: cancellationToken);
+            }
+
             foreach (var row in rows)
             {
                 if (!row.IdFrais.HasValue || !row.MontantFrais.HasValue)
@@ -87,8 +110,12 @@ namespace KelasiNaBiso.Services
 
                 totalPayeByFrais.TryGetValue(row.IdFrais.Value, out var totalPaye);
                 row.TotalPayeSurFrais = totalPaye;
-                row.ResteAPayer = Math.Max(0m, (decimal)row.MontantFrais.Value - totalPaye);
                 row.CodeDeviseReste = row.DeviseFrais;
+
+                if (dusByFrais != null && dusByFrais.TryGetValue(row.IdFrais.Value, out var duEffectif))
+                    row.ResteAPayer = Math.Max(0m, duEffectif - totalPaye);
+                else
+                    row.ResteAPayer = Math.Max(0m, (decimal)row.MontantFrais.Value - totalPaye);
             }
         }
 

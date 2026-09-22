@@ -10,15 +10,18 @@ namespace KelasiNaBiso.Services
         private readonly KelasiNaBisoDbContext _context;
         private readonly EleveAnneeScopeHelper _anneeScope;
         private readonly IInscriptionActiveResolver _inscriptionResolver;
+        private readonly Tarif.IFraisDuCalculator _fraisDuCalculator;
 
         public VuePaiementsFraisParEcoleService(
             KelasiNaBisoDbContext context,
             EleveAnneeScopeHelper anneeScope,
-            IInscriptionActiveResolver inscriptionResolver)
+            IInscriptionActiveResolver inscriptionResolver,
+            Tarif.IFraisDuCalculator? fraisDuCalculator = null)
         {
             _context = context;
             _anneeScope = anneeScope;
             _inscriptionResolver = inscriptionResolver;
+            _fraisDuCalculator = fraisDuCalculator ?? new Tarif.FraisDuCalculator(context);
         }
 
         public async Task<IEnumerable<VuePaiementsFraisParEcoleDTO>> GetAllAsync()
@@ -105,7 +108,8 @@ namespace KelasiNaBiso.Services
                 .OrderByDescending(p => p.DatePaiement)
                 .ToListAsync();
 
-            await PaiementEleveResteEnricher.EnrichVueAsync(_context, idEleve, rows);
+            await PaiementEleveResteEnricher.EnrichVueAsync(
+                _context, idEleve, rows, fraisDuCalculator: _fraisDuCalculator);
             return rows;
         }
 

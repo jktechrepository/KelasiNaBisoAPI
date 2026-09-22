@@ -49,6 +49,23 @@ namespace KelasiNaBiso.Services.Repositories
         Task<Eleve> GetBySerialNumberAsync(string serialNumber);
         Task<EleveSerialLookupDto?> GetBySerialNumberLookupAsync(string serialNumber);
 
+        /// <summary>
+        /// Registre public des élèves (données minimales, anonymes).
+        /// Recherche obligatoire par nomComplet (min. 3 caractères). Dernière inscription confirmée.
+        /// </summary>
+        Task<IReadOnlyList<RegistreEleveDto>> GetRegistreEleveAsync(
+            string nomComplet,
+            int limit = 10,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Dossier scolaire complet par matricule (auth + règles d'accès dans le service).
+        /// </summary>
+        Task<ParcoursScolaireResult> GetParcoursScolaireByMatriculeAsync(
+            string matricule,
+            ParcoursScolaireCallerContext caller,
+            CancellationToken cancellationToken = default);
+
         Task<EleveReinscriptionPrefillDto?> GetReinscriptionPrefillByMatriculeAsync(
             int idEcole,
             string matricule,

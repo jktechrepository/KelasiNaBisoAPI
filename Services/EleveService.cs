@@ -2,6 +2,7 @@ using KelasiNaBiso.Data;
 using KelasiNaBiso.Models;
 using KelasiNaBiso.Models.DTOs;
 using KelasiNaBiso.Models.DTOs.Pagination;
+using KelasiNaBiso.Models.Enums;
 using KelasiNaBiso.Services.Repositories;
 using KelasiNaBiso.Extensions;
 using Microsoft.EntityFrameworkCore;
@@ -16,19 +17,22 @@ namespace KelasiNaBiso.Services
         private readonly IInscriptionActiveResolver _inscriptionResolver;
         private readonly EleveAnneeScopeHelper _scope;
         private readonly ILogger<EleveService> _logger;
+        private readonly Tarif.IFraisDuCalculator _fraisDuCalculator;
 
         public EleveService(
             KelasiNaBisoDbContext context,
             IInscriptionRepository inscriptionRepository,
             IInscriptionActiveResolver inscriptionResolver,
             EleveAnneeScopeHelper scope,
-            ILogger<EleveService> logger)
+            ILogger<EleveService> logger,
+            Tarif.IFraisDuCalculator? fraisDuCalculator = null)
         {
             _context = context;
             _inscriptionRepository = inscriptionRepository;
             _inscriptionResolver = inscriptionResolver;
             _scope = scope;
             _logger = logger;
+            _fraisDuCalculator = fraisDuCalculator ?? new Tarif.FraisDuCalculator(context);
         }
 
         private static ElevesAnneeScopedResult<T> Scoped<T>(T data, int idEcole, int idAnneeScolaire) =>
@@ -290,6 +294,7 @@ namespace KelasiNaBiso.Services
             }
 
             var page = await query.ToPagedAsync(request, e => e.NomComplet);
+            await ApplyClasseContextToElevesAsync(page.Data, idClasse);
             return Scoped(page, idEcole, resolvedAnnee);
         }
 
@@ -335,6 +340,375 @@ namespace KelasiNaBiso.Services
                 TotalPages = (int)Math.Ceiling(total / (double)size)
             };
             return Scoped(page, idEcole, resolvedAnnee);
+        }
+
+        /// <inheritdoc />
+        public async Task<IReadOnlyList<RegistreEleveDto>> GetRegistreEleveAsync(
+            string nomComplet,
+            int limit = 10,
+            CancellationToken cancellationToken = default)
+        {
+            const int minChars = 3;
+            const int maxLimit = 20;
+            if (limit < 1) limit = 10;
+            if (limit > maxLimit) limit = maxLimit;
+
+            if (string.IsNullOrWhiteSpace(nomComplet) || nomComplet.Trim().Length < minChars)
+                return Array.Empty<RegistreEleveDto>();
+
+            var term = nomComplet.Trim().ToLowerInvariant();
+
+            // Candidats actifs dont le nom complet contient le terme (buffer > limit :
+            // certains n'auront pas d'inscription confirmée).
+            var eleves = await _context.Eleves.AsNoTracking()
+                .Where(e => e.Statut == true
+                    && e.NomComplet != null
+                    && e.NomComplet.ToLower().Contains(term))
+                .OrderBy(e => e.Nom)
+                .ThenBy(e => e.Postnom)
+                .ThenBy(e => e.Prenom)
+                .Take(Math.Min(limit * 5, 100))
+                .Select(e => new { e.IdEleve, e.Nom, e.Postnom, e.Prenom })
+                .ToListAsync(cancellationToken);
+
+            if (eleves.Count == 0)
+                return Array.Empty<RegistreEleveDto>();
+
+            var ids = eleves.Select(e => e.IdEleve).ToList();
+
+            var inscriptions = await _context.Inscriptions.AsNoTracking()
+                .Include(i => i.Classe)
+                .Include(i => i.Ecole)
+                .Include(i => i.AnneeScolaire)
+                .Where(i => ids.Contains(i.IdEleve)
+                    && i.Statut == true
+                    && i.StatutInscription != null
+                    && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                        || i.StatutInscription == "Confirme"
+                        || i.StatutInscription.StartsWith("Confirm")))
+                .ToListAsync(cancellationToken);
+
+            // Dernière année : DateDebut année scolaire puis DateInscription.
+            var latestByEleve = inscriptions
+                .GroupBy(i => i.IdEleve)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderByDescending(i => i.AnneeScolaire?.DateDebut ?? DateTime.MinValue)
+                        .ThenByDescending(i => i.DateInscription)
+                        .First());
+
+            var result = new List<RegistreEleveDto>(limit);
+            foreach (var e in eleves)
+            {
+                if (!latestByEleve.TryGetValue(e.IdEleve, out var ins))
+                    continue;
+
+                result.Add(new RegistreEleveDto
+                {
+                    Nom = e.Nom,
+                    Postnom = e.Postnom,
+                    Prenom = e.Prenom,
+                    NomClasse = ins.Classe?.NomClasse,
+                    NomEcole = ins.Ecole?.Nom,
+                    LibelleAnneeScolaire = ins.AnneeScolaire?.LibelleAnneeScolaire
+                });
+
+                if (result.Count >= limit)
+                    break;
+            }
+
+            return result;
+        }
+
+        /// <inheritdoc />
+        public async Task<ParcoursScolaireResult> GetParcoursScolaireByMatriculeAsync(
+            string matricule,
+            ParcoursScolaireCallerContext caller,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(matricule))
+                return ParcoursScolaireResult.NotFound();
+
+            var matriculeTrim = matricule.Trim();
+            var eleve = await _context.Eleves.AsNoTracking()
+                .FirstOrDefaultAsync(e => e.Matricule == matriculeTrim, cancellationToken);
+
+            if (eleve == null)
+                return ParcoursScolaireResult.NotFound();
+
+            var access = await EvaluateParcoursAccessAsync(eleve, caller, cancellationToken);
+            if (access != ParcoursScolaireAccessStatus.Ok)
+            {
+                return access == ParcoursScolaireAccessStatus.Forbidden
+                    ? ParcoursScolaireResult.Forbidden()
+                    : ParcoursScolaireResult.NotFound();
+            }
+
+            var inscriptions = await _context.Inscriptions.AsNoTracking()
+                .Include(i => i.Classe)
+                .Include(i => i.Ecole)
+                .Include(i => i.AnneeScolaire)
+                .Where(i => i.IdEleve == eleve.IdEleve
+                    && i.Statut == true
+                    && i.StatutInscription != null
+                    && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                        || i.StatutInscription == "Confirme"
+                        || i.StatutInscription.StartsWith("Confirm")))
+                .ToListAsync(cancellationToken);
+
+            var ordered = inscriptions
+                .OrderBy(i => i.AnneeScolaire?.DateDebut ?? DateTime.MinValue)
+                .ThenBy(i => i.DateInscription)
+                .ToList();
+
+            var anneeIds = ordered.Select(i => i.IdAnneeScolaire).Distinct().ToList();
+
+            var notes = anneeIds.Count == 0
+                ? new List<Note>()
+                : await _context.Notes.AsNoTracking()
+                    .Include(n => n.Evaluation)!.ThenInclude(ev => ev!.Course)
+                    .Where(n => n.IdEleve == eleve.IdEleve
+                        && n.Statut == true
+                        && anneeIds.Contains(n.IdAnneeScolaire))
+                    .OrderBy(n => n.DateEvaluation)
+                    .ToListAsync(cancellationToken);
+
+            var bulletinsFiges = anneeIds.Count == 0
+                ? new List<BulletinFige>()
+                : await _context.BulletinsFiges.AsNoTracking()
+                    .Include(b => b.PeriodeCotation)
+                    .Where(b => b.IdEleve == eleve.IdEleve && anneeIds.Contains(b.IdAnneeScolaire))
+                    .ToListAsync(cancellationToken);
+
+            var bulletinsDecisions = anneeIds.Count == 0
+                ? new List<BulletinDecision>()
+                : await _context.BulletinDecisions.AsNoTracking()
+                    .Include(b => b.PeriodeCotation)
+                    .Where(b => b.IdEleve == eleve.IdEleve && anneeIds.Contains(b.IdAnneeScolaire))
+                    .ToListAsync(cancellationToken);
+
+            var paiements = await _context.Paiements.AsNoTracking()
+                .Include(p => p.Frais)
+                .Where(p => p.IdEleve == eleve.IdEleve && p.Statut == true)
+                .OrderBy(p => p.DatePaiement)
+                .ToListAsync(cancellationToken);
+
+            DateTime? minDebut = ordered
+                .Select(i => i.AnneeScolaire?.DateDebut)
+                .Where(d => d.HasValue)
+                .DefaultIfEmpty()
+                .Min();
+            DateTime? maxFin = ordered
+                .Select(i => i.AnneeScolaire?.DateFin)
+                .Where(d => d.HasValue)
+                .DefaultIfEmpty()
+                .Max();
+
+            var presencesQuery = _context.Presences.AsNoTracking()
+                .Where(p => p.IdEleve == eleve.IdEleve && p.Statut == true);
+
+            if (minDebut.HasValue)
+                presencesQuery = presencesQuery.Where(p => p.DateDuJour >= minDebut.Value.Date);
+            if (maxFin.HasValue)
+                presencesQuery = presencesQuery.Where(p => p.DateDuJour <= maxFin.Value.Date);
+
+            var presences = await presencesQuery
+                .OrderBy(p => p.DateDuJour)
+                .ToListAsync(cancellationToken);
+
+            var notesByAnnee = notes.GroupBy(n => n.IdAnneeScolaire)
+                .ToDictionary(g => g.Key, g => g.ToList());
+            var figesByAnnee = bulletinsFiges.GroupBy(b => b.IdAnneeScolaire)
+                .ToDictionary(g => g.Key, g => g.ToList());
+            var decisionsByAnnee = bulletinsDecisions.GroupBy(b => b.IdAnneeScolaire)
+                .ToDictionary(g => g.Key, g => g.ToList());
+            var paiementsByAnnee = paiements
+                .Where(p => p.Frais != null)
+                .GroupBy(p => p.Frais!.IdAnneeScolaire)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            var etapes = new List<ParcoursEtapeDto>(ordered.Count);
+            foreach (var ins in ordered)
+            {
+                var debut = ins.AnneeScolaire?.DateDebut;
+                var fin = ins.AnneeScolaire?.DateFin;
+
+                notesByAnnee.TryGetValue(ins.IdAnneeScolaire, out var notesEtape);
+                figesByAnnee.TryGetValue(ins.IdAnneeScolaire, out var figesEtape);
+                decisionsByAnnee.TryGetValue(ins.IdAnneeScolaire, out var decisionsEtape);
+                paiementsByAnnee.TryGetValue(ins.IdAnneeScolaire, out var paiementsEtape);
+
+                var presencesEtape = presences
+                    .Where(p =>
+                        (!debut.HasValue || p.DateDuJour.Date >= debut.Value.Date)
+                        && (!fin.HasValue || p.DateDuJour.Date <= fin.Value.Date))
+                    .ToList();
+
+                var bulletins = new List<ParcoursBulletinItemDto>();
+                if (figesEtape != null)
+                {
+                    bulletins.AddRange(figesEtape.Select(b => new ParcoursBulletinItemDto
+                    {
+                        Source = "Fige",
+                        IdPeriode = b.IdPeriode,
+                        CodePeriode = b.PeriodeCotation?.Code,
+                        LibellePeriode = b.PeriodeCotation?.Libelle,
+                        MoyenneGenerale = b.MoyenneGenerale,
+                        Rang = b.Rang,
+                        EffectifClasse = b.EffectifClasse,
+                        Decision = b.Decision,
+                        AppreciationGenerale = b.AppreciationGenerale,
+                        DateValidation = b.DateValidation
+                    }));
+                }
+
+                if (decisionsEtape != null)
+                {
+                    bulletins.AddRange(decisionsEtape.Select(b => new ParcoursBulletinItemDto
+                    {
+                        Source = "Decision",
+                        IdPeriode = b.IdPeriode,
+                        CodePeriode = b.PeriodeCotation?.Code,
+                        LibellePeriode = b.PeriodeCotation?.Libelle,
+                        Decision = b.Decision,
+                        AppreciationGenerale = b.AppreciationGenerale,
+                        DateValidation = b.DateModification ?? b.DateCreation
+                    }));
+                }
+
+                etapes.Add(new ParcoursEtapeDto
+                {
+                    IdInscription = ins.IdInscription,
+                    Type = ins.Type,
+                    DateInscription = ins.DateInscription,
+                    StatutInscription = ins.StatutInscription,
+                    IdEcole = ins.IdEcole,
+                    NomEcole = ins.Ecole?.Nom,
+                    IdClasse = ins.IdClasse,
+                    NomClasse = ins.Classe?.NomClasse,
+                    IdAnneeScolaire = ins.IdAnneeScolaire,
+                    LibelleAnneeScolaire = ins.AnneeScolaire?.LibelleAnneeScolaire,
+                    DateDebutAnnee = debut,
+                    DateFinAnnee = fin,
+                    Bulletins = bulletins
+                        .OrderBy(b => b.IdPeriode)
+                        .ThenBy(b => b.Source)
+                        .ToList(),
+                    Notes = (notesEtape ?? new List<Note>())
+                        .Select(n => new ParcoursNoteItemDto
+                        {
+                            IdNote = n.IdNote,
+                            NoteObtenue = n.NoteObtenue,
+                            Appreciation = n.Appreciation,
+                            DateEvaluation = n.DateEvaluation,
+                            IdEvaluation = n.IdEvaluation,
+                            TitreEvaluation = n.Evaluation?.TitreEvaluation,
+                            TypeEvaluation = n.Evaluation?.TypeEvaluation,
+                            NomCours = n.Evaluation?.Course?.NomCours,
+                            Periode = n.Evaluation?.Periode ?? n.Evaluation?.PeriodeCotation?.Libelle,
+                            Coefficient = n.Evaluation?.Coefficient
+                        })
+                        .ToList(),
+                    Paiements = (paiementsEtape ?? new List<Paiement>())
+                        .Select(p => new ParcoursPaiementItemDto
+                        {
+                            IdPaiement = p.IdPaiement,
+                            DatePaiement = p.DatePaiement,
+                            Montant = p.Montant,
+                            Devise = p.Devise,
+                            ModePaiement = p.ModePaiement,
+                            StatutPaiement = p.StatutPaiement,
+                            ReferenceTransaction = p.ReferenceTransaction,
+                            ReferencePaiemenet = p.ReferencePaiemenet,
+                            IdFrais = p.IdFrais,
+                            LibelleFrais = p.Frais?.LibelleFrais,
+                            MontantFrais = p.Frais?.Montant
+                        })
+                        .ToList(),
+                    Presences = presencesEtape
+                        .Select(p => new ParcoursPresenceItemDto
+                        {
+                            IdPresence = p.IdPresence,
+                            DateDuJour = p.DateDuJour,
+                            HeureArrivee = p.HeureArrivee,
+                            HeureDepart = p.HeureDepart,
+                            IsPresent = p.IsPresent,
+                            Observation = p.Observation,
+                            TypePresence = p.TypePresence
+                        })
+                        .ToList()
+                });
+            }
+
+            var dto = new ParcoursScolaireDto
+            {
+                Eleve = new ParcoursEleveIdentiteDto
+                {
+                    IdEleve = eleve.IdEleve,
+                    Matricule = eleve.Matricule,
+                    Nom = eleve.Nom,
+                    Postnom = eleve.Postnom,
+                    Prenom = eleve.Prenom,
+                    Genre = eleve.Genre,
+                    DateNaissance = eleve.DateNaissance,
+                    Nationalite = eleve.Nationalite,
+                    IdTuteur = eleve.IdTuteur
+                },
+                Etapes = etapes
+            };
+
+            return ParcoursScolaireResult.Ok(dto);
+        }
+
+        private async Task<ParcoursScolaireAccessStatus> EvaluateParcoursAccessAsync(
+            Eleve eleve,
+            ParcoursScolaireCallerContext caller,
+            CancellationToken cancellationToken)
+        {
+            if (caller.IsSuperAdmin
+                || string.Equals(caller.Role, UserRoles.SUPER_ADMIN, StringComparison.OrdinalIgnoreCase))
+                return ParcoursScolaireAccessStatus.Ok;
+
+            if (string.Equals(caller.Role, UserRoles.ELEVE, StringComparison.OrdinalIgnoreCase))
+            {
+                if (caller.EleveId.HasValue && caller.EleveId.Value == eleve.IdEleve)
+                    return ParcoursScolaireAccessStatus.Ok;
+                return ParcoursScolaireAccessStatus.Forbidden;
+            }
+
+            if (string.Equals(caller.Role, UserRoles.PARENT, StringComparison.OrdinalIgnoreCase))
+            {
+                if (caller.TuteurId.HasValue
+                    && eleve.IdTuteur.HasValue
+                    && caller.TuteurId.Value == eleve.IdTuteur.Value)
+                    return ParcoursScolaireAccessStatus.Ok;
+                return ParcoursScolaireAccessStatus.Forbidden;
+            }
+
+            var isSchoolStaff =
+                string.Equals(caller.Role, UserRoles.ADMIN, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(caller.Role, UserRoles.DIRECTEUR, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(caller.Role, UserRoles.SOUS_DIRECTEUR, StringComparison.OrdinalIgnoreCase);
+
+            if (!isSchoolStaff)
+                return ParcoursScolaireAccessStatus.Forbidden;
+
+            if (caller.EcoleId <= 0)
+                return ParcoursScolaireAccessStatus.Forbidden;
+
+            var hasInscriptionInEcole = await _context.Inscriptions.AsNoTracking()
+                .AnyAsync(i => i.IdEleve == eleve.IdEleve
+                    && i.IdEcole == caller.EcoleId
+                    && i.Statut == true
+                    && i.StatutInscription != null
+                    && (i.StatutInscription == InscriptionActiveRules.StatutConfirme
+                        || i.StatutInscription == "Confirme"
+                        || i.StatutInscription.StartsWith("Confirm")),
+                    cancellationToken);
+
+            return hasInscriptionInEcole
+                ? ParcoursScolaireAccessStatus.Ok
+                : ParcoursScolaireAccessStatus.Forbidden;
         }
 
         public async Task<PagedResult<Eleve>> GetByTuteurPagedAsync(int idTuteur, PagedRequest request)
@@ -395,18 +769,28 @@ namespace KelasiNaBiso.Services
 
         public async Task<Eleve> GetByIdAsync(int id)
         {
-            return await _context.Eleves
+            var eleve = await _context.Eleves
                 .Include(e => e.Tuteur)
                 .Where(e => e.Statut == true)
                 .FirstOrDefaultAsync(e => e.IdEleve == id);
+
+            if (eleve != null)
+                await ApplyClasseFromInscriptionActiveAsync(eleve);
+
+            return eleve;
         }
 
         public async Task<Eleve> GetByReferenceAsync(Guid reference)
         {
-            return await _context.Eleves
+            var eleve = await _context.Eleves
                 .Include(e => e.Tuteur)
                 .Where(e => e.Statut == true)
                 .FirstOrDefaultAsync(e => e.ReferenceEleve == reference);
+
+            if (eleve != null)
+                await ApplyClasseFromInscriptionActiveAsync(eleve);
+
+            return eleve;
         }
 
         public async Task<Eleve> CreateAsync(Eleve eleve)
@@ -538,6 +922,85 @@ namespace KelasiNaBiso.Services
             return await _context.Eleves.AnyAsync(e => e.SerialNumber == serialNumber);
         }
 
+        /// <summary>
+        /// Peuple IdClasse/NomClasse (NotMapped) pour rétrocompat API — tous les items
+        /// partagent la classe demandée par l'endpoint.
+        /// </summary>
+        private async Task ApplyClasseContextToElevesAsync(IEnumerable<Eleve> eleves, int idClasse)
+        {
+            var nomClasse = await _context.Classes
+                .AsNoTracking()
+                .Where(c => c.IdClasse == idClasse)
+                .Select(c => c.NomClasse)
+                .FirstOrDefaultAsync();
+
+            foreach (var eleve in eleves)
+            {
+                eleve.IdClasse = idClasse;
+                eleve.NomClasse = nomClasse;
+            }
+        }
+
+        /// <summary>
+        /// Peuple IdClasse/NomClasse depuis l'inscription active confirmée de l'élève.
+        /// </summary>
+        private async Task ApplyClasseFromInscriptionActiveAsync(Eleve eleve, int? idAnneeScolaire = null)
+        {
+            var inscription = await _inscriptionResolver.GetInscriptionActiveAsync(
+                eleve.IdEleve, idAnneeScolaire);
+
+            if (inscription == null)
+            {
+                eleve.IdClasse = null;
+                eleve.NomClasse = null;
+                return;
+            }
+
+            eleve.IdClasse = inscription.IdClasse;
+            eleve.NomClasse = inscription.Classe?.NomClasse;
+        }
+
+        /// <summary>
+        /// Peuple IdClasse/NomClasse en batch (évite N+1 sur listes).
+        /// </summary>
+        private async Task ApplyClasseFromInscriptionActiveBatchAsync(IList<Eleve> eleves)
+        {
+            if (eleves.Count == 0)
+                return;
+
+            var eleveIds = eleves.Select(e => e.IdEleve).Distinct().ToList();
+            var inscriptions = await _context.Inscriptions
+                .AsNoTracking()
+                .Include(i => i.Classe)
+                .Include(i => i.AnneeScolaire)
+                .Where(i => eleveIds.Contains(i.IdEleve) && i.Statut == true)
+                .ToListAsync();
+
+            var byEleve = inscriptions
+                .Where(InscriptionActiveRules.IsActiveConfirmed)
+                .GroupBy(i => i.IdEleve)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g
+                        .OrderByDescending(i => i.AnneeScolaire?.DateDebut ?? DateTime.MinValue)
+                        .ThenByDescending(i => i.DateInscription)
+                        .First());
+
+            foreach (var eleve in eleves)
+            {
+                if (byEleve.TryGetValue(eleve.IdEleve, out var inscription))
+                {
+                    eleve.IdClasse = inscription.IdClasse;
+                    eleve.NomClasse = inscription.Classe?.NomClasse;
+                }
+                else
+                {
+                    eleve.IdClasse = null;
+                    eleve.NomClasse = null;
+                }
+            }
+        }
+
         // Méthodes de recherche par critères
         public async Task<ElevesAnneeScopedResult<IReadOnlyList<Eleve>>> GetByClasseAsync(
             int idClasse, int? idAnneeScolaire = null)
@@ -550,6 +1013,7 @@ namespace KelasiNaBiso.Services
                 .OrderBy(e => e.NomComplet)
                 .ToListAsync();
 
+            await ApplyClasseContextToElevesAsync(eleves, idClasse);
             return Scoped((IReadOnlyList<Eleve>)eleves, idEcole, resolvedAnnee);
         }
 
@@ -639,11 +1103,14 @@ namespace KelasiNaBiso.Services
 
         public async Task<IEnumerable<Eleve>> GetByStatutAsync(bool statut)
         {
-            return await _context.Eleves
+            var eleves = await _context.Eleves
                 .Include(e => e.Tuteur)
                 .Where(e => e.Statut == statut)
                 .OrderBy(e => e.NomComplet)
                 .ToListAsync();
+
+            await ApplyClasseFromInscriptionActiveBatchAsync(eleves);
+            return eleves;
         }
 
         // Méthodes pour récupérer les données associées
@@ -691,7 +1158,8 @@ namespace KelasiNaBiso.Services
                 .OrderByDescending(p => p.DatePaiement)
                 .ToListAsync();
 
-            return await PaiementEleveResteEnricher.MapAsync(_context, idEleve, paiements);
+            return await PaiementEleveResteEnricher.MapAsync(
+                _context, idEleve, paiements, fraisDuCalculator: _fraisDuCalculator);
         }
 
         //public async Task<IEnumerable<Presence>> GetPresencesAsync(int idEleve)
@@ -762,17 +1230,27 @@ namespace KelasiNaBiso.Services
         // ✅ MISE À JOUR DU SERIAL NUMBER: Récupérer un élève par son matricule
         public async Task<Eleve> GetByMatriculeAsync(string matricule)
         {
-            return await _context.Eleves
+            var eleve = await _context.Eleves
                 .Include(e => e.Tuteur)
                 .FirstOrDefaultAsync(e => e.Matricule == matricule);
+
+            if (eleve != null)
+                await ApplyClasseFromInscriptionActiveAsync(eleve);
+
+            return eleve;
         }
 
         public async Task<Eleve> GetBySerialNumberAsync(string serialNumber)
         {
-            return await _context.Eleves
+            var eleve = await _context.Eleves
                 .Include(e => e.Tuteur)
                 .Where(e => e.Statut == true)
                 .FirstOrDefaultAsync(e => e.SerialNumber == serialNumber);
+
+            if (eleve != null)
+                await ApplyClasseFromInscriptionActiveAsync(eleve);
+
+            return eleve;
         }
 
         public async Task<EleveSerialLookupDto?> GetBySerialNumberLookupAsync(string serialNumber)

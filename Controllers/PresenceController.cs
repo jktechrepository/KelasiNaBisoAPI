@@ -23,18 +23,24 @@ namespace KelasiNaBiso.Controllers
         private readonly IAuditService _auditService;
         private readonly IPresenceReportingService _reportingService;
         private readonly IFeuilleAppelExcelExporter _feuilleAppelExcelExporter;
+        private readonly IFeuilleAppelAgentsExcelExporter _feuilleAppelAgentsExcelExporter;
+        private readonly IFeuilleAppelPdfReportService _feuilleAppelPdfReportService;
         private readonly KelasiNaBisoDbContext _context;
 
         public PresenceController(
             IPresenceRepository presenceRepository,
             IPresenceReportingService reportingService,
             IFeuilleAppelExcelExporter feuilleAppelExcelExporter,
+            IFeuilleAppelAgentsExcelExporter feuilleAppelAgentsExcelExporter,
+            IFeuilleAppelPdfReportService feuilleAppelPdfReportService,
             IAuditService auditService,
             KelasiNaBisoDbContext context)
         {
             _presenceRepository = presenceRepository;
             _reportingService = reportingService;
             _feuilleAppelExcelExporter = feuilleAppelExcelExporter;
+            _feuilleAppelAgentsExcelExporter = feuilleAppelAgentsExcelExporter;
+            _feuilleAppelPdfReportService = feuilleAppelPdfReportService;
             _auditService = auditService;
             _context = context;
         }
@@ -553,7 +559,7 @@ namespace KelasiNaBiso.Controllers
         }
 
         /// <summary>
-        /// Export de la feuille d'appel (Excel). format=xlsx par défaut ; pdf prévu en phase 2.
+        /// Export de la feuille d'appel élèves (Excel ou PDF). format=xlsx par défaut.
         /// Date optionnelle (défaut = aujourd'hui). Année scolaire courante par défaut.
         /// </summary>
         [HttpGet("eleves/classe/{idClasse}/feuille-appel/export")]
@@ -570,19 +576,11 @@ namespace KelasiNaBiso.Controllers
             try
             {
                 var normalizedFormat = (format ?? "xlsx").Trim().ToLowerInvariant();
-                if (normalizedFormat == "pdf")
+                if (normalizedFormat != "xlsx" && normalizedFormat != "pdf")
                 {
                     return BadRequest(new
                     {
-                        message = "L'export PDF n'est pas encore disponible. Utilisez format=xlsx."
-                    });
-                }
-
-                if (normalizedFormat != "xlsx")
-                {
-                    return BadRequest(new
-                    {
-                        message = $"Format '{format}' non supporté. Formats acceptés : xlsx."
+                        message = $"Format '{format}' non supporté. Formats acceptés : xlsx, pdf."
                     });
                 }
 
@@ -592,6 +590,13 @@ namespace KelasiNaBiso.Controllers
                 var deny = this.ForbidIfWrongSchool(result.IdEcole);
                 if (deny != null)
                     return deny;
+
+                if (normalizedFormat == "pdf")
+                {
+                    var pdfBytes = _feuilleAppelPdfReportService.ExportEleves(result);
+                    var pdfName = _feuilleAppelPdfReportService.GetFileNameEleves(result);
+                    return File(pdfBytes, _feuilleAppelPdfReportService.ContentType, pdfName);
+                }
 
                 var bytes = _feuilleAppelExcelExporter.Export(result);
                 var fileName = _feuilleAppelExcelExporter.GetFileName(result);
@@ -608,6 +613,101 @@ namespace KelasiNaBiso.Controllers
             catch (Exception ex)
             {
                 return StatusCode(500, new { message = "Erreur lors de l'export de la feuille d'appel", error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Feuille d'appel nominative agents : agents actifs de l'école pour une date (présent / absent / retard).
+        /// Date optionnelle (défaut = aujourd'hui). Filtre optionnel par fonction.
+        /// </summary>
+        [HttpGet("agents/ecole/{idEcole}/feuille-appel")]
+        [ProducesResponseType(typeof(FeuilleAppelAgentsDto), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(403)]
+        [ProducesResponseType(404)]
+        public async Task<IActionResult> GetFeuilleAppelAgents(
+            int idEcole,
+            [FromQuery] DateTime? date = null,
+            [FromQuery] string? fonction = null)
+        {
+            try
+            {
+                var deny = this.ForbidIfWrongSchool(idEcole);
+                if (deny != null)
+                    return deny;
+
+                var jour = (date ?? DateTime.Today).Date;
+                var result = await _reportingService.GetFeuilleAppelAgentsAsync(idEcole, jour, fonction);
+                return Ok(result);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Erreur lors de la récupération de la feuille d'appel agents", error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Export de la feuille d'appel agents (Excel ou PDF). format=xlsx par défaut.
+        /// </summary>
+        [HttpGet("agents/ecole/{idEcole}/feuille-appel/export")]
+        [ProducesResponseType(typeof(FileContentResult), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(403)]
+        [ProducesResponseType(404)]
+        public async Task<IActionResult> ExportFeuilleAppelAgents(
+            int idEcole,
+            [FromQuery] DateTime? date = null,
+            [FromQuery] string? fonction = null,
+            [FromQuery] string format = "xlsx")
+        {
+            try
+            {
+                var deny = this.ForbidIfWrongSchool(idEcole);
+                if (deny != null)
+                    return deny;
+
+                var normalizedFormat = (format ?? "xlsx").Trim().ToLowerInvariant();
+                if (normalizedFormat != "xlsx" && normalizedFormat != "pdf")
+                {
+                    return BadRequest(new
+                    {
+                        message = $"Format '{format}' non supporté. Formats acceptés : xlsx, pdf."
+                    });
+                }
+
+                var jour = (date ?? DateTime.Today).Date;
+                var result = await _reportingService.GetFeuilleAppelAgentsAsync(idEcole, jour, fonction);
+
+                if (normalizedFormat == "pdf")
+                {
+                    var pdfBytes = _feuilleAppelPdfReportService.ExportAgents(result);
+                    var pdfName = _feuilleAppelPdfReportService.GetFileNameAgents(result);
+                    return File(pdfBytes, _feuilleAppelPdfReportService.ContentType, pdfName);
+                }
+
+                var bytes = _feuilleAppelAgentsExcelExporter.Export(result);
+                var fileName = _feuilleAppelAgentsExcelExporter.GetFileName(result);
+                return File(bytes, _feuilleAppelAgentsExcelExporter.ContentType, fileName);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Erreur lors de l'export de la feuille d'appel agents", error = ex.Message });
             }
         }
 

@@ -7,6 +7,7 @@ using KelasiNaBiso.Services;
 using KelasiNaBiso.Services.Repositories;
 using KelasiNaBiso.Attributes;
 using KelasiNaBiso.Helpers;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 
@@ -18,20 +19,96 @@ namespace KelasiNaBiso.Controllers
     public class EcoleController : ControllerBase
     {
         private readonly IEcoleRepository _ecoleRepository;
+        private readonly IPalmaresEcoleService _palmaresEcoleService;
         private readonly IAuditService _auditService;
         private readonly ICurrentUserService _currentUserService;
         private readonly ICurrencyConversionService _currencyConversionService;
 
         public EcoleController(
             IEcoleRepository ecoleRepository,
+            IPalmaresEcoleService palmaresEcoleService,
             IAuditService auditService,
             ICurrentUserService currentUserService,
             ICurrencyConversionService currencyConversionService)
         {
             _ecoleRepository = ecoleRepository;
+            _palmaresEcoleService = palmaresEcoleService;
             _auditService = auditService;
             _currentUserService = currentUserService;
             _currencyConversionService = currencyConversionService;
+        }
+
+        /// <summary>
+        /// Palmarès officiel de l'école (bulletins figés). JWT requis.
+        /// Rôles : Super-Admin, Admin, Directeur, Sous-Directeur.
+        /// Période optionnelle → dernière période figée (Ordre max). idClasse prioritaire sur idDirection.
+        /// </summary>
+        [HttpGet("PalmaresEcole")]
+        [Authorize(Roles = UserRoles.SUPER_ADMIN + "," + UserRoles.ADMIN + "," + UserRoles.DIRECTEUR + ","
+            + UserRoles.SOUS_DIRECTEUR)]
+        [ProducesResponseType(typeof(PalmaresEcoleDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<IActionResult> GetPalmaresEcole(
+            [FromQuery] int? idEcole = null,
+            [FromQuery] int? idAnneeScolaire = null,
+            [FromQuery] int? idPeriode = null,
+            [FromQuery] string? periode = null,
+            [FromQuery] int? idClasse = null,
+            [FromQuery] int? idDirection = null,
+            [FromQuery] int limit = 20,
+            CancellationToken cancellationToken = default)
+        {
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                var result = await _palmaresEcoleService.GetPalmaresEcoleAsync(
+                    resolvedEcole,
+                    idAnneeScolaire,
+                    idPeriode,
+                    periode,
+                    idClasse,
+                    idDirection,
+                    limit,
+                    cancellationToken);
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Registre public des écoles (anonyme) — données minimales pour vérification d'identité scolaire.
+        /// Champs : nom, type, province, ville, commune, provinceEducationnel.
+        /// Recherche obligatoire par nom (min. 3 caractères). Filtres optionnels province / ville.
+        /// </summary>
+        [HttpGet("RegistreEcole")]
+        [AllowAnonymous]
+        [ProducesResponseType(typeof(IReadOnlyList<RegistreEcoleDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<IReadOnlyList<RegistreEcoleDto>>> GetRegistreEcole(
+            [FromQuery] string nom,
+            [FromQuery] string? province = null,
+            [FromQuery] string? ville = null,
+            [FromQuery] int limit = 10,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(nom) || nom.Trim().Length < 3)
+            {
+                return BadRequest(new
+                {
+                    message = "Le paramètre nom est obligatoire (minimum 3 caractères)."
+                });
+            }
+
+            var items = await _ecoleRepository.GetRegistreEcoleAsync(
+                nom, province, ville, limit, cancellationToken);
+            return Ok(items);
         }
 
         // GET: api/Ecole

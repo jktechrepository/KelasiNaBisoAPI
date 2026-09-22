@@ -26,6 +26,7 @@ namespace KelasiNaBiso.Services
         private readonly IInscriptionActiveResolver _inscriptionResolver;
         private readonly EleveAnneeScopeHelper _scope;
         private readonly ICurrencyConversionService? _currencyConversionService;
+        private readonly Tarif.IFraisDuCalculator _fraisDuCalculator;
 
         public PaiementService(
             KelasiNaBisoDbContext context,
@@ -36,6 +37,7 @@ namespace KelasiNaBiso.Services
             IDashboardHubService dashboardHubService,
             IInscriptionActiveResolver inscriptionResolver,
             EleveAnneeScopeHelper scope,
+            Tarif.IFraisDuCalculator? fraisDuCalculator = null,
             ICurrencyConversionService? currencyConversionService = null)
         {
             _context = context;
@@ -46,6 +48,7 @@ namespace KelasiNaBiso.Services
             _dashboardHubService = dashboardHubService;
             _inscriptionResolver = inscriptionResolver;
             _scope = scope;
+            _fraisDuCalculator = fraisDuCalculator ?? new Tarif.FraisDuCalculator(context);
             _currencyConversionService = currencyConversionService;
         }
 
@@ -144,7 +147,8 @@ namespace KelasiNaBiso.Services
                 query = query.Where(p => p.Statut == true);
 
             var paged = await query.ToPagedAsync(request, p => p.DatePaiement);
-            var mapped = await PaiementEleveResteEnricher.MapAsync(_context, idEleve, paged.Data);
+            var mapped = await PaiementEleveResteEnricher.MapAsync(
+                _context, idEleve, paged.Data, fraisDuCalculator: _fraisDuCalculator);
 
             var result = new PagedResult<PaiementElevePagedItemDto>(
                 mapped,
@@ -247,7 +251,8 @@ namespace KelasiNaBiso.Services
             var data = await ApplyAnneeEleveFilter(_context.Paiements.AsQueryable(), idEleve, annee)
                 .OrderByDescending(p => p.DatePaiement)
                 .ToListAsync();
-            var mapped = await PaiementEleveResteEnricher.MapAsync(_context, idEleve, data);
+            var mapped = await PaiementEleveResteEnricher.MapAsync(
+                _context, idEleve, data, fraisDuCalculator: _fraisDuCalculator);
             return EleveAnneeScopeHelper.Wrap<IEnumerable<PaiementElevePagedItemDto>>(mapped, ecole, annee);
         }
 
@@ -335,8 +340,11 @@ namespace KelasiNaBiso.Services
         {
             PaiementGatewayHelper.ValiderCreationManuelle(paiement);
 
-            paiement.DatePaiement = DateTime.Now;
-            paiement.DateCreation = DateTime.Now;
+            // Préserver une date fournie (ex. sync offline UTC) ; sinon maintenant.
+            if (paiement.DatePaiement == default)
+                paiement.DatePaiement = DateTime.Now;
+            if (paiement.DateCreation == default)
+                paiement.DateCreation = DateTime.Now;
             await AppliquerConversionDeviseAsync(paiement);
             
             _context.Paiements.Add(paiement);
@@ -368,8 +376,10 @@ namespace KelasiNaBiso.Services
                 try
                 {
                     PaiementGatewayHelper.ValiderCreationManuelle(paiement);
-                    paiement.DatePaiement = DateTime.Now;
-                    paiement.DateCreation = DateTime.Now;
+                    if (paiement.DatePaiement == default)
+                        paiement.DatePaiement = DateTime.Now;
+                    if (paiement.DateCreation == default)
+                        paiement.DateCreation = DateTime.Now;
                     await AppliquerConversionDeviseAsync(paiement);
                     
                     _context.Paiements.Add(paiement);

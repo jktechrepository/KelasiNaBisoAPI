@@ -223,6 +223,13 @@ builder.Services.AddDbContext<KelasiNaBisoDbContext>(options =>
 // Enregistrement du service JWT
 builder.Services.AddScoped<ISimpleJwtService, SimpleJwtService>();
 builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>(); //  REFRESH TOKEN : Service de gestion des refresh tokens
+builder.Services.AddScoped<KelasiNaBiso.Services.Sync.ISyncIdempotencyService, KelasiNaBiso.Services.Sync.SyncIdempotencyService>();
+builder.Services.AddScoped<KelasiNaBiso.Services.Sync.ISyncPullService, KelasiNaBiso.Services.Sync.SyncPullService>();
+builder.Services.AddScoped<KelasiNaBiso.Services.Sync.ISyncPaymentBatchService, KelasiNaBiso.Services.Sync.SyncPaymentBatchService>();
+builder.Services.AddScoped<KelasiNaBiso.Services.Sync.ISyncPresenceBatchService, KelasiNaBiso.Services.Sync.SyncPresenceBatchService>();
+builder.Services.AddScoped<KelasiNaBiso.Services.Sync.ISyncDeletionsService, KelasiNaBiso.Services.Sync.SyncDeletionsService>();
+builder.Services.AddScoped<KelasiNaBiso.Services.Tarif.IFraisDuCalculator, KelasiNaBiso.Services.Tarif.FraisDuCalculator>();
+builder.Services.AddScoped<KelasiNaBiso.Services.Tarif.IEleveTarifService, KelasiNaBiso.Services.Tarif.EleveTarifService>();
 builder.Services.AddScoped<ICurrencyConversionService, CurrencyConversionService>();
 
 // AUDIT TRAIL: Service d'audit pour tracer toutes les modifications
@@ -235,6 +242,7 @@ builder.Services.AddScoped<ICacheService, CacheService>();
 builder.Services.AddScoped<IEleveRepository, EleveService>();
 builder.Services.AddScoped<IEleveCompteService, EleveCompteService>();
 builder.Services.AddScoped<IEcoleRepository, EcoleService>();
+builder.Services.AddScoped<IPalmaresEcoleService, PalmaresEcoleService>();
 builder.Services.AddScoped<IVitrineService, VitrineService>();
 builder.Services.AddScoped<IVitrineContactService, VitrineContactService>();
 builder.Services.AddScoped<IClasseRepository, ClasseService>();
@@ -258,6 +266,8 @@ builder.Services.AddScoped<IPresenceRepository, PresenceService>();
 builder.Services.AddScoped<EleveAnneeScopeHelper>();
 builder.Services.AddScoped<IPresenceReportingService, PresenceReportingService>(); //  Service de reporting présence
 builder.Services.AddScoped<KelasiNaBiso.Services.Reporting.IFeuilleAppelExcelExporter, KelasiNaBiso.Services.Reporting.FeuilleAppelExcelExporter>();
+builder.Services.AddScoped<KelasiNaBiso.Services.Reporting.IFeuilleAppelAgentsExcelExporter, KelasiNaBiso.Services.Reporting.FeuilleAppelAgentsExcelExporter>();
+builder.Services.AddScoped<KelasiNaBiso.Services.Reporting.IFeuilleAppelPdfReportService, KelasiNaBiso.Services.Reporting.FeuilleAppelPdfReportService>();
 builder.Services.AddScoped<ISmsNotificationService, TwilioSmsService>(); //  Service SMS Twilio
 builder.Services.AddScoped<IVacationRepository, VacationService>();
 builder.Services.AddScoped<IAgentRepository, AgentService>();
@@ -318,6 +328,7 @@ builder.Services.AddScoped<INotificationSender, NotificationSender>();
 builder.Services.AddHostedService<NotificationJobWorker>();
 builder.Services.AddScoped<IUserDeviceRepository, UserDeviceService>();
 builder.Services.AddScoped<IFirebaseNotificationService, FirebaseNotificationService>();
+builder.Services.AddScoped<IAppUpdateService, AppUpdateService>();
 builder.Services.AddScoped<ICommunicationCampaignService, CommunicationCampaignService>();
 builder.Services.AddScoped<ICommunicationDispatchScheduler, CommunicationDispatchScheduler>();
 builder.Services.AddScoped<ICommunicationDispatchWorker, CommunicationDispatchWorker>();

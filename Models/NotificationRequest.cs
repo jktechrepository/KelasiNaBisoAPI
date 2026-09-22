@@ -93,6 +93,9 @@ namespace KelasiNaBiso.Models
 
         [MaxLength(50, ErrorMessage = "La version OS ne peut pas dépasser 50 caractères.")]
         public string? OsVersion { get; set; }
+
+        [MaxLength(20, ErrorMessage = "La version de l'app ne peut pas dépasser 20 caractères.")]
+        public string? AppVersion { get; set; }
     }
 
     /// <summary>

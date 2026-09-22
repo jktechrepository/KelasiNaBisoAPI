@@ -50,6 +50,15 @@ namespace KelasiNaBiso.Services.Repositories
             int idClasse,
             DateTime date,
             int? idAnneeScolaire = null);
+
+        /// <summary>
+        /// Feuille d'appel nominative : agents actifs de l'école pour une date,
+        /// avec statut Present / Absent / Retard. Filtre optionnel par fonction.
+        /// </summary>
+        Task<FeuilleAppelAgentsDto> GetFeuilleAppelAgentsAsync(
+            int idEcole,
+            DateTime date,
+            string? fonction = null);
         
         /// <summary>
         /// Obtient le reporting de présence pour une option (groupement de classes)

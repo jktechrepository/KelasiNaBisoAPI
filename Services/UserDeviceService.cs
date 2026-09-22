@@ -104,7 +104,7 @@ namespace KelasiNaBisoAPI.Services
         /// ✅ CORRIGÉ: Recherche par UserId + DeviceType pour permettre plusieurs devices par utilisateur
         /// ✅ CORRIGÉ: Validation des données pour éviter les valeurs "string" par défaut
         /// </summary>
-        public async Task<UserDevice> CreateOrUpdateAsync(int idUtilisateur, string fcmToken, string? deviceType = null, string? deviceModel = null, string? osVersion = null)
+        public async Task<UserDevice> CreateOrUpdateAsync(int idUtilisateur, string fcmToken, string? deviceType = null, string? deviceModel = null, string? osVersion = null, string? appVersion = null)
         {
             // 🚨 VALIDATION: Rejeter les valeurs par défaut "string"
             if (string.IsNullOrWhiteSpace(fcmToken) || fcmToken == "string" || fcmToken == "null")
@@ -128,6 +128,8 @@ namespace KelasiNaBisoAPI.Services
                 existingDevice.FcmToken = fcmToken; // Le token peut changer
                 existingDevice.DeviceModel = deviceModel ?? existingDevice.DeviceModel;
                 existingDevice.OsVersion = osVersion ?? existingDevice.OsVersion;
+                if (!string.IsNullOrWhiteSpace(appVersion))
+                    existingDevice.AppVersion = appVersion.Trim();
                 existingDevice.DateDerniereUtilisation = DateTime.Now;
                 existingDevice.Statut = true;
 
@@ -144,6 +146,7 @@ namespace KelasiNaBisoAPI.Services
                     DeviceType = deviceType,
                     DeviceModel = deviceModel ?? "Unknown",
                     OsVersion = osVersion ?? "Unknown",
+                    AppVersion = string.IsNullOrWhiteSpace(appVersion) ? null : appVersion.Trim(),
                     DateEnregistrement = DateTime.Now,
                     DateDerniereUtilisation = DateTime.Now,
                     Statut = true

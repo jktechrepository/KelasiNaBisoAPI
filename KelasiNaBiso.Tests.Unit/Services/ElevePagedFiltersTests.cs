@@ -95,6 +95,66 @@ namespace KelasiNaBiso.Tests.Unit.Services
         }
 
         [Fact]
+        public async Task GetByIdAsync_ExposesIdClasseAndNomClasseFromActiveInscription()
+        {
+            var eleve = await _service.GetByIdAsync(1);
+
+            eleve.Should().NotBeNull();
+            eleve!.IdClasse.Should().Be(10);
+            eleve.NomClasse.Should().Be("6e A");
+        }
+
+        [Fact]
+        public async Task GetByReferenceAsync_ExposesIdClasseAndNomClasseFromActiveInscription()
+        {
+            var reference = Guid.NewGuid();
+            var tracked = _context.Eleves.Single(e => e.IdEleve == 1);
+            tracked.ReferenceEleve = reference;
+            await _context.SaveChangesAsync();
+
+            var eleve = await _service.GetByReferenceAsync(reference);
+
+            eleve.Should().NotBeNull();
+            eleve!.IdClasse.Should().Be(10);
+            eleve.NomClasse.Should().Be("6e A");
+        }
+
+        [Fact]
+        public async Task GetByStatutAsync_ExposesIdClasseAndNomClasseFromActiveInscription()
+        {
+            var eleves = (await _service.GetByStatutAsync(true)).ToList();
+
+            eleves.Should().HaveCount(2);
+            eleves.Single(e => e.IdEleve == 1).IdClasse.Should().Be(10);
+            eleves.Single(e => e.IdEleve == 1).NomClasse.Should().Be("6e A");
+            eleves.Single(e => e.IdEleve == 2).IdClasse.Should().Be(20);
+            eleves.Single(e => e.IdEleve == 2).NomClasse.Should().Be("1ère B");
+        }
+
+        [Fact]
+        public async Task GetByClassePagedAsync_ExposesIdClasseAndNomClasseOnEachEleve()
+        {
+            var result = await _service.GetByClassePagedAsync(
+                10, new PagedRequest { PageNumber = 1, PageSize = 20 }, idAnneeScolaire: 100);
+
+            result.Data.Data.Should().ContainSingle(e => e.IdEleve == 1);
+            var eleve = result.Data.Data.Single();
+            eleve.IdClasse.Should().Be(10);
+            eleve.NomClasse.Should().Be("6e A");
+        }
+
+        [Fact]
+        public async Task GetByClasseAsync_ExposesIdClasseAndNomClasseOnEachEleve()
+        {
+            var result = await _service.GetByClasseAsync(10, idAnneeScolaire: 100);
+
+            result.Data.Should().ContainSingle(e => e.IdEleve == 1);
+            var eleve = result.Data.Single();
+            eleve.IdClasse.Should().Be(10);
+            eleve.NomClasse.Should().Be("6e A");
+        }
+
+        [Fact]
         public async Task GetAllPagedAsync_WithIdClasse_ReturnsOnlyThatClass()
         {
             var result = await _service.GetAllPagedAsync(

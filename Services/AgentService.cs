@@ -367,6 +367,55 @@ namespace KelasiNaBiso.Services
                 .FirstOrDefaultAsync(a => a.SerialNumber == serialNumber);
         }
 
+        /// <inheritdoc />
+        public async Task<IReadOnlyList<RegistreEnseignantDto>> GetRegistreEnseignantAsync(
+            string? province = null,
+            string? ville = null,
+            int limit = 50,
+            CancellationToken cancellationToken = default)
+        {
+            const int maxLimit = 100;
+            if (limit < 1) limit = 50;
+            if (limit > maxLimit) limit = maxLimit;
+
+            var query = _context.Agents.AsNoTracking()
+                .Where(a => a.Statut == true)
+                .Where(a =>
+                    (a.RoleAgent != null && a.RoleAgent.ToLower() == "enseignant")
+                    || ((a.RoleAgent == null || a.RoleAgent == "")
+                        && a.Fonction != null
+                        && (a.Fonction.ToLower().Contains("enseignant")
+                            || a.Fonction.ToLower().Contains("professeur")
+                            || a.Fonction.ToLower().Contains("instituteur"))));
+
+            if (!string.IsNullOrWhiteSpace(province))
+            {
+                var p = province.Trim().ToLowerInvariant();
+                query = query.Where(a => a.Province != null && a.Province.ToLower().Contains(p));
+            }
+
+            if (!string.IsNullOrWhiteSpace(ville))
+            {
+                var v = ville.Trim().ToLowerInvariant();
+                query = query.Where(a => a.Ville != null && a.Ville.ToLower().Contains(v));
+            }
+
+            return await query
+                .OrderBy(a => a.Nom)
+                .ThenBy(a => a.Postnom)
+                .ThenBy(a => a.Prenom)
+                .Take(limit)
+                .Select(a => new RegistreEnseignantDto
+                {
+                    Nom = a.Nom,
+                    Postnom = a.Postnom,
+                    Prenom = a.Prenom,
+                    Province = a.Province,
+                    Ville = a.Ville
+                })
+                .ToListAsync(cancellationToken);
+        }
+
         private async Task SyncAgentUtilisateurAsync(Agent agent, string? previousRoleAgent, CancellationToken cancellationToken = default)
         {
             var utilisateur = await _context.Utilisateurs

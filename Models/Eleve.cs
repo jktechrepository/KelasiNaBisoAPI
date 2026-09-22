@@ -1,6 +1,6 @@
-
 using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 
 namespace KelasiNaBiso.Models
@@ -25,6 +25,18 @@ namespace KelasiNaBiso.Models
           public int? IdTuteur { get; set; }
           public bool? Statut { get; set; } = true;//True et False
           public string? SerialNumber { get; set; }
+
+        /// <summary>
+        /// Contexte d'inscription (sérialisation API seulement — pas de colonne Eleves.IdClasse).
+        /// </summary>
+        [NotMapped]
+        public int? IdClasse { get; set; }
+
+        /// <summary>
+        /// Libellé classe pour rétrocompat frontend (sérialisation API seulement).
+        /// </summary>
+        [NotMapped]
+        public string? NomClasse { get; set; }
 
         // Attributs Techniques
         [JsonIgnore]

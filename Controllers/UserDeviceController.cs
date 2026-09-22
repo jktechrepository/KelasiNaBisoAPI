@@ -146,7 +146,8 @@ namespace KelasiNaBisoAPI.Controllers
                     request.FcmToken, 
                     request.DeviceType, 
                     request.DeviceModel, 
-                    request.OsVersion);
+                    request.OsVersion,
+                    request.AppVersion);
 
                 return Ok(new { message = "Appareil enregistré avec succès", device = device });
             }

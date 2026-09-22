@@ -157,6 +157,30 @@ namespace KelasiNaBiso.Tests.Unit.Services
             result!.IdAnneeScolaire.Should().Be(99);
         }
 
+        [Fact]
+        public async Task GetByEcoleAsync_RetourneUniquementAnneesActives()
+        {
+            var active = TestDataBuilder.CreateAnneeScolaire(
+                100, 1, "2024-2025",
+                debut: _now.AddMonths(-3),
+                fin: _now.AddMonths(6),
+                statut: true);
+            var inactive = TestDataBuilder.CreateAnneeScolaire(
+                99, 1, "2023-2024",
+                debut: _now.AddYears(-2),
+                fin: _now.AddYears(-1),
+                statut: false);
+
+            _context.AnneeScolaires.AddRange(active, inactive);
+            await _context.SaveChangesAsync();
+
+            var result = (await _service.GetByEcoleAsync(1)).ToList();
+
+            result.Should().ContainSingle();
+            result[0].IdAnneeScolaire.Should().Be(100);
+            result[0].Statut.Should().BeTrue();
+        }
+
         public void Dispose() => _context.Dispose();
     }
 }

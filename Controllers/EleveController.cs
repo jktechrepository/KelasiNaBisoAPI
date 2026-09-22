@@ -5,6 +5,7 @@ using KelasiNaBiso.Models.Enums;
 using KelasiNaBiso.Services.Repositories;
 using KelasiNaBiso.Attributes;
 using KelasiNaBiso.Helpers;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 
@@ -40,6 +41,80 @@ namespace KelasiNaBiso.Controllers
         /// </summary>
         private IActionResult? TryResolveListIdEcole(int? idEcoleQuery, out int idEcole) =>
             EleveListScopeHelper.TryResolveListIdEcole(this, idEcoleQuery, out idEcole);
+
+        /// <summary>
+        /// Registre public des élèves (anonyme) — données minimales pour vérification d'identité scolaire.
+        /// Champs : nom, postnom, prénom, nomClasse, nomEcole, libelleAnneeScolaire (dernière inscription confirmée).
+        /// Recherche obligatoire par nomComplet (min. 3 caractères). Pas de matricule / idEleve.
+        /// </summary>
+        [HttpGet("RegistreEleve")]
+        [AllowAnonymous]
+        [ProducesResponseType(typeof(IReadOnlyList<RegistreEleveDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<IReadOnlyList<RegistreEleveDto>>> GetRegistreEleve(
+            [FromQuery] string nomComplet,
+            [FromQuery] int limit = 10,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(nomComplet) || nomComplet.Trim().Length < 3)
+            {
+                return BadRequest(new
+                {
+                    message = "Le paramètre nomComplet est obligatoire (minimum 3 caractères)."
+                });
+            }
+
+            var items = await _eleveRepository.GetRegistreEleveAsync(
+                nomComplet, limit, cancellationToken);
+            return Ok(items);
+        }
+
+        /// <summary>
+        /// Dossier scolaire complet d'un élève (authentifié) — inscriptions confirmées multi-écoles,
+        /// bulletins, notes, paiements et présences.
+        /// Rôles : Super-Admin, Admin, Directeur, Sous-Directeur, Parent (enfants liés), Eleve (soi).
+        /// </summary>
+        [HttpGet("ParcoursScolaire")]
+        [Authorize(Roles = UserRoles.SUPER_ADMIN + "," + UserRoles.ADMIN + "," + UserRoles.DIRECTEUR + ","
+            + UserRoles.SOUS_DIRECTEUR + "," + UserRoles.PARENT + "," + UserRoles.ELEVE)]
+        [ProducesResponseType(typeof(ParcoursScolaireDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<ParcoursScolaireDto>> GetParcoursScolaire(
+            [FromQuery] string matricule,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(matricule))
+            {
+                return BadRequest(new { message = "Le paramètre matricule est obligatoire." });
+            }
+
+            var caller = new ParcoursScolaireCallerContext
+            {
+                Role = _currentUserService.UserRole,
+                IsSuperAdmin = _currentUserService.IsSuperAdmin,
+                EleveId = _currentUserService.EleveId,
+                TuteurId = _currentUserService.TuteurId,
+                EcoleId = _currentUserService.EcoleId
+            };
+
+            var result = await _eleveRepository.GetParcoursScolaireByMatriculeAsync(
+                matricule, caller, cancellationToken);
+
+            return result.Status switch
+            {
+                ParcoursScolaireAccessStatus.NotFound => NotFound(new
+                {
+                    message = $"Aucun élève trouvé avec le matricule '{matricule.Trim()}'."
+                }),
+                ParcoursScolaireAccessStatus.Forbidden => StatusCode(StatusCodes.Status403Forbidden, new
+                {
+                    message = "Accès refusé : vous n'êtes pas autorisé à consulter ce parcours scolaire."
+                }),
+                _ => Ok(result.Data)
+            };
+        }
 
         // ✅ GET: api/Eleve/paged?idEcole=&idAnneeScolaire=&idClasse=&idDirection=
         /// <summary>

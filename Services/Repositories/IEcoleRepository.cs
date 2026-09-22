@@ -1,4 +1,5 @@
 using KelasiNaBiso.Models;
+using KelasiNaBiso.Models.DTOs;
 using KelasiNaBiso.Models.DTOs.Pagination;
 using KelasiNaBiso.Models.DTOs.Vitrine;
 
@@ -37,5 +38,16 @@ namespace KelasiNaBiso.Services.Repositories
 
         /// <summary>Écoles actives avec logo, pour le carrousel partenaires du site vitrine.</summary>
         Task<IEnumerable<EcolePartenaireDto>> GetPartenairesLogosAsync(int limit = 50);
+
+        /// <summary>
+        /// Registre public des écoles (données minimales, anonymes).
+        /// Recherche obligatoire par nom (min. 3 caractères). Filtres optionnels province / ville.
+        /// </summary>
+        Task<IReadOnlyList<RegistreEcoleDto>> GetRegistreEcoleAsync(
+            string nom,
+            string? province = null,
+            string? ville = null,
+            int limit = 10,
+            CancellationToken cancellationToken = default);
     }
 }

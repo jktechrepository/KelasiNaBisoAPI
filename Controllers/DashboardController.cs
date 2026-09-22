@@ -150,7 +150,6 @@ namespace KelasiNaBiso.Controllers
         /// </summary>
         [HttpGet("financier")]
         [HttpGet("DashbordFinancier")]
-        [Authorize(Roles = UserRoles.FinanceRoles)]
         [ProducesResponseType(typeof(DashboardFinancierDto), 200)]
         public async Task<IActionResult> GetDashboardFinancier(
             [FromQuery] int idEcole,
@@ -455,7 +454,6 @@ namespace KelasiNaBiso.Controllers
         /// </summary>
         [HttpGet("financier/cloture")]
         [HttpGet("DashbordFinancier/cloture")]
-        [Authorize(Roles = UserRoles.FinanceRoles)]
         [ProducesResponseType(typeof(DashboardFinancierClotureDto), 200)]
         public async Task<IActionResult> GetClotureFinancier(
             [FromQuery] int idEcole,

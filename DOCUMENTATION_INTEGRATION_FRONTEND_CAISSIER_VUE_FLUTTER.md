@@ -6,6 +6,7 @@ Guide d'implémentation pour l'**écran guichet** côté **Vue 3** (web) et **Fl
 - [DOCUMENTATION_FRONTEND_ROLE_CAISSIER.md](DOCUMENTATION_FRONTEND_ROLE_CAISSIER.md) — endpoints et parcours métier
 - [DOCUMENTATION_FRONTEND_PAIEMENT_MOKO.md](DOCUMENTATION_FRONTEND_PAIEMENT_MOKO.md) — PayIn Moko, polling USSD
 - [DOCUMENTATION_FRONTEND_VITRINE_VUE.md](DOCUMENTATION_FRONTEND_VITRINE_VUE.md) — conventions client API Vue
+- [DOCUMENTATION_INTEGRATION_FRONTEND_OFFLINE_SYNC_VUE_FLUTTER.md](DOCUMENTATION_INTEGRATION_FRONTEND_OFFLINE_SYNC_VUE_FLUTTER.md) — mode offline / sync (paiements CASH)
 
 **Base URL dev :** `https://dev-knb.asdc-rdc.org`  
 **Auth :** `Authorization: Bearer {jwt_token}`

@@ -90,6 +90,15 @@ namespace KelasiNaBiso.Data
         public DbSet<TransactionMoko> TransactionsMoko { get; set; }
         public DbSet<FilePayoutMoko> FilePayoutsMoko { get; set; }
 
+        /// <summary>Journal d'idempotence sync offline (présences / paiements CASH).</summary>
+        public DbSet<SyncClientRequest> SyncClientRequests { get; set; }
+        public DbSet<MobileAppVersionPolicy> MobileAppVersionPolicies { get; set; }
+
+        /// <summary>Catégories tarifaires / exonérations frais élèves.</summary>
+        public DbSet<CategorieEleveTarif> CategoriesEleveTarif { get; set; }
+        public DbSet<AffectationEleveCategorieTarif> AffectationsEleveCategorieTarif { get; set; }
+        public DbSet<RegleExonerationFrais> ReglesExonerationFrais { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -222,6 +231,71 @@ namespace KelasiNaBiso.Data
             modelBuilder.Entity<AuditLog>()
                 .HasIndex(a => a.Action)
                 .HasDatabaseName("IX_AuditLog_Action");
+
+            // Sync offline : idempotence (IdEcole, ClientRequestId)
+            modelBuilder.Entity<SyncClientRequest>(entity =>
+            {
+                entity.ToTable("SyncClientRequests");
+                entity.HasKey(e => e.IdSyncClientRequest);
+                entity.Property(e => e.ClientRequestId).HasMaxLength(36).IsRequired();
+                entity.Property(e => e.ResourceType).HasMaxLength(40).IsRequired();
+                entity.Property(e => e.Status).HasMaxLength(20).IsRequired();
+                entity.Property(e => e.Message).HasMaxLength(500);
+                entity.Property(e => e.ErrorCode).HasMaxLength(80);
+                entity.Property(e => e.DeviceId).HasMaxLength(100);
+                entity.HasIndex(e => new { e.IdEcole, e.ClientRequestId })
+                    .IsUnique()
+                    .HasDatabaseName("UX_SyncClientRequests_IdEcole_ClientRequestId");
+                entity.HasIndex(e => e.DateCreation)
+                    .HasDatabaseName("IX_SyncClientRequests_DateCreation");
+            });
+
+            modelBuilder.Entity<MobileAppVersionPolicy>(entity =>
+            {
+                entity.ToTable("MobileAppVersionPolicies");
+                entity.HasKey(e => e.IdMobileAppVersionPolicy);
+                entity.Property(e => e.Platform).HasMaxLength(20).IsRequired();
+                entity.Property(e => e.MinSupportedVersion).HasMaxLength(20).IsRequired();
+                entity.Property(e => e.LatestVersion).HasMaxLength(20).IsRequired();
+                entity.Property(e => e.RecommendFromVersion).HasMaxLength(20).IsRequired();
+                entity.Property(e => e.Message).HasMaxLength(500);
+                entity.Property(e => e.StoreUrl).HasMaxLength(500);
+                entity.HasIndex(e => e.Platform)
+                    .IsUnique()
+                    .HasDatabaseName("UX_MobileAppVersionPolicies_Platform");
+            });
+
+            modelBuilder.Entity<CategorieEleveTarif>(entity =>
+            {
+                entity.ToTable("CategoriesEleveTarif");
+                entity.HasKey(e => e.IdCategorieEleveTarif);
+                entity.Property(e => e.Code).HasMaxLength(50).IsRequired();
+                entity.Property(e => e.Libelle).HasMaxLength(150).IsRequired();
+                entity.Property(e => e.Description).HasMaxLength(500);
+                entity.HasIndex(e => new { e.IdEcole, e.Code })
+                    .IsUnique()
+                    .HasDatabaseName("UX_CategoriesEleveTarif_IdEcole_Code");
+            });
+
+            modelBuilder.Entity<AffectationEleveCategorieTarif>(entity =>
+            {
+                entity.ToTable("AffectationsEleveCategorieTarif");
+                entity.HasKey(e => e.IdAffectationEleveCategorieTarif);
+                entity.Property(e => e.Motif).HasMaxLength(500);
+                entity.HasIndex(e => new { e.IdEleve, e.IdAnneeScolaire })
+                    .HasDatabaseName("IX_AffectationsEleveCategorieTarif_Eleve_Annee");
+            });
+
+            modelBuilder.Entity<RegleExonerationFrais>(entity =>
+            {
+                entity.ToTable("ReglesExonerationFrais");
+                entity.HasKey(e => e.IdRegleExonerationFrais);
+                entity.Property(e => e.TypeRegle).HasMaxLength(30).IsRequired();
+                entity.Property(e => e.Valeur).HasColumnType("decimal(18,2)");
+                entity.HasIndex(e => new { e.IdAnneeScolaire, e.IdCategorieEleveTarif, e.IdFrais })
+                    .IsUnique()
+                    .HasDatabaseName("UX_ReglesExonerationFrais_Annee_Categorie_Frais");
+            });
 
             // ✅ UNICITÉ EMAIL: Index unique sur l'email
             modelBuilder.Entity<Utilisateur>()

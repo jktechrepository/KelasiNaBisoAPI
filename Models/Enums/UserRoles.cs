@@ -163,6 +163,24 @@ namespace KelasiNaBiso.Models.Enums
         };
 
         /// <summary>
+        /// Rôles autorisés à gérer catégories / affectations tarifaires élèves.
+        /// </summary>
+        public const string EleveTarifManageRoles =
+            $"{SUPER_ADMIN},{ADMIN},{FINANCIER},{CAISSIER}";
+
+        /// <summary>
+        /// Rôles autorisés à écrire les règles d'exonération (%, montants).
+        /// </summary>
+        public const string EleveTarifReglesWriteRoles =
+            $"{SUPER_ADMIN},{ADMIN},{FINANCIER}";
+
+        /// <summary>
+        /// Lecture des dus enrichis / règles.
+        /// </summary>
+        public const string EleveTarifReadRoles =
+            $"{SUPER_ADMIN},{ADMIN},{FINANCIER},{CAISSIER},{DIRECTEUR}";
+
+        /// <summary>
         /// Rôles autorisés au pointage / feuille d'appel (create + read, sans update/delete).
         /// </summary>
         public const string ControleurPresenceRoles =

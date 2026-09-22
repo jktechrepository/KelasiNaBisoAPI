@@ -51,6 +51,24 @@ namespace KelasiNaBiso.Controllers
             return Ok(agents);
         }
 
+        /// <summary>
+        /// Registre public des enseignants (anonyme) — données minimales pour vérification d'identité professionnelle.
+        /// Champs : nom, postnom, prénom, province, ville. Filtres optionnels province / ville.
+        /// </summary>
+        [HttpGet("RegistreEnseignant")]
+        [AllowAnonymous]
+        [ProducesResponseType(typeof(IReadOnlyList<RegistreEnseignantDto>), StatusCodes.Status200OK)]
+        public async Task<ActionResult<IReadOnlyList<RegistreEnseignantDto>>> GetRegistreEnseignant(
+            [FromQuery] string? province = null,
+            [FromQuery] string? ville = null,
+            [FromQuery] int limit = 50,
+            CancellationToken cancellationToken = default)
+        {
+            var items = await _agentRepository.GetRegistreEnseignantAsync(
+                province, ville, limit, cancellationToken);
+            return Ok(items);
+        }
+
         // ═══════════════════════════════════════════════════════════════════
         // ✅ MULTI-RÔLES : Gestion des rôles pour les agents
         // ═══════════════════════════════════════════════════════════════════
