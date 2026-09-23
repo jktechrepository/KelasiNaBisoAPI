@@ -896,6 +896,35 @@ namespace KelasiNaBiso.Services
             return existingEleve;
         }
 
+        public async Task<AffecterTuteurEleveResultDto> AffecterTuteurAsync(int idEleve, int idTuteur)
+        {
+            if (idTuteur <= 0)
+                throw new InvalidOperationException("idTuteur doit être un identifiant positif.");
+
+            var eleve = await _context.Eleves
+                .FirstOrDefaultAsync(e => e.IdEleve == idEleve && e.Statut == true);
+            if (eleve == null)
+                throw new KeyNotFoundException($"Élève {idEleve} introuvable ou inactif.");
+
+            var tuteur = await _context.Tuteurs.AsNoTracking()
+                .FirstOrDefaultAsync(t => t.IdTuteur == idTuteur && t.Statut == true);
+            if (tuteur == null)
+                throw new KeyNotFoundException($"Tuteur {idTuteur} introuvable ou inactif.");
+
+            var precedent = eleve.IdTuteur;
+            eleve.IdTuteur = idTuteur;
+            await _context.SaveChangesAsync();
+
+            return new AffecterTuteurEleveResultDto
+            {
+                IdEleve = eleve.IdEleve,
+                IdTuteur = idTuteur,
+                IdTuteurPrecedent = precedent,
+                NomCompletEleve = eleve.NomComplet,
+                NomCompletTuteur = tuteur.NomComplet
+            };
+        }
+
         public async Task<bool> DeleteAsync(int id)
         {
             var eleve = await _context.Eleves.FindAsync(id);

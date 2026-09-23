@@ -247,6 +247,7 @@ builder.Services.AddScoped<IVitrineService, VitrineService>();
 builder.Services.AddScoped<IVitrineContactService, VitrineContactService>();
 builder.Services.AddScoped<IClasseRepository, ClasseService>();
 builder.Services.AddScoped<IUtilisateurRepository, UtilisateurService>();
+builder.Services.AddScoped<ITuteurCompteService, TuteurCompteService>();
 builder.Services.AddScoped<ITuteurRepository, TuteurService>();
 builder.Services.AddScoped<IInscriptionRepository, InscriptionService>();
 builder.Services.AddScoped<IInscriptionActiveResolver, InscriptionActiveResolver>();

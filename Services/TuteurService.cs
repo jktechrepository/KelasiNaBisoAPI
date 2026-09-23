@@ -1,4 +1,5 @@
 using KelasiNaBiso.Data;
+using KelasiNaBiso.Helpers;
 using KelasiNaBiso.Models;
 using KelasiNaBiso.Models.DTOs;
 using KelasiNaBiso.Services.Repositories;
@@ -11,15 +12,18 @@ namespace KelasiNaBiso.Services
         private readonly KelasiNaBisoDbContext _context;
         private readonly IInscriptionActiveResolver _inscriptionResolver;
         private readonly EleveAnneeScopeHelper _scope;
+        private readonly ITuteurCompteService _tuteurCompteService;
 
         public TuteurService(
             KelasiNaBisoDbContext context,
             IInscriptionActiveResolver inscriptionResolver,
-            EleveAnneeScopeHelper scope)
+            EleveAnneeScopeHelper scope,
+            ITuteurCompteService tuteurCompteService)
         {
             _context = context;
             _inscriptionResolver = inscriptionResolver;
             _scope = scope;
+            _tuteurCompteService = tuteurCompteService;
         }
 
         public async Task<IEnumerable<Tuteur>> GetAllAsync()
@@ -73,6 +77,53 @@ namespace KelasiNaBiso.Services
             _context.Tuteurs.Add(tuteur);
             await _context.SaveChangesAsync();
             return tuteur;
+        }
+
+        public async Task<CreateTuteurResultDto> CreateWithCompteAsync(CreateTuteurDto dto, int idEcole)
+        {
+            if (dto == null)
+                throw new ArgumentNullException(nameof(dto));
+            if (idEcole <= 0)
+                throw new InvalidOperationException("idEcole est obligatoire.");
+
+            var ecoleExists = await _context.Ecoles.AsNoTracking()
+                .AnyAsync(e => e.IdEcole == idEcole);
+            if (!ecoleExists)
+                throw new KeyNotFoundException($"École {idEcole} introuvable.");
+
+            var telephone = TelephoneNormalizer.Normalize(dto.Telephone) ?? dto.Telephone.Trim();
+
+            var tuteur = new Tuteur
+            {
+                NomComplet = dto.NomComplet.Trim(),
+                Genre = dto.Genre.Trim(),
+                Telephone = telephone,
+                Email = string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email.Trim(),
+                PhotoTuteurUrl = dto.PhotoTuteurUrl,
+                PieceIdentiteTuteur = dto.PieceIdentiteTuteur,
+                NomCompletRepresentant = string.IsNullOrWhiteSpace(dto.NomCompletRepresentant)
+                    ? null
+                    : dto.NomCompletRepresentant.Trim(),
+                TelephoneRepresentant = string.IsNullOrWhiteSpace(dto.TelephoneRepresentant)
+                    ? null
+                    : dto.TelephoneRepresentant.Trim(),
+                Statut = true,
+                DateCreation = DateTime.Now
+            };
+
+            var created = await CreateAsync(tuteur);
+
+            var compte = await _tuteurCompteService.CreateDefaultTuteurUserAsync(
+                created,
+                idEcole,
+                eleve: null,
+                sendInscriptionNotifications: false);
+
+            return new CreateTuteurResultDto
+            {
+                Tuteur = created,
+                CompteUtilisateur = compte
+            };
         }
 
         public async Task<Tuteur> UpdateAsync(Tuteur tuteur)

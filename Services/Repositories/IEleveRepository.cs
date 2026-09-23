@@ -21,6 +21,12 @@ namespace KelasiNaBiso.Services.Repositories
         Task<Eleve> CreateAsync(Eleve eleve);
         Task<IEnumerable<Eleve>> CreateBatchAsync(IEnumerable<Eleve> eleves);
         Task<Eleve> UpdateAsync(Eleve eleve);
+
+        /// <summary>
+        /// Réaffecte le tuteur d'un élève actif (remplacement de IdTuteur).
+        /// </summary>
+        Task<AffecterTuteurEleveResultDto> AffecterTuteurAsync(int idEleve, int idTuteur);
+
         Task<bool> DeleteAsync(int id);
         Task<bool> ExistsAsync(int id);
         Task<bool> ExistsByReferenceAsync(Guid reference);

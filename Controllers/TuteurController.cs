@@ -90,18 +90,50 @@ namespace KelasiNaBiso.Controllers
             }
         }
 
-        // POST: api/Tuteur
-        //////[HttpPost]
-        //////public async Task<ActionResult<Tuteur>> CreateTuteur(Tuteur tuteur)
-        //////{
-        //////    if (!ModelState.IsValid)
-        //////    {
-        //////        return BadRequest(ModelState);
-        //////    }
+        // POST: api/Tuteur?idEcole=
+        /// <summary>
+        /// Crée un tuteur et le compte Parent associé (MDP initial 123456).
+        /// </summary>
+        [HttpPost]
+        [Authorize(Roles = $"{UserRoles.SUPER_ADMIN},{UserRoles.ADMIN},{UserRoles.DIRECTEUR}")]
+        [ProducesResponseType(typeof(CreateTuteurResultDto), 201)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(403)]
+        [ProducesResponseType(404)]
+        public async Task<IActionResult> CreateTuteur(
+            [FromQuery] int idEcole,
+            [FromBody] CreateTuteurDto dto)
+        {
+            if (idEcole <= 0)
+                return BadRequest(new { message = "Le paramètre idEcole est obligatoire." });
 
-        //////    var createdTuteur = await _tuteurRepository.CreateAsync(tuteur);
-        //////    return CreatedAtAction(nameof(GetTuteur), new { id = createdTuteur.IdTuteur }, createdTuteur);
-        //////}
+            var deny = this.ForbidIfWrongSchool(idEcole);
+            if (deny != null)
+                return deny;
+
+            if (dto == null)
+                return BadRequest(new { message = "Corps de requête requis." });
+
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            try
+            {
+                var result = await _tuteurRepository.CreateWithCompteAsync(dto, idEcole);
+                return CreatedAtAction(
+                    nameof(GetTuteur),
+                    new { id = result.Tuteur.IdTuteur },
+                    result);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
 
         // PUT: api/Tuteur/5
         /// <summary>

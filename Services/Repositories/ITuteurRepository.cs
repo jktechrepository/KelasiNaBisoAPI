@@ -9,6 +9,7 @@ namespace KelasiNaBiso.Services.Repositories
         Task<Tuteur> GetByIdAsync(int id);
         Task<ElevesAnneeScopedResult<IEnumerable<Tuteur>>> GetByEcoleAsync(int idEcole, int? idAnneeScolaire = null);
         Task<Tuteur> CreateAsync(Tuteur tuteur);
+        Task<CreateTuteurResultDto> CreateWithCompteAsync(CreateTuteurDto dto, int idEcole);
         Task<Tuteur> UpdateAsync(Tuteur tuteur);
         Task<bool> DeleteAsync(int id);
         Task<bool> ExistsAsync(int id);

@@ -1,6 +1,8 @@
 using FluentAssertions;
 using KelasiNaBiso.Services;
+using KelasiNaBiso.Services.Repositories;
 using KelasiNaBiso.Tests.Unit.Helpers;
+using Moq;
 using Xunit;
 
 namespace KelasiNaBiso.Tests.Unit.Services
@@ -17,7 +19,7 @@ namespace KelasiNaBiso.Tests.Unit.Services
             var inscriptionResolver = new InscriptionActiveResolver(_context);
             var anneeRepo = new AnneeScolaireService(_context);
             var scope = new EleveAnneeScopeHelper(_context, inscriptionResolver, anneeRepo);
-            _service = new TuteurService(_context, inscriptionResolver, scope);
+            _service = new TuteurService(_context, inscriptionResolver, scope, Mock.Of<ITuteurCompteService>());
             Seed();
         }
 

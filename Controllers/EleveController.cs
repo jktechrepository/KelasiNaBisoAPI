@@ -840,6 +840,46 @@ namespace KelasiNaBiso.Controllers
             return Ok(updatedEleve);
         }
 
+        /// <summary>
+        /// Réaffecte le tuteur (parent) d'un élève. Préférer cet endpoint au PUT profil pour ce seul changement.
+        /// </summary>
+        [HttpPut("{id:int}/tuteur")]
+        [Authorize(Roles = $"{UserRoles.SUPER_ADMIN},{UserRoles.ADMIN},{UserRoles.DIRECTEUR}")]
+        [ProducesResponseType(typeof(AffecterTuteurEleveResultDto), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(403)]
+        [ProducesResponseType(404)]
+        public async Task<IActionResult> AffecterTuteur(
+            int id,
+            [FromBody] AffecterTuteurEleveDto dto,
+            CancellationToken cancellationToken = default)
+        {
+            if (dto == null)
+                return BadRequest(new { message = "Corps de requête requis." });
+
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var idEcole = await _inscriptionResolver.GetEcoleCouranteAsync(id, cancellationToken: cancellationToken);
+            var deny = this.ForbidIfWrongSchool(idEcole);
+            if (deny != null)
+                return deny;
+
+            try
+            {
+                var result = await _eleveRepository.AffecterTuteurAsync(id, dto.IdTuteur);
+                return Ok(result);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
         // DELETE: api/Eleve/5
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteEleve(int id)
