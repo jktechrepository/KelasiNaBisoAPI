@@ -47,6 +47,10 @@ namespace KelasiNaBiso.Models.DTOs.Reporting
         public int IdPaiement { get; set; }
         public DateTime DatePaiement { get; set; }
         public decimal Montant { get; set; }
+        public string? Devise { get; set; }
+        public string? CodeDevisePaiement { get; set; }
+        public string? CodeDevisePrincipale { get; set; }
+        public decimal? MontantDevisePrincipale { get; set; }
         public string ModePaiement { get; set; } = string.Empty;
         public string Statut { get; set; } = string.Empty;
         public string? NomEleve { get; set; }
@@ -66,6 +70,7 @@ namespace KelasiNaBiso.Models.DTOs.Reporting
         public string Reference { get; set; } = string.Empty;
         public int? IdPaiement { get; set; }
         public decimal Montant { get; set; }
+        public string? CodeDevisePaiement { get; set; }
         public string? NomEleve { get; set; }
         public string? LibelleFrais { get; set; }
         public DateTime DateCreation { get; set; }

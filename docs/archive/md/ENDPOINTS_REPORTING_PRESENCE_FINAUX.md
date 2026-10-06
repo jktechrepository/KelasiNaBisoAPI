@@ -769,4 +769,3 @@ Je peux commencer par les endpoints prioritaires comme :
 4. Analyse retards
 
 Qu'en pensez-vous ? 🚀
-

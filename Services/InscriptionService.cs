@@ -91,18 +91,13 @@ namespace KelasiNaBiso.Services
         }
 
         public async Task<ElevesAnneeScopedResult<IEnumerable<Inscription>>> GetByEcoleAsync(
-            int idEcole, int? idAnneeScolaire = null)
+            int idEcole, int? idAnneeScolaire = null, string? searchTerm = null)
         {
             var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole, idAnneeScolaire);
-            var data = await _context.Inscriptions
-                .Include(i => i.Eleve)
-                .Include(i => i.Classe)
-                .Include(i => i.AnneeScolaire)
-                .Where(i => i.IdEcole == ecole && i.IdAnneeScolaire == annee)
-                .Where(i => i.Statut == true)
-                .OrderByDescending(i => i.DateInscription)
-                .ThenByDescending(i => i.IdInscription)
-                .ToListAsync();
+            var query = BuildInscriptionListQuery()
+                .Where(i => i.IdEcole == ecole && i.IdAnneeScolaire == annee);
+            query = ApplyInscriptionListFilters(query, new PagedRequest { SearchTerm = searchTerm });
+            var data = await query.ToListAsync();
             return EleveAnneeScopeHelper.Wrap<IEnumerable<Inscription>>(data, ecole, annee);
         }
 
@@ -1076,7 +1071,7 @@ namespace KelasiNaBiso.Services
 
         private static IQueryable<Inscription> ApplyInscriptionListFilters(
             IQueryable<Inscription> query, PagedRequest request)
-        {
+            {
             if (!string.IsNullOrWhiteSpace(request.SearchTerm))
             {
                 var searchLower = request.SearchTerm.ToLower();
@@ -1147,7 +1142,7 @@ namespace KelasiNaBiso.Services
         private static UtilisateurInfo? ToCompteElevePapier(EleveCompteCreateResult createResult)
         {
             if (createResult.Info == null)
-                return null;
+                    return null;
 
             var info = createResult.Info;
             if (createResult.Outcome != EleveCompteCreateOutcome.Created)

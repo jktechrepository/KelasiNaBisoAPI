@@ -1,0 +1,20 @@
+@baseUrl = https://localhost:7105/api
+@token = YOUR_JWT_TOKEN_HERE
+@idEcole = 1
+@idAgent = 1
+
+### Feuille d'appel d'un agent pour une seule journée
+GET {{baseUrl}}/Presence/agents/ecole/{{idEcole}}/feuille-appel?date=2026-09-30&idAgent={{idAgent}}
+Authorization: Bearer {{token}}
+
+### Feuilles quotidiennes de l'agent sur une période inclusive (max. 366 jours)
+GET {{baseUrl}}/Presence/agents/ecole/{{idEcole}}/feuille-appel?dateDebut=2026-09-01&dateFin=2026-09-30&idAgent={{idAgent}}
+Authorization: Bearer {{token}}
+
+### Réponse 400 attendue : dateDebut/dateFin doivent être fournies ensemble
+GET {{baseUrl}}/Presence/agents/ecole/{{idEcole}}/feuille-appel?dateDebut=2026-09-01
+Authorization: Bearer {{token}}
+
+### Réponse 400 attendue : la date simple ne se combine pas avec une période
+GET {{baseUrl}}/Presence/agents/ecole/{{idEcole}}/feuille-appel?date=2026-09-30&dateDebut=2026-09-01&dateFin=2026-09-30
+Authorization: Bearer {{token}}

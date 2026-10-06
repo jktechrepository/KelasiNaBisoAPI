@@ -5,6 +5,18 @@
 @token = YOUR_JWT_TOKEN_HERE
 
 ################################################################################
+# 👨‍👩‍👧 PAGINATION TUTEURS PAR ÉCOLE
+################################################################################
+
+### Première page des tuteurs de l'école (année courante)
+GET {{baseUrl}}/api/Tuteur/ecole/1/paged?PageNumber=1&PageSize=15
+Authorization: ******
+
+### Page suivante avec une année scolaire précisée
+GET {{baseUrl}}/api/Tuteur/ecole/1/paged?PageNumber=2&PageSize=15&idAnneeScolaire=12
+Authorization: ******
+
+################################################################################
 # 📚 SECTION 1 : PAGINATION ÉLÈVES (OFFSET-BASED)
 ################################################################################
 
@@ -215,4 +227,3 @@ Authorization: Bearer {{token}}
 # - Models/DTOs/Pagination/PagedRequest.cs
 # - Models/DTOs/Pagination/CursorPaginationRequest.cs
 # - Extensions/QueryableExtensions.cs
-

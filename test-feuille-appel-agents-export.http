@@ -1,0 +1,28 @@
+@baseUrl = https://localhost:7105/api
+@token = YOUR_JWT_TOKEN_HERE
+@idEcole = 1
+@idAgent = 1
+
+### Export Excel pour un agent et une journée
+GET {{baseUrl}}/Presence/agents/ecole/{{idEcole}}/feuille-appel/export?date=2026-09-30&idAgent={{idAgent}}&format=xlsx
+Authorization: Bearer {{token}}
+
+### Export PDF pour une fonction sur une journée
+GET {{baseUrl}}/Presence/agents/ecole/{{idEcole}}/feuille-appel/export?date=2026-09-30&fonction=Enseignant&format=pdf
+Authorization: Bearer {{token}}
+
+### Export Excel sur une période inclusive : une ligne par agent et par date
+GET {{baseUrl}}/Presence/agents/ecole/{{idEcole}}/feuille-appel/export?dateDebut=2026-09-01&dateFin=2026-09-30&idAgent={{idAgent}}&format=xlsx
+Authorization: Bearer {{token}}
+
+### Export PDF sur une période inclusive avec détail journalier et totaux cumulés
+GET {{baseUrl}}/Presence/agents/ecole/{{idEcole}}/feuille-appel/export?dateDebut=2026-09-01&dateFin=2026-09-30&idAgent={{idAgent}}&format=pdf
+Authorization: Bearer {{token}}
+
+### Réponse 400 attendue : période incomplète
+GET {{baseUrl}}/Presence/agents/ecole/{{idEcole}}/feuille-appel/export?dateDebut=2026-09-01&format=pdf
+Authorization: Bearer {{token}}
+
+### Réponse 400 attendue : date simple combinée avec une période
+GET {{baseUrl}}/Presence/agents/ecole/{{idEcole}}/feuille-appel/export?date=2026-09-30&dateDebut=2026-09-01&dateFin=2026-09-30
+Authorization: Bearer {{token}}

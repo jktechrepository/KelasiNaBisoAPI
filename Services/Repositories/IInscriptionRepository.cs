@@ -10,7 +10,8 @@ namespace KelasiNaBiso.Services.Repositories
         Task<IEnumerable<Inscription>> GetAllAsync();
         Task<Inscription> GetByIdAsync(int id);
         Task<IEnumerable<Inscription>> GetByEleveAsync(int idEleve);
-        Task<ElevesAnneeScopedResult<IEnumerable<Inscription>>> GetByEcoleAsync(int idEcole, int? idAnneeScolaire = null);
+        Task<ElevesAnneeScopedResult<IEnumerable<Inscription>>> GetByEcoleAsync(
+            int idEcole, int? idAnneeScolaire = null, string? searchTerm = null);
         Task<ElevesAnneeScopedResult<IEnumerable<Inscription>>> GetByClasseAsync(int idClasse, int? idAnneeScolaire = null);
         Task<IEnumerable<Inscription>> GetByAnneeScolaireAsync(int idAnneeScolaire);
         Task<IEnumerable<Inscription>> GetByStatutAsync(bool statut);

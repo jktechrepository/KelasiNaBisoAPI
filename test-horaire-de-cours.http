@@ -1,0 +1,75 @@
+@baseUrl = https://localhost:7102
+@token = remplacer-par-un-token-jwt
+
+### Consulter le planning paginé avec les mêmes filtres
+GET {{baseUrl}}/api/HoraireDeCours/paged?idEcole=1&idAnneeScolaire=1&PageNumber=1&PageSize=15
+Authorization: ******
+
+### Consulter le planning d'une école autorisée
+GET {{baseUrl}}/api/HoraireDeCours?idEcole=1&idAnneeScolaire=1
+Authorization: ******
+
+### Tuteur : consulter uniquement les classes de ses enfants (multi-écoles possible)
+GET {{baseUrl}}/api/HoraireDeCours?idAnneeScolaire=1
+Authorization: ******
+
+### Consulter le planning d'une classe et d'une année
+GET {{baseUrl}}/api/HoraireDeCours?idClasse=1&idAnneeScolaire=1
+Authorization: Bearer {{token}}
+
+### Créer une ligne d'emploi du temps
+POST {{baseUrl}}/api/HoraireDeCours
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "jour": "Lundi",
+  "heureDebut": "08:00",
+  "heureFin": "09:00",
+  "idCours": 1,
+  "idClasse": 1,
+  "idAgent": 1,
+  "idAnneeScolaire": 1,
+  "salle": "Salle 203"
+}
+
+### Consulter une ligne
+GET {{baseUrl}}/api/HoraireDeCours/1
+Authorization: Bearer {{token}}
+
+### Modifier une ligne
+PUT {{baseUrl}}/api/HoraireDeCours/1
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "jour": "Mardi",
+  "heureDebut": "09:00",
+  "heureFin": "10:00",
+  "idCours": 1,
+  "idClasse": 1,
+  "idAgent": 1,
+  "idAnneeScolaire": 1,
+  "salle": "Salle 203",
+  "statut": true
+}
+
+### Supprimer logiquement une ligne
+DELETE {{baseUrl}}/api/HoraireDeCours/1
+Authorization: Bearer {{token}}
+
+### Exemple de conflit attendu : même classe, jour et créneau chevauché
+POST {{baseUrl}}/api/HoraireDeCours
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "jour": "Lundi",
+  "heureDebut": "08:30",
+  "heureFin": "09:30",
+  "idCours": 2,
+  "idClasse": 1,
+  "idAgent": 2,
+  "idAnneeScolaire": 1,
+  "salle": "Salle 204"
+}

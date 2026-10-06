@@ -20,6 +20,7 @@ namespace KelasiNaBiso.Models.DTOs.Paiement
         public int IdEcole { get; set; }
         public string NomEcole { get; set; } = string.Empty;
         public string? Logo { get; set; }
+        public string DevisePrincipale { get; set; } = "USD";
     }
 
     public class ResumePaiementDto
@@ -64,4 +65,3 @@ namespace KelasiNaBiso.Models.DTOs.Paiement
         public decimal Pourcentage { get; set; }
     }
 }
-

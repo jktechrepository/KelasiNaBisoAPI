@@ -1606,56 +1606,16 @@ namespace KelasiNaBiso.Controllers
 
                 if (request != null)
                 {
-                    if (request.SupprimerTousLesDevices)
+                    try
                     {
-                        var devices = await _userDeviceRepository.GetByUtilisateurIdAsync(currentUserId.Value);
-                        foreach (var device in devices)
-                        {
-                            try
-                            {
-                                device.Statut = false;
-                                device.DateDerniereUtilisation = DateTime.Now;
-                                var updated = await _userDeviceRepository.UpdateAsync(device);
-                                if (updated != null)
-                                {
-                                    devicesDesactives++;
-                                }
-                            }
-                            catch (Exception deviceEx)
-                            {
-                                _logger.LogWarning(deviceEx, $"⚠️ Erreur lors de la désactivation du device {device.IdUserDevice} pour l'utilisateur {currentUserId}");
-                            }
-                        }
+                        devicesDesactives = await DesactiverDevicesDeconnexionAsync(
+                            currentUserId.Value, request);
                     }
-                    else if (request.IdUserDevice.HasValue)
+                    catch (Exception deviceEx)
                     {
-                        var device = await _userDeviceRepository.GetByIdAsync(request.IdUserDevice.Value);
-                        if (device != null && device.IdUtilisateur == currentUserId.Value)
-                        {
-                            device.Statut = false;
-                            device.DateDerniereUtilisation = DateTime.Now;
-                            var updated = await _userDeviceRepository.UpdateAsync(device);
-                            if (updated != null)
-                            {
-                                devicesDesactives = 1;
-                            }
-                        }
-                        else
-                        {
-                            _logger.LogWarning($"⚠️ Device {request.IdUserDevice} introuvable ou ne correspond pas à l'utilisateur {currentUserId}");
-                        }
-                    }
-                    else if (!string.IsNullOrWhiteSpace(request.FcmToken))
-                    {
-                        var deleted = await _userDeviceRepository.DeleteByFcmTokenAsync(request.FcmToken);
-                        if (deleted)
-                        {
-                            devicesDesactives = 1;
-                        }
-                        else
-                        {
-                            _logger.LogWarning($"⚠️ Aucun device supprimé pour le token FCM fourni (User {currentUserId})");
-                        }
+                        _logger.LogWarning(deviceEx,
+                            "⚠️ Nettoyage des devices échoué après déconnexion de l'utilisateur {UserId}",
+                            currentUserId);
                     }
                 }
 
@@ -1673,6 +1633,64 @@ namespace KelasiNaBiso.Controllers
                 _logger.LogError(ex, "❌ Erreur lors de la déconnexion de l'utilisateur");
                 return StatusCode(500, new { message = "Erreur lors de la déconnexion", error = ex.Message });
             }
+        }
+
+        private async Task<int> DesactiverDevicesDeconnexionAsync(int userId, DeconnexionRequest request)
+        {
+            if (request.SupprimerTousLesDevices)
+            {
+                var devices = await _userDeviceRepository.GetByUtilisateurIdAsync(userId);
+                var desactives = 0;
+                foreach (var device in devices)
+                {
+                    try
+                    {
+                        device.Statut = false;
+                        device.DateDerniereUtilisation = DateTime.Now;
+                        var updated = await _userDeviceRepository.UpdateAsync(device);
+                        if (updated != null)
+                            desactives++;
+                    }
+                    catch (Exception deviceEx)
+                    {
+                        _logger.LogWarning(deviceEx,
+                            "⚠️ Erreur lors de la désactivation du device {DeviceId} pour l'utilisateur {UserId}",
+                            device.IdUserDevice, userId);
+                    }
+                }
+
+                return desactives;
+            }
+
+            if (request.IdUserDevice is > 0)
+            {
+                var device = await _userDeviceRepository.GetByIdAsync(request.IdUserDevice.Value);
+                if (device != null && device.IdUtilisateur == userId)
+                {
+                    device.Statut = false;
+                    device.DateDerniereUtilisation = DateTime.Now;
+                    var updated = await _userDeviceRepository.UpdateAsync(device);
+                    return updated != null ? 1 : 0;
+                }
+
+                _logger.LogWarning(
+                    "⚠️ Device {DeviceId} introuvable ou ne correspond pas à l'utilisateur {UserId}",
+                    request.IdUserDevice, userId);
+                return 0;
+            }
+
+            if (string.IsNullOrWhiteSpace(request.FcmToken))
+                return 0;
+
+            var deleted = await _userDeviceRepository.DeleteByFcmTokenAsync(request.FcmToken);
+            if (!deleted)
+            {
+                _logger.LogWarning(
+                    "⚠️ Aucun device supprimé pour le token FCM fourni (User {UserId})",
+                    userId);
+            }
+
+            return deleted ? 1 : 0;
         }
 
         [AllowAnonymous]

@@ -259,6 +259,7 @@ builder.Services.AddScoped<PaiementCrashedService>(); // ✅ Service pour gérer
 builder.Services.AddScoped<INoteRepository, NoteService>();
 builder.Services.AddScoped<IBulletinService, BulletinService>();
 builder.Services.AddScoped<ICoursRepository, CoursService>();
+builder.Services.AddScoped<IHoraireDeCoursRepository, HoraireDeCoursService>();
 builder.Services.AddScoped<IAffectationCoursRepository, AffectationCoursService>();
 builder.Services.AddScoped<ITitulaireClasseRepository, TitulaireClasseService>(); //  Gestion titulaires Maternelle/Primaire
 builder.Services.AddScoped<IPedagogieAuthorizationService, PedagogieAuthorizationService>(); // ACL Titulaire ∪ Affectation (année)

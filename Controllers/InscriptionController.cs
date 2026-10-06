@@ -132,15 +132,20 @@ namespace KelasiNaBiso.Controllers
             }
         }
 
+        /// <summary>
+        /// Liste les inscriptions d'une école (année courante par défaut).
+        /// Filtre optionnel <paramref name="searchTerm"/> identique à /paged (type, statut, nom, matricule).
+        /// </summary>
         [HttpGet("ecoles/{idecole}")]
         [Obsolete("Utiliser /api/Inscription/ecoles/{idecole}/paged pour la pagination")]
         public async Task<ActionResult> GetInscriptionsByEcole(
             int idecole,
-            [FromQuery] int? idAnneeScolaire = null)
+            [FromQuery] int? idAnneeScolaire = null,
+            [FromQuery] string? searchTerm = null)
         {
             try
             {
-                return Ok(await _inscriptionRepository.GetByEcoleAsync(idecole, idAnneeScolaire));
+                return Ok(await _inscriptionRepository.GetByEcoleAsync(idecole, idAnneeScolaire, searchTerm));
             }
             catch (InvalidOperationException ex)
             {

@@ -16,15 +16,18 @@ namespace KelasiNaBiso.Services
         private readonly KelasiNaBisoDbContext _context;
         private readonly EleveAnneeScopeHelper _scope;
         private readonly IEcolePaiementMobileService _ecolePaiementMobileService;
+        private readonly ICurrencyConversionService _currencyConversionService;
 
         public DashboardFinancierService(
             KelasiNaBisoDbContext context,
             EleveAnneeScopeHelper scope,
-            IEcolePaiementMobileService ecolePaiementMobileService)
+            IEcolePaiementMobileService ecolePaiementMobileService,
+            ICurrencyConversionService currencyConversionService)
         {
             _context = context;
             _scope = scope;
             _ecolePaiementMobileService = ecolePaiementMobileService;
+            _currencyConversionService = currencyConversionService;
         }
 
         public Task<DashboardFinancierDto> GetDashboardFinancierAsync(
@@ -98,6 +101,7 @@ namespace KelasiNaBiso.Services
                 .FirstOrDefaultAsync();
 
             var paiements = await GetPaiementsDuJourAsync(resolvedEcole, idAnnee, filterUtilisateur, targetDate);
+            await EnsurePrincipalAmountsAsync(paiements, resolvedEcole, ecole.CodeDevisePrincipale ?? "USD");
             var (moko, payInsReussis, payInsEnAttente, payInsEchoues) =
                 await BuildMokoResumeAsync(resolvedEcole, filterUtilisateur, targetDate);
 
@@ -106,11 +110,11 @@ namespace KelasiNaBiso.Services
             var resume = new ResumeFinancierDto
             {
                 NombrePaiements = paiements.Count,
-                MontantTotal = paiements.Sum(p => p.Montant),
-                MontantConfirme = paiements.Count(p => string.Equals(p.Statut, "Confirme", StringComparison.OrdinalIgnoreCase) || string.Equals(p.Statut, "Confirmé", StringComparison.OrdinalIgnoreCase)),
-                MontantEnAttente = paiements.Count(p => string.Equals(p.Statut, "En attente", StringComparison.OrdinalIgnoreCase)),
-                MontantEchoue = paiements.Count(p => string.Equals(p.Statut, "Echoue", StringComparison.OrdinalIgnoreCase) || string.Equals(p.Statut, "Échoué", StringComparison.OrdinalIgnoreCase)),
-                SoldeNet = paiements.Sum(p => p.Montant)
+                MontantTotal = paiements.Sum(p => p.MontantDevisePrincipale ?? 0m),
+                MontantConfirme = paiements.Where(IsConfirmed).Sum(p => p.MontantDevisePrincipale ?? 0m),
+                MontantEnAttente = paiements.Where(IsPending).Sum(p => p.MontantDevisePrincipale ?? 0m),
+                MontantEchoue = paiements.Where(IsFailed).Sum(p => p.MontantDevisePrincipale ?? 0m),
+                SoldeNet = paiements.Sum(p => p.MontantDevisePrincipale ?? 0m)
             };
 
             return new DashboardFinancierDto
@@ -119,7 +123,8 @@ namespace KelasiNaBiso.Services
                 {
                     IdEcole = ecole.IdEcole,
                     NomEcole = ecole.Nom ?? string.Empty,
-                    Logo = ecole.Logo
+                    Logo = ecole.Logo,
+                    DevisePrincipale = ecole.CodeDevisePrincipale ?? "USD"
                 },
                 IdAnneeScolaire = idAnnee,
                 LibelleAnneeScolaire = libelleAnnee,
@@ -173,6 +178,9 @@ namespace KelasiNaBiso.Services
                     IdPaiement = p.IdPaiement,
                     DatePaiement = p.DatePaiement,
                     Montant = (decimal)p.Montant,
+                    CodeDevisePaiement = p.CodeDevisePaiement ?? p.Devise,
+                    CodeDevisePrincipale = p.CodeDevisePrincipale,
+                    MontantDevisePrincipale = p.MontantPayeDevisePrincipale,
                     ModePaiement = p.ModePaiement ?? "Non spécifié",
                     Statut = p.StatutPaiement ?? string.Empty,
                     NomEleve = p.Eleve != null ? p.Eleve.NomComplet : null,
@@ -181,9 +189,66 @@ namespace KelasiNaBiso.Services
                 })
                 .ToListAsync();
 
+            return await PrepareRowsAsync(rows, idEcole);
+        }
+
+        private async Task<List<PaiementRow>> PrepareRowsAsync(List<PaiementRow> rows, int idEcole)
+        {
+            var principal = await _context.Ecoles
+                .AsNoTracking()
+                .Where(e => e.IdEcole == idEcole)
+                .Select(e => e.CodeDevisePrincipale)
+                .FirstOrDefaultAsync() ?? "USD";
+
+            await EnsurePrincipalAmountsAsync(rows, idEcole, principal);
             await EnrichMokoReferencesAsync(rows);
             return rows;
         }
+
+        private async Task EnsurePrincipalAmountsAsync(
+            List<PaiementRow> rows,
+            int idEcole,
+            string codeDevisePrincipale)
+        {
+            foreach (var row in rows)
+            {
+                row.CodeDevisePaiement ??= codeDevisePrincipale;
+                row.CodeDevisePrincipale ??= codeDevisePrincipale;
+
+                if (row.MontantDevisePrincipale.HasValue)
+                    continue;
+
+                if (string.Equals(row.CodeDevisePaiement, codeDevisePrincipale, StringComparison.OrdinalIgnoreCase))
+                {
+                    row.MontantDevisePrincipale = Math.Round(row.Montant, 2, MidpointRounding.AwayFromZero);
+                    continue;
+                }
+
+                var conversion = await _currencyConversionService.ConvertAsync(
+                    idEcole,
+                    row.CodeDevisePaiement,
+                    codeDevisePrincipale,
+                    row.Montant,
+                    row.DatePaiement);
+
+                if (!conversion.Success)
+                    throw new InvalidOperationException(
+                        conversion.ErrorMessage ?? $"Conversion impossible pour le paiement {row.IdPaiement}.");
+
+                row.MontantDevisePrincipale = conversion.MontantConverti;
+            }
+        }
+
+        private static bool IsConfirmed(PaiementRow paiement) =>
+            string.Equals(paiement.Statut, "Confirme", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(paiement.Statut, "Confirmé", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsPending(PaiementRow paiement) =>
+            string.Equals(paiement.Statut, "En attente", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsFailed(PaiementRow paiement) =>
+            string.Equals(paiement.Statut, "Echoue", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(paiement.Statut, "Échoué", StringComparison.OrdinalIgnoreCase);
 
         private async Task EnrichMokoReferencesAsync(List<PaiementRow> rows)
         {
@@ -235,6 +300,7 @@ namespace KelasiNaBiso.Services
                     x.t.IdPaiement,
                     x.t.AmountNet,
                     x.t.Amount,
+                    x.t.Devise,
                     x.t.DateCreation,
                     NomEleve = x.p.Eleve != null ? x.p.Eleve.NomComplet : null,
                     LibelleFrais = x.p.Frais != null ? x.p.Frais.LibelleFrais : null
@@ -264,6 +330,7 @@ namespace KelasiNaBiso.Services
                     Reference = t.Reference,
                     IdPaiement = t.IdPaiement,
                     Montant = t.AmountNet ?? t.Amount,
+                    CodeDevisePaiement = t.Devise,
                     NomEleve = t.NomEleve,
                     LibelleFrais = t.LibelleFrais,
                     DateCreation = t.DateCreation
@@ -279,12 +346,12 @@ namespace KelasiNaBiso.Services
 
         private static RepartitionModePaiementDto BuildRepartitionParMode(List<PaiementRow> paiements)
         {
-            var montantTotal = paiements.Sum(p => p.Montant);
+            var montantTotal = paiements.Sum(p => p.MontantDevisePrincipale ?? 0m);
             var modes = new Dictionary<string, ModePaiementStatsDto>();
 
             foreach (var groupe in paiements.GroupBy(p => p.ModePaiement))
             {
-                var montant = groupe.Sum(p => p.Montant);
+                var montant = groupe.Sum(p => p.MontantDevisePrincipale ?? 0m);
                 modes[groupe.Key] = new ModePaiementStatsDto
                 {
                     Nombre = groupe.Count(),
@@ -304,6 +371,10 @@ namespace KelasiNaBiso.Services
                     IdPaiement = p.IdPaiement,
                     DatePaiement = p.DatePaiement,
                     Montant = p.Montant,
+                    Devise = p.CodeDevisePaiement,
+                    CodeDevisePaiement = p.CodeDevisePaiement,
+                    CodeDevisePrincipale = p.CodeDevisePrincipale,
+                    MontantDevisePrincipale = p.MontantDevisePrincipale ?? p.Montant,
                     ModePaiement = p.ModePaiement,
                     Statut = p.Statut,
                     NomEleve = p.NomEleve,
@@ -331,6 +402,9 @@ namespace KelasiNaBiso.Services
             public int IdPaiement { get; set; }
             public DateTime DatePaiement { get; set; }
             public decimal Montant { get; set; }
+            public string? CodeDevisePaiement { get; set; }
+            public string? CodeDevisePrincipale { get; set; }
+            public decimal? MontantDevisePrincipale { get; set; }
             public string ModePaiement { get; set; } = string.Empty;
             public string Statut { get; set; } = string.Empty;
             public string? NomEleve { get; set; }

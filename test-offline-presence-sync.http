@@ -1,0 +1,41 @@
+@baseUrl = https://localhost:7102
+@token = replace-with-jwt
+@presenceId = 1
+
+### Charger les agents actifs en pages avant de passer hors ligne
+GET {{baseUrl}}/api/sync/agents?pageSize=1000
+Authorization: Bearer {{token}}
+
+### Synchroniser une arrivée d'agent faite hors ligne
+POST {{baseUrl}}/api/sync/presences/batch
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "items": [
+    {
+      "clientRequestId": "550e8400-e29b-41d4-a716-446655440010",
+      "idAgent": 5,
+      "isPresent": true,
+      "heureArrivee": "08:00",
+      "dateDuJour": "2026-09-30",
+      "deviceId": "tablet-a"
+    }
+  ]
+}
+
+### Synchroniser un départ hors ligne pour une présence déjà créée
+POST {{baseUrl}}/api/sync/presences/departures/batch
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "items": [
+    {
+      "clientRequestId": "550e8400-e29b-41d4-a716-446655440011",
+      "idPresence": {{presenceId}},
+      "heureDepart": "16:30",
+      "deviceId": "tablet-a"
+    }
+  ]
+}

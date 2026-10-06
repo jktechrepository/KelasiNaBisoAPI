@@ -30,6 +30,7 @@ namespace KelasiNaBiso.Data
                 await EnsureElevePermissionsAsync(context);
                 await EnsureBulletinPermissionsAsync(context);
                 await EnsureDepensePermissionsAsync(context);
+                await EnsureHoraireDeCoursPermissionsAsync(context);
                 return;
             }
 
@@ -280,6 +281,14 @@ namespace KelasiNaBiso.Data
                 new Permission { Nom = "Cours.Delete", Categorie = "Cours", Action = "Delete", Description = "Supprimer un cours", Statut = true },
 
                 // ═══════════════════════════════════════════════════════════════════
+                // HORAIRE DE COURS - 4 permissions
+                // ═══════════════════════════════════════════════════════════════════
+                new Permission { Nom = "HoraireDeCours.Create", Categorie = "HoraireDeCours", Action = "Create", Description = "Créer un horaire de cours", Statut = true },
+                new Permission { Nom = "HoraireDeCours.Read", Categorie = "HoraireDeCours", Action = "Read", Description = "Voir les horaires de cours", Statut = true },
+                new Permission { Nom = "HoraireDeCours.Update", Categorie = "HoraireDeCours", Action = "Update", Description = "Modifier un horaire de cours", Statut = true },
+                new Permission { Nom = "HoraireDeCours.Delete", Categorie = "HoraireDeCours", Action = "Delete", Description = "Supprimer un horaire de cours", Statut = true },
+
+                // ═══════════════════════════════════════════════════════════════════
                 // DEVOIR À DOMICILE - 5 permissions
                 // ═══════════════════════════════════════════════════════════════════
                 new Permission { Nom = "DevoirADomicile.Create", Categorie = "DevoirADomicile", Action = "Create", Description = "Créer et publier un devoir à domicile", Statut = true },
@@ -353,7 +362,8 @@ namespace KelasiNaBiso.Data
                     p.Categorie == "Frais" ||
                     p.Categorie == "Inscription" ||
                     p.Categorie == "Presence" ||
-                    p.Categorie == "Cours"
+                    p.Categorie == "Cours" ||
+                    p.Categorie == "HoraireDeCours"
                 ).ToList();
 
                 foreach (var permission in adminPermissions)
@@ -406,6 +416,7 @@ namespace KelasiNaBiso.Data
                     (p.Categorie == "Eleve" && (p.Action == "Read" || p.Action == "ReadAll")) ||
                     // Cours : Lecture seule
                     (p.Categorie == "Cours" && (p.Action == "Read" || p.Action == "ReadAll")) ||
+                    (p.Categorie == "HoraireDeCours" && p.Action == "Read") ||
                     // Classes : Lecture seule
                     (p.Categorie == "Classe" && (p.Action == "Read" || p.Action == "ReadAll"))
                 ).ToList();
@@ -503,6 +514,7 @@ namespace KelasiNaBiso.Data
             {
                 var parentPermissions = allPermissions.Where(p =>
                     p.Action == "ReadChildren" || p.Action == "ReadOwn"
+                    || p.Nom == "HoraireDeCours.Read"
                 ).ToList();
 
                 foreach (var permission in parentPermissions)
@@ -571,6 +583,7 @@ namespace KelasiNaBiso.Data
                 p.Categorie == "Inscription" ||
                 p.Categorie == "Presence" ||
                 p.Categorie == "Cours" ||
+                p.Categorie == "HoraireDeCours" ||
                 (p.Categorie == "Depense" && (p.Action == "Read" || p.Action == "ReadAll" || p.Action == "Update" || p.Action == "Delete")) ||
                 p.Categorie == "CategorieDepense"
             ).ToList();
@@ -612,6 +625,87 @@ namespace KelasiNaBiso.Data
             context.RolePermissions.RemoveRange(toRemove);
             await context.SaveChangesAsync();
             Console.WriteLine($"✅ {toRemove.Count} permission(s) Paiement retirée(s) du rôle Directeur (Create/Update/Delete).");
+        }
+
+        /// <summary>
+        /// Crée (idempotent) HoraireDeCours.* et les assigne Admin / Directeur / Enseignant / Parent / Super-Admin.
+        /// </summary>
+        public static async Task EnsureHoraireDeCoursPermissionsAsync(KelasiNaBisoDbContext context)
+        {
+            var defs = new (string Nom, string Action, string Description)[]
+            {
+                ("HoraireDeCours.Create", "Create", "Créer un horaire de cours"),
+                ("HoraireDeCours.Read", "Read", "Voir les horaires de cours"),
+                ("HoraireDeCours.Update", "Update", "Modifier un horaire de cours"),
+                ("HoraireDeCours.Delete", "Delete", "Supprimer un horaire de cours"),
+            };
+
+            var existingNames = await context.Permissions
+                .Where(p => p.Categorie == "HoraireDeCours")
+                .Select(p => p.Nom)
+                .ToListAsync();
+
+            var created = 0;
+            foreach (var (nom, action, description) in defs)
+            {
+                if (existingNames.Contains(nom))
+                    continue;
+
+                context.Permissions.Add(new Permission
+                {
+                    Nom = nom,
+                    Categorie = "HoraireDeCours",
+                    Action = action,
+                    Description = description,
+                    Statut = true,
+                    DateCreation = DateTime.UtcNow
+                });
+                created++;
+            }
+
+            if (created > 0)
+            {
+                await context.SaveChangesAsync();
+                Console.WriteLine($"✅ {created} permission(s) HoraireDeCours ajoutée(s) au catalogue");
+            }
+
+            var all = await context.Permissions.Where(p => p.Categorie == "HoraireDeCours").ToListAsync();
+            if (!all.Any())
+                return;
+
+            async Task AssignToRole(string roleName, Func<Permission, bool> predicate)
+            {
+                var role = await context.Roles.FirstOrDefaultAsync(r => r.Nom == roleName);
+                if (role == null)
+                    return;
+
+                var existingIds = await context.RolePermissions
+                    .Where(rp => rp.IdRole == role.IdRole)
+                    .Select(rp => rp.IdPermission)
+                    .ToListAsync();
+
+                var toAdd = all.Where(predicate).Where(p => !existingIds.Contains(p.IdPermission)).ToList();
+                foreach (var p in toAdd)
+                {
+                    context.RolePermissions.Add(new RolePermission
+                    {
+                        IdRole = role.IdRole,
+                        IdPermission = p.IdPermission,
+                        DateAttribution = DateTime.UtcNow
+                    });
+                }
+
+                if (toAdd.Count > 0)
+                    Console.WriteLine($"✅ {toAdd.Count} HoraireDeCours.* assignée(s) à {roleName}");
+            }
+
+            await AssignToRole(UserRoles.SUPER_ADMIN, _ => true);
+            await AssignToRole(UserRoles.ADMIN, _ => true);
+            await AssignToRole(UserRoles.DIRECTEUR, _ => true);
+            await AssignToRole(UserRoles.ENSEIGNANT, p => p.Action == "Read");
+            await AssignToRole(UserRoles.PARENT, p => p.Action == "Read");
+
+            await context.SaveChangesAsync();
         }
 
         /// <summary>
@@ -1298,7 +1392,8 @@ namespace KelasiNaBiso.Data
                 p.Categorie == "Frais" ||
                 p.Categorie == "Inscription" ||
                 p.Categorie == "Presence" ||
-                p.Categorie == "Cours"
+                p.Categorie == "Cours" ||
+                p.Categorie == "HoraireDeCours"
             ).ToList();
 
             // Assigner les permissions au rôle Admin

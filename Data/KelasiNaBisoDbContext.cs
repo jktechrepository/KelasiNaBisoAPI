@@ -61,6 +61,7 @@ namespace KelasiNaBiso.Data
         public DbSet<UserDevice> UserDevices { get; set; }
         public DbSet<SmsLog> SmsLogs { get; set; } // ✅ NOUVEAU : Historique des SMS Twilio
         public DbSet<Horaire> Horaires { get; set; }
+        public DbSet<HoraireDeCours> HorairesDeCours { get; set; }
         public DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
         public DbSet<RefreshToken> RefreshTokens { get; set; } // ✅ REFRESH TOKEN : Tokens de rafraîchissement JWT
         public DbSet<CommunicationCampaign> CommunicationCampaigns { get; set; }

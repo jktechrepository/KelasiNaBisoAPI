@@ -1,0 +1,36 @@
+@baseUrl = https://localhost:7105/api
+@token = YOUR_JWT_TOKEN_HERE
+@idClasse = 42
+@idEleve = 101
+
+### Feuille d'appel d'un élève pour une journée
+GET {{baseUrl}}/Presence/eleves/classe/{{idClasse}}/feuille-appel?date=2026-09-30&idEleve={{idEleve}}
+Authorization: Bearer {{token}}
+
+### Feuilles quotidiennes de l'élève sur une période inclusive (max. 366 jours)
+GET {{baseUrl}}/Presence/eleves/classe/{{idClasse}}/feuille-appel?dateDebut=2026-09-01&dateFin=2026-09-30&idEleve={{idEleve}}
+Authorization: Bearer {{token}}
+
+### Export XLSX de la feuille quotidienne de l'élève
+GET {{baseUrl}}/Presence/eleves/classe/{{idClasse}}/feuille-appel/export?date=2026-09-30&idEleve={{idEleve}}&format=xlsx
+Authorization: Bearer {{token}}
+
+### Export PDF de la période de l'élève (max. 366 jours)
+GET {{baseUrl}}/Presence/eleves/classe/{{idClasse}}/feuille-appel/export?dateDebut=2026-09-01&dateFin=2026-09-30&idEleve={{idEleve}}&format=pdf
+Authorization: Bearer {{token}}
+
+### Export XLSX de la période de l'élève
+GET {{baseUrl}}/Presence/eleves/classe/{{idClasse}}/feuille-appel/export?dateDebut=2026-09-01&dateFin=2026-09-30&idEleve={{idEleve}}&format=xlsx
+Authorization: Bearer {{token}}
+
+### Réponse 400 attendue : dateDebut/dateFin doivent être fournies ensemble
+GET {{baseUrl}}/Presence/eleves/classe/{{idClasse}}/feuille-appel?dateDebut=2026-09-01
+Authorization: Bearer {{token}}
+
+### Réponse 400 attendue : la date simple ne se combine pas avec une période
+GET {{baseUrl}}/Presence/eleves/classe/{{idClasse}}/feuille-appel?date=2026-09-30&dateDebut=2026-09-01&dateFin=2026-09-30
+Authorization: Bearer {{token}}
+
+### Réponse 400 attendue : idEleve doit être positif
+GET {{baseUrl}}/Presence/eleves/classe/{{idClasse}}/feuille-appel/export?idEleve=0
+Authorization: Bearer {{token}}

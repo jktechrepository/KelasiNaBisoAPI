@@ -322,6 +322,9 @@ Pas de contenu retourné.
 ### Récupérer un élève par ID
 **GET** `/api/Eleve/{id}`
 
+La réponse détaillée contient la clé `tuteur` lorsque l'élève est rattaché à un
+tuteur. Elle vaut `null` lorsqu'aucun tuteur n'est affecté.
+
 ### Récupérer un élève par référence
 **GET** `/api/Eleve/reference/{reference}`
 
@@ -485,6 +488,40 @@ Pas de contenu retourné.
 
 ### Récupérer les présences d'une date
 **GET** `/api/Presence/date/{date}`
+
+La date se transmet au format `yyyy-MM-dd`. Swagger préremplit la date du jour ;
+le segment `{date}` reste obligatoire dans l'URL.
+
+### Récupérer les présences par type
+**GET** `/api/Presence/type/{typePersonne}`
+
+`typePersonne` accepte `Agent` ou `Eleve`. Swagger préremplit `Agent` ; le
+segment `{typePersonne}` reste obligatoire dans l'URL.
+
+### Récupérer les présences par type et date
+**GET** `/api/Presence/type/{typePersonne}/date/{date}`
+
+`typePersonne` accepte `Agent` ou `Eleve`. La date se transmet au format
+`yyyy-MM-dd`. Swagger préremplit `Agent` et la date du jour ; les deux segments
+restent obligatoires dans l'URL.
+
+### Récupérer les présences d'une date avec pagination
+**GET** `/api/Presence/date/{date}/paged`
+
+La date se transmet au format `yyyy-MM-dd`. Swagger préremplit la date du jour ;
+le segment `{date}` reste obligatoire dans l'URL.
+
+### Récupérer les présences sur une période avec pagination
+**GET** `/api/Presence/date-range/paged`
+
+Les paramètres de requête `dateDebut` et `dateFin` acceptent le format
+`yyyy-MM-dd` et utilisent chacun la date du jour lorsqu'ils sont omis.
+
+### Récupérer les présences d'un agent pour une date
+**GET** `/api/Presence/agent/{idAgent}/date/{date}`
+
+La date se transmet au format `yyyy-MM-dd`. Swagger préremplit la date du jour ;
+le segment `{date}` reste obligatoire dans l'URL.
 
 ### Créer une présence
 **POST** `/api/Presence`
@@ -674,17 +711,44 @@ Pas de contenu retourné.
 ### Récupérer les tuteurs d'une école
 **GET** `/api/Tuteur/ecole/{idEcole}`
 
+### Rechercher un tuteur par nom complet
+**GET** `/api/Tuteur/recherche?nomComplet={terme}`
+
+Recherche partielle et insensible à la casse parmi les tuteurs actifs. Le terme
+doit contenir au moins 2 caractères. Les utilisateurs rattachés à une école
+obtiennent uniquement les tuteurs liés à leur école via une inscription active.
+Les rôles `Super-Admin` et `IT-Support` peuvent rechercher globalement.
+
+Réponse :
+
+```json
+[
+  {
+    "idTuteur": 12,
+    "nomComplet": "Jean Marie Dupont",
+    "genre": "M",
+    "email": "jean.dupont@example.com",
+    "telephone": "+243810000001",
+    "statut": true
+  }
+]
+```
+
 ### Créer un tuteur
-**POST** `/api/Tuteur`
+**POST** `/api/Tuteur?idEcole={idEcole}` (paramètre optionnel si le JWT contient `IdEcole`)
+
+Pour un utilisateur rattaché à une école, `idEcole` peut être omis : l'API utilise alors
+le claim `IdEcole` du token JWT. Lorsqu'il est fourni, le paramètre est contrôlé afin
+d'empêcher l'accès à une autre école. Un Super-Admin ou un IT-Support sans école dans
+son token doit fournir explicitement `idEcole`.
 
 #### Modèle Tuteur
 ```json
 {
-  "relation": "string",
-  "profession": "string",
-  "statut": true,
-  "idUtilisateur": 1,
-  "idEcole": 1
+  "nomComplet": "Jean Marie Kalambayi Junior",
+  "genre": "M",
+  "telephone": "0812074889",
+  "nomCompletRepresentant": "JMK"
 }
 ```
 

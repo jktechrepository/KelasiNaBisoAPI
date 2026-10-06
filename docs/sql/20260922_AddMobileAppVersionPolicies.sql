@@ -30,7 +30,7 @@ FROM DUAL
 WHERE NOT EXISTS (SELECT 1 FROM `MobileAppVersionPolicies` WHERE `Platform` = 'iOS');
 
 ALTER TABLE `UserDevices`
-  ADD COLUMN `AppVersion` varchar(20) CHARACTER SET utf8mb4 NULL;
+  ADD COLUMN IF NOT EXISTS `AppVersion` varchar(20) CHARACTER SET utf8mb4 NULL;
 
 INSERT INTO `__EFMigrationsHistory` (`MigrationId`, `ProductVersion`)
 SELECT '20260922150000_AddMobileAppVersionPolicies', '6.0.36'
