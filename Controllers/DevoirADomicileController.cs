@@ -322,16 +322,20 @@ namespace KelasiNaBiso.Controllers
         /// <summary>
         /// Voir mes devoirs publiés (Enseignant) ou tous les devoirs de l'école (Admin/Directeur/Super-Admin)
         /// Retourne un résultat paginé scopé à l'année scolaire (défaut : année courante).
-        /// Filtres optionnels : idEcole (Super-Admin uniquement), idClasse, idAnneeScolaire
+        /// Filtres optionnels : idEcole (Super-Admin uniquement), idClasse, idAnneeScolaire,
+        /// dateDebut/dateFin (yyyy-MM-dd, inclusifs, sur DatePublication).
         /// </summary>
         [HttpGet("mes-devoirs")]
         [Authorize(Roles = $"{UserRoles.ENSEIGNANT},{UserRoles.DIRECTEUR},{UserRoles.ADMIN},{UserRoles.SUPER_ADMIN}")]
         [ProducesResponseType(typeof(ElevesAnneeScopedResult<PagedResult<DevoirADomicileDto>>), 200)]
+        [ProducesResponseType(400)]
         public async Task<ActionResult<ElevesAnneeScopedResult<PagedResult<DevoirADomicileDto>>>> MesDevoirs(
             [FromQuery] PagedRequest? request,
             [FromQuery] int? idEcole = null,
             [FromQuery] int? idClasse = null,
-            [FromQuery] int? idAnneeScolaire = null)
+            [FromQuery] int? idAnneeScolaire = null,
+            [FromQuery] DateTime? dateDebut = null,
+            [FromQuery] DateTime? dateFin = null)
         {
             try
             {
@@ -346,7 +350,8 @@ namespace KelasiNaBiso.Controllers
                 if (role == UserRoles.SUPER_ADMIN)
                 {
                     pagedResult = await _devoirRepository.GetAllPagedAsync(
-                        pagedRequest, resolvedAnnee, resolvedEcole > 0 ? resolvedEcole : idEcole, idClasse);
+                        pagedRequest, resolvedAnnee, resolvedEcole > 0 ? resolvedEcole : idEcole, idClasse,
+                        dateDebut, dateFin);
                 }
                 else if (role == UserRoles.ADMIN || role == UserRoles.DIRECTEUR)
                 {
@@ -354,7 +359,7 @@ namespace KelasiNaBiso.Controllers
                         return Forbid("Vous devez être associé à une école pour voir les devoirs");
 
                     pagedResult = await _devoirRepository.GetByEcolePagedAsync(
-                        idEcoleUtilisateur, pagedRequest, resolvedAnnee, idClasse);
+                        idEcoleUtilisateur, pagedRequest, resolvedAnnee, idClasse, dateDebut, dateFin);
                     resolvedEcole = idEcoleUtilisateur;
                 }
                 else
@@ -364,7 +369,7 @@ namespace KelasiNaBiso.Controllers
                         return Forbid("Vous devez être un agent pour voir vos devoirs");
 
                     pagedResult = await _devoirRepository.GetByAgentPagedAsync(
-                        idAgent.Value, pagedRequest, resolvedAnnee, idClasse);
+                        idAgent.Value, pagedRequest, resolvedAnnee, idClasse, dateDebut, dateFin);
                     resolvedEcole = idEcoleUtilisateur;
                 }
 
@@ -391,6 +396,7 @@ namespace KelasiNaBiso.Controllers
 
         /// <summary>
         /// Devoirs de la classe de l'élève connecté (inscription active).
+        /// Filtres optionnels : dateDebut/dateFin (yyyy-MM-dd, inclusifs, sur DatePublication).
         /// </summary>
         [HttpGet("eleve/moi")]
         [Authorize(Roles = UserRoles.ELEVE)]
@@ -399,7 +405,9 @@ namespace KelasiNaBiso.Controllers
         [ProducesResponseType(403)]
         public async Task<IActionResult> GetMesDevoirsEleve(
             [FromQuery] PagedRequest? request,
-            [FromQuery] int? idAnneeScolaire = null)
+            [FromQuery] int? idAnneeScolaire = null,
+            [FromQuery] DateTime? dateDebut = null,
+            [FromQuery] DateTime? dateFin = null)
         {
             try
             {
@@ -415,7 +423,8 @@ namespace KelasiNaBiso.Controllers
                 var (idEcole, idAnnee) = await _scope.ResolveClasseAnneeAsync(idClasse, idAnneeScolaire ?? inscription.IdAnneeScolaire);
 
                 var pagedRequest = request ?? new PagedRequest { PageNumber = 1, PageSize = 15 };
-                var pagedResult = await _devoirRepository.GetByClassePagedAsync(idClasse, pagedRequest, idAnnee);
+                var pagedResult = await _devoirRepository.GetByClassePagedAsync(
+                    idClasse, pagedRequest, idAnnee, dateDebut, dateFin);
 
                 var devoirsDto = await MapManyToDtoAsync(pagedResult.Data);
 
@@ -440,14 +449,18 @@ namespace KelasiNaBiso.Controllers
 
         /// <summary>
         /// Voir les devoirs d'une classe (Parent/Élève/Enseignant/Admin/Directeur/Super-Admin)
+        /// Filtres optionnels : dateDebut/dateFin (yyyy-MM-dd, inclusifs, sur DatePublication).
         /// </summary>
         [HttpGet("classe/{idClasse}")]
         [Authorize(Roles = $"{UserRoles.PARENT},{UserRoles.ELEVE},{UserRoles.ENSEIGNANT},{UserRoles.DIRECTEUR},{UserRoles.ADMIN},{UserRoles.SUPER_ADMIN}")]
         [ProducesResponseType(typeof(ElevesAnneeScopedResult<IEnumerable<DevoirADomicileDto>>), 200)]
+        [ProducesResponseType(400)]
         public async Task<ActionResult<ElevesAnneeScopedResult<IEnumerable<DevoirADomicileDto>>>> GetDevoirsByClasse(
             int idClasse,
             [FromQuery] PagedRequest? request,
-            [FromQuery] int? idAnneeScolaire = null)
+            [FromQuery] int? idAnneeScolaire = null,
+            [FromQuery] DateTime? dateDebut = null,
+            [FromQuery] DateTime? dateFin = null)
         {
             try
             {
@@ -461,12 +474,13 @@ namespace KelasiNaBiso.Controllers
                 IEnumerable<DevoirADomicile> devoirs;
                 if (request != null)
                 {
-                    var pagedResult = await _devoirRepository.GetByClassePagedAsync(idClasse, request, idAnnee);
+                    var pagedResult = await _devoirRepository.GetByClassePagedAsync(
+                        idClasse, request, idAnnee, dateDebut, dateFin);
                     devoirs = pagedResult.Data;
                 }
                 else
                 {
-                    devoirs = await _devoirRepository.GetByClasseAsync(idClasse, idAnnee);
+                    devoirs = await _devoirRepository.GetByClasseAsync(idClasse, idAnnee, dateDebut, dateFin);
                 }
 
                 var devoirsDto = await MapManyToDtoAsync(devoirs);
@@ -487,6 +501,7 @@ namespace KelasiNaBiso.Controllers
         /// <summary>
         /// Devoirs des classes des enfants d'un tuteur (inscriptions confirmées, école + année).
         /// Parent : uniquement leur propre IdTuteur. Élève : utiliser GET eleve/moi.
+        /// Filtres optionnels : dateDebut/dateFin (yyyy-MM-dd, inclusifs, sur DatePublication).
         /// </summary>
         [HttpGet("tuteur/{idTuteur}")]
         [Authorize(Roles = $"{UserRoles.PARENT},{UserRoles.ENSEIGNANT},{UserRoles.DIRECTEUR},{UserRoles.ADMIN},{UserRoles.SUPER_ADMIN}")]
@@ -496,7 +511,9 @@ namespace KelasiNaBiso.Controllers
         public async Task<IActionResult> GetDevoirsByTuteur(
             int idTuteur,
             [FromQuery] PagedRequest? request,
-            [FromQuery] string? libelleAnneeScolaire = null)
+            [FromQuery] string? libelleAnneeScolaire = null,
+            [FromQuery] DateTime? dateDebut = null,
+            [FromQuery] DateTime? dateFin = null)
         {
             var role = _currentUserService.UserRole;
             if (role == UserRoles.PARENT)
@@ -509,7 +526,7 @@ namespace KelasiNaBiso.Controllers
             {
                 var pagedRequest = request ?? new PagedRequest { PageNumber = 1, PageSize = 15 };
                 var result = await _devoirRepository.GetByTuteurPagedAsync(
-                    idTuteur, pagedRequest, libelleAnneeScolaire);
+                    idTuteur, pagedRequest, libelleAnneeScolaire, dateDebut, dateFin);
                 return Ok(result);
             }
             catch (InvalidOperationException ex)

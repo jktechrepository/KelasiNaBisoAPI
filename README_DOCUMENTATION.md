@@ -76,6 +76,10 @@
 | [`DOCUMENTATION_FRONTEND_ROLE_CONTROLEUR.md`](./DOCUMENTATION_FRONTEND_ROLE_CONTROLEUR.md) | Écran contrôle entrée — présence + frais lecture seule (rôle Controleur) | Frontend Devs |
 | [`DOCUMENTATION_INTEGRATION_FRONTEND_CONTROLEUR_VUE_FLUTTER.md`](./DOCUMENTATION_INTEGRATION_FRONTEND_CONTROLEUR_VUE_FLUTTER.md) | Intégration Vue 3 et Flutter — contrôle entrée, pointage, dashboard présence | Frontend Devs |
 | [`DOCUMENTATION_INTEGRATION_FRONTEND_CAISSIER_VUE_FLUTTER.md`](./DOCUMENTATION_INTEGRATION_FRONTEND_CAISSIER_VUE_FLUTTER.md) | Intégration Vue 3 et Flutter — client API, écrans, polling Moko | Frontend Devs |
+| [`DOCUMENTATION_FRONTEND_ROLE_ELEVE.md`](./DOCUMENTATION_FRONTEND_ROLE_ELEVE.md) | Parcours élève (JWT Eleve) — devoirs, notes, frais | Frontend Devs |
+| [`DOCUMENTATION_FRONTEND_FILTRE_DATE_DEVOIRS.md`](./DOCUMENTATION_FRONTEND_FILTRE_DATE_DEVOIRS.md) | Filtre optionnel dateDebut/dateFin (DatePublication) sur les GET DevoirADomicile | Frontend Devs |
+| [`DOCUMENTATION_ETAT_NOTIFICATIONS_PUSH.md`](./DOCUMENTATION_ETAT_NOTIFICATIONS_PUSH.md) | État actuel FCM / UserDevices / flux métier (présence, paiement, devoirs) | Frontend Devs, Backend |
+| [`DOCUMENTATION_FRONTEND_NOTIFICATIONS.md`](./DOCUMENTATION_FRONTEND_NOTIFICATIONS.md) | Intégration Vue 3 / Flutter — Push, In-App REST, SignalR (présence, paiement, devoir, communiqué) | Frontend Devs |
 | [`GUIDE_FRONTEND_PERMISSIONS.md`](./GUIDE_FRONTEND_PERMISSIONS.md) | Intégration des permissions côté frontend | Frontend Devs |
 
 ---

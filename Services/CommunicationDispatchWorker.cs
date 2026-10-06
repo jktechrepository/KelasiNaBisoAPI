@@ -17,6 +17,7 @@ namespace KelasiNaBiso.Services
         private readonly IFirebaseNotificationService _firebaseNotificationService;
         private readonly IEmailService _emailService;
         private readonly ISmsNotificationService _smsService;
+        private readonly ISignalRNotificationService _signalRNotificationService;
         private readonly ILogger<CommunicationDispatchWorker> _logger;
 
         private static readonly Regex MarkdownStripRegex = new(@"[*_`>#-]", RegexOptions.Compiled);
@@ -26,12 +27,14 @@ namespace KelasiNaBiso.Services
             IFirebaseNotificationService firebaseNotificationService,
             IEmailService emailService,
             ISmsNotificationService smsService,
+            ISignalRNotificationService signalRNotificationService,
             ILogger<CommunicationDispatchWorker> logger)
         {
             _context = context;
             _firebaseNotificationService = firebaseNotificationService;
             _emailService = emailService;
             _smsService = smsService;
+            _signalRNotificationService = signalRNotificationService;
             _logger = logger;
         }
 
@@ -150,7 +153,24 @@ namespace KelasiNaBiso.Services
                 notification.CampaignRecipients ??= new List<CampaignRecipient>();
                 notification.CampaignRecipients.Add(recipient);
                 finalChannel ??= "InApp";
-                success = true; // la notification in-app est considérée comme succès
+                success = true;
+
+                await _context.SaveChangesAsync(cancellationToken);
+
+                try
+                {
+                    await _signalRNotificationService.SendNotificationToUserAsync(
+                        recipient.IdUtilisateur,
+                        notification);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "SignalR communiqué non délivré pour l'utilisateur {IdUtilisateur} (campagne {IdCampaign}). L'in-app persisté reste valide.",
+                        recipient.IdUtilisateur,
+                        campaign.IdCampaign);
+                }
             }
 
             if (orderedChannels.Contains("Push"))

@@ -119,13 +119,16 @@ namespace KelasiNaBiso.Services
                 .ToListAsync();
         }
 
-        public async Task<IEnumerable<DevoirADomicile>> GetByClasseAsync(int idClasse, int idAnneeScolaire)
+        public async Task<IEnumerable<DevoirADomicile>> GetByClasseAsync(
+            int idClasse, int idAnneeScolaire, DateTime? dateDebut = null, DateTime? dateFin = null)
         {
-            return await _context.DevoirsADomicile
+            var query = _context.DevoirsADomicile
                 .Include(d => d.Agent)
                 .Include(d => d.Classe)
                 .Include(d => d.Cours)
-                .Where(d => d.IdClasse == idClasse && d.IdAnneeScolaire == idAnneeScolaire && d.Statut == true)
+                .Where(d => d.IdClasse == idClasse && d.IdAnneeScolaire == idAnneeScolaire && d.Statut == true);
+            query = ApplyDatePublicationFilter(query, dateDebut, dateFin);
+            return await query
                 .OrderByDescending(d => d.DatePublication)
                 .ToListAsync();
         }
@@ -188,7 +191,9 @@ namespace KelasiNaBiso.Services
             PagedRequest request,
             int idAnneeScolaire,
             int? idEcole = null,
-            int? idClasse = null)
+            int? idClasse = null,
+            DateTime? dateDebut = null,
+            DateTime? dateFin = null)
         {
             IQueryable<DevoirADomicile> query = _context.DevoirsADomicile
                 .Include(d => d.Ecole)
@@ -197,6 +202,7 @@ namespace KelasiNaBiso.Services
                 .Include(d => d.Classe)
                 .Include(d => d.Cours)
                 .Where(d => d.IdAnneeScolaire == idAnneeScolaire);
+            query = ApplyDatePublicationFilter(query, dateDebut, dateFin);
 
             // Filtrer par école si spécifié
             if (idEcole.HasValue && idEcole.Value > 0)
@@ -243,13 +249,16 @@ namespace KelasiNaBiso.Services
             return await query.ToPagedAsync(request);
         }
 
-        public async Task<PagedResult<DevoirADomicile>> GetByClassePagedAsync(int idClasse, PagedRequest request, int idAnneeScolaire)
+        public async Task<PagedResult<DevoirADomicile>> GetByClassePagedAsync(
+            int idClasse, PagedRequest request, int idAnneeScolaire,
+            DateTime? dateDebut = null, DateTime? dateFin = null)
         {
             var query = _context.DevoirsADomicile
                 .Include(d => d.Agent)
                 .Include(d => d.Classe)
                 .Include(d => d.Cours)
                 .Where(d => d.IdClasse == idClasse && d.IdAnneeScolaire == idAnneeScolaire);
+            query = ApplyDatePublicationFilter(query, dateDebut, dateFin);
 
             // Filtrer par statut
             if (!request.IncludeInactive)
@@ -286,12 +295,15 @@ namespace KelasiNaBiso.Services
             int idAgent,
             PagedRequest request,
             int idAnneeScolaire,
-            int? idClasse = null)
+            int? idClasse = null,
+            DateTime? dateDebut = null,
+            DateTime? dateFin = null)
         {
             var query = _context.DevoirsADomicile
                 .Include(d => d.Classe)
                 .Include(d => d.Cours)
                 .Where(d => d.IdAgent == idAgent && d.IdAnneeScolaire == idAnneeScolaire);
+            query = ApplyDatePublicationFilter(query, dateDebut, dateFin);
 
             // Filtrer par classe si spécifié
             if (idClasse.HasValue && idClasse.Value > 0)
@@ -331,12 +343,15 @@ namespace KelasiNaBiso.Services
             int idEcole,
             PagedRequest request,
             int idAnneeScolaire,
-            int? idClasse = null)
+            int? idClasse = null,
+            DateTime? dateDebut = null,
+            DateTime? dateFin = null)
         {
             var query = _context.DevoirsADomicile
                 .Include(d => d.Agent)
                 .Include(d => d.Classe)
                 .Where(d => d.IdEcole == idEcole && d.IdAnneeScolaire == idAnneeScolaire);
+            query = ApplyDatePublicationFilter(query, dateDebut, dateFin);
 
             // Filtrer par classe si spécifié
             if (idClasse.HasValue && idClasse.Value > 0)
@@ -375,7 +390,9 @@ namespace KelasiNaBiso.Services
         public async Task<PagedResult<DevoirADomicilePourTuteurDto>> GetByTuteurPagedAsync(
             int idTuteur,
             PagedRequest request,
-            string? libelleAnneeScolaire = null)
+            string? libelleAnneeScolaire = null,
+            DateTime? dateDebut = null,
+            DateTime? dateFin = null)
         {
             var pageNumber = Math.Max(1, request.PageNumber);
             var pageSize = Math.Clamp(request.PageSize, 1, 100);
@@ -437,6 +454,7 @@ namespace KelasiNaBiso.Services
                 .Include(d => d.Cours)
                 .Include(d => d.AnneeScolaire)
                 .Where(d => d.Statut == true || request.IncludeInactive);
+            query = ApplyDatePublicationFilter(query, dateDebut, dateFin);
 
             if (!request.IncludeInactive)
                 query = query.Where(d => d.Statut == true);
@@ -854,6 +872,36 @@ namespace KelasiNaBiso.Services
                 .ToListAsync();
 
             return telecharges.ToHashSet();
+        }
+
+        /// <summary>
+        /// Filtre optionnel inclusif sur le jour de <see cref="DevoirADomicile.DatePublication"/>.
+        /// </summary>
+        internal static IQueryable<DevoirADomicile> ApplyDatePublicationFilter(
+            IQueryable<DevoirADomicile> query,
+            DateTime? dateDebut,
+            DateTime? dateFin)
+        {
+            if (dateDebut.HasValue && dateFin.HasValue
+                && dateDebut.Value.Date > dateFin.Value.Date)
+            {
+                throw new InvalidOperationException(
+                    "dateDebut ne peut pas être postérieure à dateFin.");
+            }
+
+            if (dateDebut.HasValue)
+            {
+                var start = dateDebut.Value.Date;
+                query = query.Where(d => d.DatePublication >= start);
+            }
+
+            if (dateFin.HasValue)
+            {
+                var endExclusive = dateFin.Value.Date.AddDays(1);
+                query = query.Where(d => d.DatePublication < endExclusive);
+            }
+
+            return query;
         }
     }
 }

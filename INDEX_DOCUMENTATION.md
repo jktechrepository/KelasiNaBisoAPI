@@ -56,6 +56,9 @@
 | `API_DOCUMENTATION.md` | Documentation complète de l'API | 🔧 Intermédiaire |
 | `FRONTEND_DEVELOPER_GUIDE.md` | Guide développeurs frontend | 🔧 Intermédiaire |
 | `DOCUMENTATION_INTEGRATION_FRONTEND_FRAIS_VUE_FLUTTER.md` | Module Frais — année + classe (Vue 3 / Flutter) | 🔧 Intermédiaire |
+| `DOCUMENTATION_FRONTEND_FILTRE_DATE_DEVOIRS.md` | Filtre dateDebut/dateFin des listes DevoirADomicile (Vue 3 / Flutter) | 🔧 Intermédiaire |
+| `DOCUMENTATION_ETAT_NOTIFICATIONS_PUSH.md` | Inventaire FCM, UserDevices, canaux et flux métier | 🔧 Intermédiaire |
+| `DOCUMENTATION_FRONTEND_NOTIFICATIONS.md` | Intégration Push / In-App / SignalR (Vue 3, Flutter) | 🔧 Intermédiaire |
 | `JWT_IMPLEMENTATION_SUMMARY.md` | Implémentation JWT | 📊 Avancé |
 | `SOFT_DELETE_IMPLEMENTATION_COMPLETE.md` | Soft delete | 📊 Avancé |
 
@@ -115,6 +118,18 @@
 
 #### ...intégrer la grille tarifaire Frais (année + classe) ?
 → **`DOCUMENTATION_INTEGRATION_FRONTEND_FRAIS_VUE_FLUTTER.md`**
+
+#### ...filtrer les devoirs par date de publication ?
+→ **`DOCUMENTATION_FRONTEND_FILTRE_DATE_DEVOIRS.md`**
+
+#### ...comprendre les notifications push (FCM) déjà en place ?
+→ **`DOCUMENTATION_ETAT_NOTIFICATIONS_PUSH.md`**
+
+#### ...intégrer Push, In-App et SignalR (Vue / Flutter) ?
+→ **`DOCUMENTATION_FRONTEND_NOTIFICATIONS.md`**
+
+#### ...savoir si devoir / paiement / présence / communiqué notifient tout seuls ?
+→ **`DOCUMENTATION_ETAT_NOTIFICATIONS_PUSH.md`** (section « Push et In-App automatiques : 4 flux »)
 
 #### ...voir ce qui a changé ?
 → **`RESUME_FINAL_MIGRATION.md`**

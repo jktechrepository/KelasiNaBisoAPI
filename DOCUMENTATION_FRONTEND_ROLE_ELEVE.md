@@ -213,8 +213,10 @@ Authorization: Bearer {token}
 ### Liste (recommandé)
 
 ```
-GET /api/DevoirADomicile/eleve/moi?pageNumber=1&pageSize=15&idAnneeScolaire=
+GET /api/DevoirADomicile/eleve/moi?pageNumber=1&pageSize=15&idAnneeScolaire=&dateDebut=&dateFin=
 ```
+
+Filtres optionnels **`dateDebut` / `dateFin`** (`yyyy-MM-dd`, inclusifs) sur **`datePublication`**, pas `dateLimite`. Détail Vue 3 / Flutter : [`DOCUMENTATION_FRONTEND_FILTRE_DATE_DEVOIRS.md`](DOCUMENTATION_FRONTEND_FILTRE_DATE_DEVOIRS.md).
 
 | Auth | Roles = `Eleve` |
 |------|-----------------|
