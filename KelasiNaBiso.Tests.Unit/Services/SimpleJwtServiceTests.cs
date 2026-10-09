@@ -77,6 +77,36 @@ namespace KelasiNaBiso.Tests.Unit.Services
         }
 
         [Fact]
+        public void GenerateToken_ShouldIncludeOnlyActiveRole_WhenActiveRoleIdProvided()
+        {
+            var utilisateur = TestDataBuilder.CreateUtilisateur(1, "test@test.com");
+            var role1 = TestDataBuilder.CreateRole(1, "Enseignant", niveau: 4);
+            var role2 = TestDataBuilder.CreateRole(2, "Parent", niveau: 5);
+
+            utilisateur.UserRoles = new List<UserRole>
+            {
+                TestDataBuilder.CreateUserRole(1, 1, isPrimary: true),
+                TestDataBuilder.CreateUserRole(1, 2, isPrimary: false)
+            };
+            utilisateur.UserRoles.First().Role = role1;
+            utilisateur.UserRoles.Last().Role = role2;
+
+            var token = _jwtService.GenerateToken(utilisateur, activeRoleId: 2);
+            var jsonToken = new JwtSecurityTokenHandler().ReadJwtToken(token);
+
+            var roleClaims = jsonToken.Claims.Where(c => c.Type == System.Security.Claims.ClaimTypes.Role).ToList();
+            roleClaims.Should().HaveCount(1);
+            roleClaims.Single().Value.Should().Be("Parent");
+
+            jsonToken.Claims.First(c => c.Type == "primaryRole").Value.Should().Be("Parent");
+            jsonToken.Claims.First(c => c.Type == "idRole").Value.Should().Be("2");
+
+            var rolesClaim = jsonToken.Claims.First(c => c.Type == "roles").Value;
+            rolesClaim.Should().Contain("Enseignant");
+            rolesClaim.Should().Contain("Parent");
+        }
+
+        [Fact]
         public void GenerateToken_ShouldIncludePrimaryRole_WhenUserHasOneRole()
         {
             // Arrange

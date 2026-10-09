@@ -11,6 +11,7 @@ public interface IHoraireDeCoursRepository
         int? idAnneeScolaire,
         int? idEcole,
         int? idTuteur,
+        int? idAgentAffecte,
         CancellationToken cancellationToken);
     Task<PagedResult<HoraireDeCoursResponse>> GetPagedAsync(
         int? idClasse,
@@ -18,10 +19,16 @@ public interface IHoraireDeCoursRepository
         int? idAnneeScolaire,
         int? idEcole,
         int? idTuteur,
+        int? idAgentAffecte,
         PagedRequest request,
         CancellationToken cancellationToken);
 
-    Task<HoraireDeCoursResponse?> GetByIdAsync(int id, CancellationToken cancellationToken);
+    Task<HoraireDeCoursResponse?> GetByIdAsync(
+        int id,
+        CancellationToken cancellationToken,
+        int? idEcole = null,
+        int? idTuteur = null,
+        int? idAgentAffecte = null);
     Task<HoraireDeCoursResponse> CreateAsync(CreateHoraireDeCoursRequest request, CancellationToken cancellationToken);
     Task<HoraireDeCoursResponse?> UpdateAsync(int id, UpdateHoraireDeCoursRequest request, CancellationToken cancellationToken);
     Task<bool> DeleteAsync(int id, CancellationToken cancellationToken);

@@ -31,7 +31,20 @@ contrôlées par l'API :
 Les rôles actuellement alimentés par le seeder sont :
 
 - `Super-Admin`, `Admin`, `Directeur` : lecture et écriture ;
-- `Enseignant`, `Eleve`, `Tuteur` : lecture.
+- `Enseignant`, `Eleve`, `Parent` : lecture.
+
+### Scopes de lecture (GET liste, paginé et `/{id}`)
+
+Le périmètre dépend des **claims `Role` du JWT** (après une [bascule de session](../DOCUMENTATION_FRONTEND_BASCULE_ROLE.md), un seul rôle est actif).
+
+| JWT | Périmètre |
+|-----|-----------|
+| Admin, Directeur, Sous-Directeur, Super-Admin, IT-Support | École (token / `idEcole` autorisé). Pas de filtre classe. |
+| `Parent` (sans rôle admin) | Uniquement les classes + année où un enfant du tuteur (`IdTuteur`) a une inscription **confirmée**. Sans claim `IdTuteur` → 403. |
+| `Enseignant` (sans rôle admin) | Uniquement les classes de l’année où il est **titulaire** (`TitulaireClasse` actif, `DateFin` vide) **ou** où il apparaît comme `IdAgent` sur au moins un créneau. Il voit alors **tout** l’emploi du temps de ces classes. Sans claim `IdAgent` → 403. |
+| Enseignant **et** Parent dans le même JWT (sans bascule) | Scope **Parent** (tuteur). Après bascule vers Enseignant → scope enseignant. |
+
+Les query `idClasse`, `idAgent`, `idAnneeScolaire`, `idEcole` restent des **sous-filtres** dans ce périmètre. Ne pas s’en servir pour élargir l’accès.
 
 ## 2. Format des horaires
 

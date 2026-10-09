@@ -1244,6 +1244,29 @@ namespace KelasiNaBiso.Data
                 .HasForeignKey(h => h.IdClasse)
                 .OnDelete(DeleteBehavior.NoAction);
 
+            modelBuilder.Entity<HoraireDeCours>()
+                .HasOne(h => h.Classe)
+                .WithMany()
+                .HasForeignKey(h => h.IdClasse)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<HoraireDeCours>()
+                .HasOne(h => h.Cours)
+                .WithMany()
+                .HasForeignKey(h => h.IdCours)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<HoraireDeCours>()
+                .HasOne(h => h.Agent)
+                .WithMany()
+                .HasForeignKey(h => h.IdAgent)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<HoraireDeCours>()
+                .HasOne(h => h.AnneeScolaire)
+                .WithMany()
+                .HasForeignKey(h => h.IdAnneeScolaire)
+                .OnDelete(DeleteBehavior.Restrict);
 
             // Configuration de la vue V_Utilisateur
             modelBuilder.Entity<V_Utilisateur>()

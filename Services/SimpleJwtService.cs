@@ -8,7 +8,7 @@ namespace KelasiNaBiso.Services
 {
     public interface ISimpleJwtService
     {
-        string GenerateToken(Utilisateur utilisateur, int? idAgent = null, int? idTuteur = null);
+        string GenerateToken(Utilisateur utilisateur, int? idAgent = null, int? idTuteur = null, int? activeRoleId = null);
         bool ValidateToken(string token);
     }
 
@@ -30,7 +30,7 @@ namespace KelasiNaBiso.Services
             _expirationMinutes = int.Parse(_configuration["Jwt:ExpirationMinutes"] ?? "1440");
         }
 
-        public string GenerateToken(Utilisateur utilisateur, int? idAgent = null, int? idTuteur = null)
+        public string GenerateToken(Utilisateur utilisateur, int? idAgent = null, int? idTuteur = null, int? activeRoleId = null)
         {
             try
             {
@@ -100,14 +100,21 @@ namespace KelasiNaBiso.Services
                         .Where(r => r != null)
                         .ToList();
 
-                    // Ajouter chaque rôle comme ClaimTypes.Role (pour [Authorize(Roles = "...")])
-                    foreach (var role in activeRoles)
+                    var sessionRole = activeRoleId.HasValue
+                        ? activeRoles.FirstOrDefault(r => r.IdRole == activeRoleId.Value)
+                        : null;
+                    var rolesForIsInRole = sessionRole != null
+                        ? new List<Role> { sessionRole }
+                        : activeRoles;
+
+                    foreach (var role in rolesForIsInRole)
                     {
                         claims.Add(new Claim(ClaimTypes.Role, role.Nom));
                     }
 
-                    // Rétrocompatibilité: idRole et primaryRole
-                    var primaryRole = utilisateur.PrimaryRole ?? activeRoles.OrderBy(r => r.Niveau ?? 999).FirstOrDefault();
+                    var primaryRole = sessionRole
+                        ?? utilisateur.PrimaryRole
+                        ?? activeRoles.OrderBy(r => r.Niveau ?? 999).FirstOrDefault();
                     if (primaryRole != null)
                     {
                         claims.Add(new Claim("idRole", primaryRole.IdRole.ToString()));

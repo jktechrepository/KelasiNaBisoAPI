@@ -1,5 +1,6 @@
 using KelasiNaBiso.Models;
 using KelasiNaBiso.Models.DTOs;
+using KelasiNaBiso.Models.Enums;
 using KelasiNaBiso.Services.Repositories;
 using KelasiNaBisoAPI.Services.Repositories;
 using KelasiNaBiso.Services;
@@ -2327,6 +2328,119 @@ namespace KelasiNaBiso.Controllers
             {
                 _logger.LogError(ex, $"❌ Erreur lors de la récupération des rôles pour l'utilisateur {id}");
                 return StatusCode(500, new { message = "Erreur lors de la récupération des rôles", error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Bascule de session : nouveau JWT avec le rôle choisi (sans changer le rôle principal en base).
+        /// </summary>
+        [HttpPost("{id}/roles/{roleId}/bascule")]
+        [ProducesResponseType(typeof(AuthentificationResponse), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(403)]
+        [ProducesResponseType(404)]
+        public async Task<ActionResult<AuthentificationResponse>> BasculeRole(int id, int roleId)
+        {
+            try
+            {
+                var currentUserId = GetCurrentUserId();
+                if (currentUserId == null)
+                    return Unauthorized(new { message = "Token JWT invalide" });
+
+                var isSuperAdmin = User.IsInRole(UserRoles.SUPER_ADMIN);
+                if (currentUserId.Value != id && !isSuperAdmin)
+                    return StatusCode(StatusCodes.Status403Forbidden,
+                        new { message = "Vous ne pouvez basculer que votre propre rôle." });
+
+                var utilisateur = await _context.Utilisateurs
+                    .Include(u => u.Role)
+                    .Include(u => u.Ecole)
+                    .Include(u => u.UserRoles)
+                        .ThenInclude(ur => ur.Role)
+                    .FirstOrDefaultAsync(u => u.IdUtilisateur == id);
+
+                if (utilisateur == null)
+                    return NotFound(new { message = $"Utilisateur {id} introuvable" });
+
+                var role = await _context.Roles.FindAsync(roleId);
+                if (role == null)
+                    return NotFound(new { message = $"Rôle {roleId} introuvable" });
+
+                var hasRole = utilisateur.UserRoles != null
+                    && utilisateur.UserRoles.Any(ur => ur.Statut == true && ur.IdRole == roleId);
+                if (!hasRole)
+                    return BadRequest(new { message = "L'utilisateur n'a pas ce rôle." });
+
+                var accessToken = _jwtService.GenerateToken(
+                    utilisateur, utilisateur.IdAgent, utilisateur.IdTuteur, roleId);
+                var expirationMinutes = int.Parse(_configuration["Jwt:ExpirationMinutes"] ?? "1440");
+                var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
+                var refreshToken = await _refreshTokenService.GenerateRefreshTokenAsync(
+                    utilisateur.IdUtilisateur,
+                    null,
+                    ipAddress);
+
+                var rolePermissions = await _permissionService.GetRolePermissionsAsync(roleId);
+                var permissionsList = rolePermissions
+                    .Where(p => p.Statut == true)
+                    .Select(p => p.Nom)
+                    .Distinct()
+                    .ToList();
+
+                var userRolesList = (await _permissionService.GetUserRolesAsync(id)).ToList();
+                var primaryRole = await _permissionService.GetUserPrimaryRoleAsync(id);
+
+                _logger.LogInformation(
+                    "Bascule de session utilisateur {UserId} vers rôle {RoleId} ({RoleNom}) par {CurrentUserId}",
+                    id, roleId, role.Nom, currentUserId);
+
+                return Ok(new AuthentificationResponse
+                {
+                    Success = true,
+                    Message = "Rôle de session basculé",
+                    AccessToken = accessToken,
+                    RefreshToken = refreshToken,
+                    TokenType = "Bearer",
+                    ExpiresIn = expirationMinutes * 60,
+                    ExpiresAt = DateTime.UtcNow.AddMinutes(expirationMinutes),
+                    DoitChangerMotDePasse = utilisateur.DoitChangerMotDePasse == true,
+                    Utilisateur = new Utilisateur
+                    {
+                        IdUtilisateur = utilisateur.IdUtilisateur,
+                        ReferenceUtilisateur = utilisateur.ReferenceUtilisateur,
+                        NomUtilisateur = utilisateur.NomUtilisateur,
+                        PostNomUtilisateur = utilisateur.PostNomUtilisateur,
+                        PrenomUtilisateur = utilisateur.PrenomUtilisateur,
+                        Email = utilisateur.Email,
+                        DefaultUsername = utilisateur.DefaultUsername,
+                        Telephone = utilisateur.Telephone,
+                        PhotoUrl = utilisateur.PhotoUrl,
+                        LieuNaissance = utilisateur.LieuNaissance,
+                        DateNaissance = utilisateur.DateNaissance,
+                        Genre = utilisateur.Genre,
+                        Statut = utilisateur.Statut,
+                        DoitChangerMotDePasse = utilisateur.DoitChangerMotDePasse,
+                        IdAgent = utilisateur.IdAgent,
+                        IdTuteur = utilisateur.IdTuteur,
+                        IdEleve = utilisateur.IdEleve,
+                        DateCreation = utilisateur.DateCreation,
+                        IsConnecte = utilisateur.IsConnecte,
+                        IdEcole = utilisateur.IdEcole,
+                        Ecole = utilisateur.Ecole,
+                        IdRole = utilisateur.IdRole
+                    },
+                    NomRole = role.Nom,
+                    NomEcole = utilisateur.Ecole?.Nom ?? "",
+                    AcceptNotification = utilisateur.Ecole?.AcceptNotification ?? true,
+                    Permissions = permissionsList,
+                    Roles = userRolesList,
+                    PrimaryRole = primaryRole
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur lors de la bascule de rôle {RoleId} pour l'utilisateur {UserId}", roleId, id);
+                return StatusCode(500, new { message = "Erreur lors de la bascule de rôle", error = ex.Message });
             }
         }
 

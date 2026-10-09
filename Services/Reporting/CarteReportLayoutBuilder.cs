@@ -61,6 +61,8 @@ namespace KelasiNaBiso.Services.Reporting
 
             var titreEcole = CreateText(logo.Right + Units.Millimeters * 2f, Units.Millimeters * 2f,
                 Units.Millimeters * 55f, Units.Millimeters * 6f, $"[{dataSourceName}.NomEcole]", 10, true);
+            titreEcole.Name = "NomEcole";
+            FitSchoolName(titreEcole);
             band.Objects.Add(titreEcole);
 
             var slogan = CreateText(titreEcole.Left, titreEcole.Bottom, titreEcole.Width, Units.Millimeters * 4f,
@@ -171,6 +173,30 @@ namespace KelasiNaBiso.Services.Reporting
                 Font = new Font("Arial", fontSize, bold ? FontStyle.Bold : FontStyle.Regular),
                 VertAlign = VertAlign.Center
             };
+        }
+
+        /// <summary>
+        /// Réduit la police du nom d'école pour tenir sur une ligne (ex. ECOLE CENTRALE DES ARTS ET METIERS).
+        /// </summary>
+        internal static void FitSchoolName(TextObject text)
+        {
+            if (text == null)
+                return;
+
+            text.WordWrap = false;
+            text.CanGrow = false;
+            text.CanShrink = false;
+            text.AutoShrink = AutoShrinkMode.FontSize;
+            text.AutoShrinkMinSize = 5f;
+        }
+
+        internal static void FitSchoolNameObjects(Report report)
+        {
+            foreach (var name in new[] { "ecole", "Ecole", "NomEcole" })
+            {
+                if (report.FindObject(name) is TextObject text)
+                    FitSchoolName(text);
+            }
         }
     }
 }

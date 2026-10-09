@@ -36,7 +36,8 @@ public sealed class HoraireDeCoursController : ControllerBase
             return scope.Error;
 
         return Ok(await repository.GetAsync(
-            idClasse, idAgent, idAnneeScolaire, scope.Value!.SchoolId, scope.Value.TutorId, cancellationToken));
+            idClasse, idAgent, idAnneeScolaire, scope.Value!.SchoolId, scope.Value.TutorId,
+            scope.Value.TeacherAgentId, cancellationToken));
     }
 
     /// <summary>Returns a paginated active weekly schedule using the same filters and access scope.</summary>
@@ -55,7 +56,7 @@ public sealed class HoraireDeCoursController : ControllerBase
 
         return Ok(await repository.GetPagedAsync(
             idClasse, idAgent, idAnneeScolaire, scope.Value!.SchoolId, scope.Value.TutorId,
-            request, cancellationToken));
+            scope.Value.TeacherAgentId, request, cancellationToken));
     }
 
     private async Task<(ScheduleScope? Value, IActionResult? Error)> ResolveScheduleScopeAsync(
@@ -85,7 +86,7 @@ public sealed class HoraireDeCoursController : ControllerBase
                     return (null, schoolAccess);
             }
 
-            return (new ScheduleScope(requestedSchoolId, tutorId), null);
+            return (new ScheduleScope(requestedSchoolId, tutorId, null), null);
         }
 
         var tokenSchoolId = this.GetCurrentUserSchoolId();
@@ -99,21 +100,37 @@ public sealed class HoraireDeCoursController : ControllerBase
 
         if (requestedSchoolId.HasValue && !isGlobalAdministrator)
         {
-            var schoolAccess = this.ForbidIfWrongSchool(requestedSchoolId);
+            var schoolAccess = await this.ForbidIfWrongSchoolAsync(
+                requestedSchoolId, cancellationToken: cancellationToken);
             if (schoolAccess is not null)
                 return (null, schoolAccess);
         }
 
-        return (new ScheduleScope(effectiveSchoolId, null), null);
+        int? teacherAgentId = null;
+        var isTeacher = User.IsInRole(UserRoles.ENSEIGNANT) && !hasAdministrativeScope;
+        if (isTeacher)
+        {
+            teacherAgentId = this.GetCurrentAgentId();
+            if (!teacherAgentId.HasValue)
+                return (null, StatusCode(StatusCodes.Status403Forbidden,
+                    new { message = "Accès refusé : identité agent absente du token (IdAgent)." }));
+        }
+
+        return (new ScheduleScope(effectiveSchoolId, null, teacherAgentId), null);
     }
 
-    private sealed record ScheduleScope(int? SchoolId, int? TutorId);
+    private sealed record ScheduleScope(int? SchoolId, int? TutorId, int? TeacherAgentId);
 
     /// <summary>Returns one active weekly schedule entry.</summary>
     [HttpGet("{id:int}")]
-    public async Task<ActionResult<HoraireDeCoursResponse>> GetById(int id, CancellationToken cancellationToken)
+    public async Task<IActionResult> GetById(int id, CancellationToken cancellationToken)
     {
-        var response = await repository.GetByIdAsync(id, cancellationToken);
+        var scope = await ResolveScheduleScopeAsync(null, cancellationToken);
+        if (scope.Error is not null)
+            return scope.Error;
+
+        var response = await repository.GetByIdAsync(
+            id, cancellationToken, scope.Value!.SchoolId, scope.Value.TutorId, scope.Value.TeacherAgentId);
         return response is null ? NotFound() : Ok(response);
     }
 

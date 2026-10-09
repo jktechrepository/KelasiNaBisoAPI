@@ -22,9 +22,10 @@ public sealed class HoraireDeCoursService : IHoraireDeCoursRepository
         int? idAnneeScolaire,
         int? idEcole,
         int? idTuteur,
+        int? idAgentAffecte,
         CancellationToken cancellationToken)
     {
-        var query = BuildScheduleQuery(idClasse, idAgent, idAnneeScolaire, idEcole, idTuteur);
+        var query = BuildScheduleQuery(idClasse, idAgent, idAnneeScolaire, idEcole, idTuteur, idAgentAffecte);
 
         return await query
             .OrderBy(e => e.Jour)
@@ -40,10 +41,11 @@ public sealed class HoraireDeCoursService : IHoraireDeCoursRepository
         int? idAnneeScolaire,
         int? idEcole,
         int? idTuteur,
+        int? idAgentAffecte,
         PagedRequest request,
         CancellationToken cancellationToken)
     {
-        var query = BuildScheduleQuery(idClasse, idAgent, idAnneeScolaire, idEcole, idTuteur)
+        var query = BuildScheduleQuery(idClasse, idAgent, idAnneeScolaire, idEcole, idTuteur, idAgentAffecte)
             .OrderBy(e => e.Jour)
             .ThenBy(e => e.HeureDebut)
             .ThenBy(e => e.IdHoraireDeCours)
@@ -57,7 +59,8 @@ public sealed class HoraireDeCoursService : IHoraireDeCoursRepository
         int? idAgent,
         int? idAnneeScolaire,
         int? idEcole,
-        int? idTuteur)
+        int? idTuteur,
+        int? idAgentAffecte)
     {
         var query = context.HorairesDeCours
             .AsNoTracking()
@@ -79,6 +82,23 @@ public sealed class HoraireDeCoursService : IHoraireDeCoursRepository
                     el.Statut == true)));
         }
 
+        if (idAgentAffecte.HasValue)
+        {
+            var agentId = idAgentAffecte.Value;
+            query = query.Where(e =>
+                context.TitulairesClasses.Any(t =>
+                    t.IdAgent == agentId &&
+                    t.IdClasse == e.IdClasse &&
+                    t.IdAnneeScolaire == e.IdAnneeScolaire &&
+                    t.Statut == true &&
+                    t.DateFin == null)
+                || context.HorairesDeCours.Any(h =>
+                    h.Statut &&
+                    h.IdAgent == agentId &&
+                    h.IdClasse == e.IdClasse &&
+                    h.IdAnneeScolaire == e.IdAnneeScolaire));
+        }
+
         if (idEcole.HasValue)
             query = query.Where(e => e.Classe!.Direction!.IdEcole == idEcole.Value);
 
@@ -92,11 +112,15 @@ public sealed class HoraireDeCoursService : IHoraireDeCoursRepository
         return query;
     }
 
-    public async Task<HoraireDeCoursResponse?> GetByIdAsync(int id, CancellationToken cancellationToken)
+    public async Task<HoraireDeCoursResponse?> GetByIdAsync(
+        int id,
+        CancellationToken cancellationToken,
+        int? idEcole = null,
+        int? idTuteur = null,
+        int? idAgentAffecte = null)
     {
-        return await context.HorairesDeCours
-            .AsNoTracking()
-            .Where(e => e.IdHoraireDeCours == id && e.Statut)
+        return await BuildScheduleQuery(null, null, null, idEcole, idTuteur, idAgentAffecte)
+            .Where(e => e.IdHoraireDeCours == id)
             .Select(ToResponseExpression())
             .SingleOrDefaultAsync(cancellationToken);
     }

@@ -515,14 +515,16 @@ namespace KelasiNaBiso.Helpers
         }
 
         /// <summary>
-        /// Comme <see cref="ForbidIfWrongSchool"/>, plus exception Parent :
-        /// autorisé si IdTuteur JWT a au moins un enfant avec inscription confirmée dans l'école cible.
+        /// Comme <see cref="ForbidIfWrongSchool"/>, plus :
+        /// Parent si un enfant a une inscription confirmée dans l'école cible ;
+        /// Enseignant si la fiche Agent (JWT IdAgent) appartient à l'école cible.
         /// </summary>
         public static async Task<IActionResult?> ForbidIfWrongSchoolAsync(
             this ControllerBase controller,
             int? targetEcoleId,
             IInscriptionActiveResolver? inscriptionResolver = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            IAgentRepository? agentRepository = null)
         {
             if (controller.User.IsInRole(UserRoles.SUPER_ADMIN)
                 || controller.User.IsInRole(UserRoles.IT_SUPPORT))
@@ -547,6 +549,22 @@ namespace KelasiNaBiso.Helpers
                         && await resolver.IsTuteurInEcoleAsync(idTuteur.Value, targetEcoleId.Value, cancellationToken))
                     {
                         return null;
+                    }
+                }
+            }
+
+            if (controller.User.IsInRole(UserRoles.ENSEIGNANT))
+            {
+                var idAgent = controller.GetCurrentAgentId();
+                if (idAgent.HasValue)
+                {
+                    var agents = agentRepository
+                        ?? controller.HttpContext.RequestServices.GetService<IAgentRepository>();
+                    if (agents != null)
+                    {
+                        var agent = await agents.GetByIdAsync(idAgent.Value);
+                        if (agent != null && agent.IdEcole == targetEcoleId.Value)
+                            return null;
                     }
                 }
             }

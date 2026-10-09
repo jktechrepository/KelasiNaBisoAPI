@@ -547,6 +547,7 @@ namespace KelasiNaBiso.Services.Reporting
             if (report.FindObject("CarteBand") is DataBand rectoBand)
                 rectoBand.DataSource = report.GetDataSource("Carte");
             BindDuplexDataBands(report);
+            CarteReportLayoutBuilder.FitSchoolNameObjects(report);
             EnsureDuplexCardReady(report);
 
             return new WebReport
@@ -562,6 +563,7 @@ namespace KelasiNaBiso.Services.Reporting
 
             // Noms d'objets = ceux du designer RectoEleve.frx (minuscules)
             SetTextBinding(report, "ecole", "[Carte.Ecole]");
+            CarteReportLayoutBuilder.FitSchoolNameObjects(report);
             SetTextBinding(report, "nomcomplet", "[Carte.NomComplet]");
             SetTextBinding(report, "matricule", "MATRICULE : [Carte.Matricule]");
             SetTextBinding(report, "classe", "CLASSE : [Carte.Classe]");
@@ -588,6 +590,7 @@ namespace KelasiNaBiso.Services.Reporting
             if (report.FindObject("CarteBand") is DataBand rectoBand)
                 rectoBand.DataSource = report.GetDataSource("Carte");
             BindDuplexDataBands(report);
+            CarteReportLayoutBuilder.FitSchoolNameObjects(report);
             EnsureDuplexCardReady(report);
 
             return new WebReport
@@ -617,6 +620,7 @@ namespace KelasiNaBiso.Services.Reporting
             SetTextBinding(report, "Matricule", "MATRICULE : [Carte.Matricule]");
             SetTextBinding(report, "Adresse", "ADRESSE : [Carte.Adresse]");
             SetTextBinding(report, "Ecole", "[Carte.Ecole]");
+            CarteReportLayoutBuilder.FitSchoolNameObjects(report);
 
             if (report.FindObject("Photo") is PictureObject photo)
                 photo.DataColumn = "Carte.Photo";
@@ -868,6 +872,7 @@ namespace KelasiNaBiso.Services.Reporting
             SetTextBinding(report, "Matricule", "[Carte.Matricule]");
             SetTextBinding(report, "NomClasse", "[Carte.NomClasse]");
             SetTextBinding(report, "NomEcole", "[Carte.NomEcole]");
+            CarteReportLayoutBuilder.FitSchoolNameObjects(report);
             SetTextBinding(report, "SloganEcole", "[Carte.SloganEcole]");
             SetTextBinding(report, "AnneeScolaire", "[Carte.AnneeScolaire]");
 
