@@ -51,6 +51,87 @@ namespace KelasiNaBiso.Services
                 .FirstOrDefaultAsync(e => e.IdAgent == id);
         }
 
+        public async Task<AgentDetailDto?> GetDetailByIdAsync(int id, CancellationToken cancellationToken = default)
+        {
+            var agent = await _context.Agents
+                .AsNoTracking()
+                .Where(e => e.Statut == true)
+                .FirstOrDefaultAsync(e => e.IdAgent == id, cancellationToken);
+
+            if (agent == null)
+                return null;
+
+            var titulairesActifs = await ResolveTitulairesActifsAsync(agent, cancellationToken);
+            return AgentDetailDto.From(agent, titulairesActifs);
+        }
+
+        /// <summary>
+        /// Titulaires ouverts (Statut + DateFin null). Toutes les lignes de l'année scolaire en cours.
+        /// </summary>
+        private async Task<List<TitulaireActifDto>> ResolveTitulairesActifsAsync(Agent agent, CancellationToken cancellationToken)
+        {
+            var ouverts = _context.TitulairesClasses
+                .AsNoTracking()
+                .Include(tc => tc.Classe)
+                .Include(tc => tc.AnneeScolaire)
+                .Where(tc =>
+                    tc.IdAgent == agent.IdAgent &&
+                    tc.Statut == true &&
+                    tc.DateFin == null);
+
+            IQueryable<TitulaireClasse> query = ouverts;
+            if (agent.IdEcole.HasValue)
+            {
+                var idAnneeCourante = await TryGetIdAnneeCouranteAsync(agent.IdEcole.Value, cancellationToken);
+                if (idAnneeCourante.HasValue)
+                    query = ouverts.Where(tc => tc.IdAnneeScolaire == idAnneeCourante.Value);
+            }
+
+            var rows = await query
+                .OrderByDescending(tc => tc.DateDebut)
+                .ThenBy(tc => tc.IdClasse)
+                .ToListAsync(cancellationToken);
+
+            return rows.Select(chosen => new TitulaireActifDto
+            {
+                IdTitulaireClasse = chosen.IdTitulaireClasse,
+                IdClasse = chosen.IdClasse,
+                NomClasse = chosen.Classe?.NomClasse,
+                IdAnneeScolaire = chosen.IdAnneeScolaire,
+                LibelleAnneeScolaire = chosen.AnneeScolaire?.LibelleAnneeScolaire,
+                DateDebut = chosen.DateDebut
+            }).ToList();
+        }
+
+        private async Task<int?> TryGetIdAnneeCouranteAsync(int idEcole, CancellationToken cancellationToken)
+        {
+            var now = DateTime.Now;
+            var actives = _context.AnneeScolaires
+                .Where(a => a.IdEcole == idEcole && a.Statut == true);
+
+            var enSession = await actives
+                .Where(a => a.DateDebut <= now && a.DateFin >= now)
+                .Select(a => (int?)a.IdAnneeScolaire)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (enSession.HasValue)
+                return enSession;
+
+            var anneePrecedenteTerminee = await actives
+                .Where(a => a.DateFin < now)
+                .OrderByDescending(a => a.DateFin)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (anneePrecedenteTerminee == null)
+                return null;
+
+            return await actives
+                .Where(a => a.DateDebut > now)
+                .OrderBy(a => a.DateDebut)
+                .Select(a => (int?)a.IdAnneeScolaire)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
         public async Task<Agent> GetByMatriculeAsync(string matricule)
         {
             return await _context.Agents

@@ -344,9 +344,10 @@ namespace KelasiNaBiso.Controllers
 
         // PUT: api/Inscription/5
         [HttpPut("{id}")]
-        [Authorize(Roles = "Admin,Super-Admin")]
+        [Permission("Inscription.Update")]
         [ProducesResponseType(typeof(Inscription), 200)]
         [ProducesResponseType(400)]
+        [ProducesResponseType(403)]
         [ProducesResponseType(404)]
         public async Task<ActionResult<Inscription>> UpdateInscription(int id, [FromBody] UpdateInscriptionDto dto)
         {

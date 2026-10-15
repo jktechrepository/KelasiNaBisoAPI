@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 namespace KelasiNaBiso.Services.Sync
 {
     /// <summary>
-    /// Pull lecture offline : élèves + frais dus (année scolaire courante).
+    /// Pull lecture offline : élèves + frais dus + agents (année scolaire courante pour élèves/frais).
     /// Delta approximatif via DateCreation / derniers paiements (pas de UpdatedAt natif).
     /// </summary>
     public class SyncPullService : ISyncPullService
@@ -52,14 +52,20 @@ namespace KelasiNaBiso.Services.Sync
                 },
                 cancellationToken);
 
-            // Bootstrap : pages max ; si hasMore, le client doit enchaîner /eleves et /frais-dus.
+            var agents = await GetAgentsPageAsync(
+                idEcole,
+                new SyncRequestDto { PageSize = SyncRequestDto.MaxPageSize, Snapshot = snapshot },
+                cancellationToken);
+
+            // Bootstrap : pages max ; si hasMore, le client doit enchaîner /eleves, /frais-dus et /agents.
             return new SyncBootstrapDto
             {
                 IdEcole = idEcole,
                 Watermark = watermark,
                 Snapshot = snapshot,
                 Eleves = eleves.Items,
-                FraisDus = frais.Items
+                FraisDus = frais.Items,
+                Agents = agents.Items
             };
         }
 
@@ -148,6 +154,7 @@ namespace KelasiNaBiso.Services.Sync
                     Nom = e.Nom,
                     Postnom = e.Postnom,
                     Prenom = e.Prenom,
+                    SerialNumber = e.SerialNumber,
                     IdClasse = insc?.IdClasse,
                     NomClasse = insc?.NomClasse,
                     IsActif = e.Statut != false,
@@ -315,6 +322,59 @@ namespace KelasiNaBiso.Services.Sync
                 HasMore = hasMore,
                 NextCursor = hasMore && page.Count > 0
                     ? SyncPullHelpers.FormatFraisDuCursor(page[^1].IdEleve, page[^1].IdFrais)
+                    : null,
+                NextSince = nextSince
+            };
+        }
+
+        public async Task<SyncPageDto<AgentSyncDto>> GetAgentsPageAsync(
+            int idEcole,
+            SyncRequestDto request,
+            CancellationToken cancellationToken = default)
+        {
+            var pageSize = request.ResolvePageSize();
+            var snapshot = string.IsNullOrWhiteSpace(request.Snapshot)
+                ? _idempotency.CreateSnapshot(idEcole)
+                : request.Snapshot!;
+            var nextSince = _idempotency.CreateWatermark();
+
+            var hasSince = SyncPullHelpers.TryParseSince(request.Since, out var sinceUtc);
+
+            var query = _context.Agents.AsNoTracking()
+                .Where(a => a.IdEcole == idEcole && a.Statut == true);
+
+            if (hasSince)
+                query = query.Where(a => a.DateCreation > sinceUtc);
+
+            if (SyncPullHelpers.TryParseAgentCursor(request.Cursor, out var cursorId))
+                query = query.Where(a => a.IdAgent > cursorId);
+
+            var ordered = await query
+                .OrderBy(a => a.IdAgent)
+                .Take(pageSize + 1)
+                .ToListAsync(cancellationToken);
+
+            var hasMore = ordered.Count > pageSize;
+            if (hasMore)
+                ordered = ordered.Take(pageSize).ToList();
+
+            var items = ordered.Select(a => new AgentSyncDto
+            {
+                IdAgent = a.IdAgent,
+                Matricule = a.Matricule,
+                Nom = a.Nom,
+                Postnom = a.Postnom,
+                Prenom = a.Prenom,
+                Fonction = a.Fonction
+            }).ToList();
+
+            return new SyncPageDto<AgentSyncDto>
+            {
+                Snapshot = snapshot,
+                Items = items,
+                HasMore = hasMore,
+                NextCursor = hasMore && items.Count > 0
+                    ? SyncPullHelpers.FormatAgentCursor(items[^1].IdAgent)
                     : null,
                 NextSince = nextSince
             };

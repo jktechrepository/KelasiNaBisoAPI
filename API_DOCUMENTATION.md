@@ -711,6 +711,23 @@ le segment `{date}` reste obligatoire dans l'URL.
 ### Récupérer les tuteurs d'une école
 **GET** `/api/Tuteur/ecole/{idEcole}`
 
+Filtre optionnel : `idAnneeScolaire`. Tuteurs liés à l'école via une inscription active.
+
+### Récupérer les tuteurs d'une école (paginé)
+**GET** `/api/Tuteur/ecole/{idEcole}/paged`
+
+Même périmètre que la liste école, avec pagination offset.
+
+| Query | Type | Défaut | Description |
+|-------|------|--------|-------------|
+| `pageNumber` | int | 1 | Page (à partir de 1) |
+| `pageSize` | int | 15 | Taille (max 100) |
+| `idAnneeScolaire` | int | année courante de l'école | Scope inscriptions |
+
+Exemple : `GET /api/Tuteur/ecole/5/paged?pageNumber=1&pageSize=15&idAnneeScolaire=12`
+
+Réponse : `ElevesAnneeScopedResult<PagedResult<Tuteur>>` (données + métadonnées de page). Accès refusé (403) si `idEcole` n'est pas celui du JWT (hors Super-Admin / IT-Support).
+
 ### Rechercher un tuteur par nom complet
 **GET** `/api/Tuteur/recherche?nomComplet={terme}`
 

@@ -201,6 +201,8 @@ namespace KelasiNaBiso.Models.DTOs.Sync
         public string Snapshot { get; set; } = string.Empty;
         public List<int> DeletedEleveIds { get; set; } = new();
         public List<int> DeactivatedEleveIds { get; set; } = new();
+        public List<int> DeletedAgentIds { get; set; } = new();
+        public List<int> DeactivatedAgentIds { get; set; } = new();
         public List<int> RemovedFraisIds { get; set; } = new();
         public List<int> DeletedPresenceIds { get; set; } = new();
         public List<int> DeletedPaymentIds { get; set; } = new();

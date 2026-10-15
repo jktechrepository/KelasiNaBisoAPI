@@ -26,8 +26,8 @@ namespace KelasiNaBiso.Services.Repositories
         Task<IEnumerable<Presence>> GetByEleveAndDateAsync(int idEleve, DateTime date);
         Task<IEnumerable<Presence>> GetByAgentAsync(int idAgent);
         Task<IEnumerable<Presence>> GetByAgentAndDateAsync(int idAgent, DateTime date);
-        Task<IEnumerable<Presence>> GetByTypePersonneAsync(string typePersonne);
-        Task<IEnumerable<Presence>> GetByTypePersonneAndDateAsync(string typePersonne, DateTime date);
+        Task<IEnumerable<Presence>> GetByTypePersonneAsync(string typePersonne, int idEcole);
+        Task<IEnumerable<Presence>> GetByTypePersonneAndDateAsync(string typePersonne, DateTime date, int idEcole);
         Task<Presence> CreateAsync(Presence presence);
         Task<Presence> UpdateAsync(Presence presence);
         Task<bool> DeleteAsync(int id);

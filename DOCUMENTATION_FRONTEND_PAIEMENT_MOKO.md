@@ -6,6 +6,9 @@ Guide pour **Parent**, **personnel école** (Admin, Directeur, Financier,Caissie
 **Swagger :** [https://dev-knb.asdc-rdc.org/swagger/index.html](https://dev-knb.asdc-rdc.org/swagger/index.html)  
 **Auth :** `Authorization: Bearer {jwt_token}` (sauf endpoints publics)
 
+**Référence portable (PayOut file + worker + ledger) :**
+[docs/DOCUMENTATION_INTEGRATION_MOKOAFRIKA_PORTABLE.md](docs/DOCUMENTATION_INTEGRATION_MOKOAFRIKA_PORTABLE.md)
+
 ---
 
 ## Table des matières

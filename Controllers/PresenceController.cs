@@ -226,32 +226,61 @@ namespace KelasiNaBiso.Controllers
             return Ok(presences);
         }
 
-        // ✅ FILTRAGE PAR TYPE: GET: api/Presence/type/ELEVE
+        // ✅ FILTRAGE PAR TYPE: GET: api/Presence/type/ELEVE?idEcole=
         [HttpGet("type/{typePersonne}")]
-        public async Task<ActionResult<IEnumerable<Presence>>> GetPresencesByType(string typePersonne)
+        [ProducesResponseType(typeof(IEnumerable<Presence>), 200)]
+        public async Task<IActionResult> GetPresencesByType(
+            string typePersonne,
+            [FromQuery] int? idEcole = null)
         {
-            // Validation du type
             if (typePersonne.ToUpper() != "ELEVE" && typePersonne.ToUpper() != "AGENT")
             {
                 return BadRequest(new { message = "Le type doit être 'ELEVE' ou 'AGENT'" });
             }
 
-            var presences = await _presenceRepository.GetByTypePersonneAsync(typePersonne.ToUpper());
-            return Ok(presences);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                var presences = await _presenceRepository.GetByTypePersonneAsync(
+                    typePersonne.ToUpper(), resolvedEcole);
+                return Ok(presences);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // ✅ FILTRAGE PAR TYPE: GET: api/Presence/type/ELEVE/date/2024-01-15
+        // ✅ FILTRAGE PAR TYPE: GET: api/Presence/type/ELEVE/date/2024-01-15?idEcole=
         [HttpGet("type/{typePersonne}/date/{date}")]
-        public async Task<ActionResult<IEnumerable<Presence>>> GetPresencesByTypeAndDate(string typePersonne, DateTime date)
+        [ProducesResponseType(typeof(IEnumerable<Presence>), 200)]
+        public async Task<IActionResult> GetPresencesByTypeAndDate(
+            string typePersonne,
+            DateTime date,
+            [FromQuery] int? idEcole = null)
         {
-            // Validation du type
             if (typePersonne.ToUpper() != "ELEVE" && typePersonne.ToUpper() != "AGENT")
             {
                 return BadRequest(new { message = "Le type doit être 'ELEVE' ou 'AGENT'" });
             }
 
-            var presences = await _presenceRepository.GetByTypePersonneAndDateAsync(typePersonne.ToUpper(), date);
-            return Ok(presences);
+            var resolveError = this.TryResolveListIdEcole(idEcole, out var resolvedEcole);
+            if (resolveError != null)
+                return resolveError;
+
+            try
+            {
+                var presences = await _presenceRepository.GetByTypePersonneAndDateAsync(
+                    typePersonne.ToUpper(), date, resolvedEcole);
+                return Ok(presences);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // GET: api/Presence/cours/5

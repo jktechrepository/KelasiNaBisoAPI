@@ -39,6 +39,9 @@ namespace KelasiNaBiso.Tests.Unit.Services
             fraisInactif.Statut = false;
             _context.Frais.Add(fraisInactif);
 
+            var agentInactif = TestDataBuilder.CreateAgent(20, "AgentInactif", idEcole: 1, statut: false);
+            _context.Agents.Add(agentInactif);
+
             _context.AuditLogs.AddRange(
                 new AuditLog
                 {
@@ -74,6 +77,30 @@ namespace KelasiNaBiso.Tests.Unit.Services
                     ChangedFields = "Statut",
                     NewValues = "{\"Statut\":false}",
                     Success = true
+                },
+                new AuditLog
+                {
+                    TableName = "Agent",
+                    RecordId = 88,
+                    Action = "DELETE",
+                    UserId = 1,
+                    UserName = "admin",
+                    IdEcole = 1,
+                    DateAction = _now.AddMinutes(-4),
+                    Success = true
+                },
+                new AuditLog
+                {
+                    TableName = "Agent",
+                    RecordId = 21,
+                    Action = "UPDATE",
+                    UserId = 1,
+                    UserName = "admin",
+                    IdEcole = 1,
+                    DateAction = _now.AddMinutes(-1),
+                    ChangedFields = "Statut",
+                    NewValues = "{\"Statut\":false}",
+                    Success = true
                 });
 
             _context.SaveChanges();
@@ -96,6 +123,9 @@ namespace KelasiNaBiso.Tests.Unit.Services
             dto.DeletedPaymentIds.Should().Contain(77);
             dto.DeactivatedEleveIds.Should().Contain(2); // soft statut
             dto.DeactivatedEleveIds.Should().Contain(3); // audit UPDATE
+            dto.DeletedAgentIds.Should().Contain(88);
+            dto.DeactivatedAgentIds.Should().Contain(20); // soft statut
+            dto.DeactivatedAgentIds.Should().Contain(21); // audit UPDATE
             dto.RemovedFraisIds.Should().Contain(9);
             dto.NextSince.Should().NotBeNullOrWhiteSpace();
             dto.Snapshot.Should().NotBeNullOrWhiteSpace();

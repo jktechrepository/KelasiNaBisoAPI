@@ -328,30 +328,81 @@ namespace KelasiNaBiso.Services
                 .ToListAsync();
         }
 
-        // ✅ FILTRAGE PAR TYPE: Récupérer les présences par type de présence
-        public async Task<IEnumerable<Presence>> GetByTypePersonneAsync(string typePersonne)
+        // ✅ FILTRAGE PAR TYPE: Récupérer les présences par type de présence (scopé école)
+        public async Task<IEnumerable<Presence>> GetByTypePersonneAsync(string typePersonne, int idEcole)
         {
-            return await _context.Presences
+            var query = _context.Presences
                 .Include(p => p.Eleve)
                 .Include(p => p.Agent)
-               // .Include(p => p.Vacation)
                 .Where(p => p.TypePresence == typePersonne)
-                .Where(p => p.Statut == true)
+                .Where(p => p.Statut == true);
+
+            query = await ApplyTypeEcoleScopeAsync(query, typePersonne, idEcole, dateForYear: null);
+
+            return await query
                 .OrderByDescending(p => p.DateDuJour)
                 .ToListAsync();
         }
 
-        // ✅ FILTRAGE PAR TYPE: Récupérer les présences par type et date
-        public async Task<IEnumerable<Presence>> GetByTypePersonneAndDateAsync(string typePersonne, DateTime date)
+        // ✅ FILTRAGE PAR TYPE: Récupérer les présences par type et date (scopé école)
+        public async Task<IEnumerable<Presence>> GetByTypePersonneAndDateAsync(
+            string typePersonne,
+            DateTime date,
+            int idEcole)
         {
-            return await _context.Presences
+            var query = _context.Presences
                 .Include(p => p.Eleve)
                 .Include(p => p.Agent)
-              //  .Include(p => p.Vacation)
                 .Where(p => p.TypePresence == typePersonne && p.DateDuJour.Date == date.Date)
-                .Where(p => p.Statut == true)
+                .Where(p => p.Statut == true);
+
+            query = await ApplyTypeEcoleScopeAsync(query, typePersonne, idEcole, dateForYear: date);
+
+            return await query
                 .OrderBy(p => p.HeureArrivee)
                 .ToListAsync();
+        }
+
+        /// <summary>
+        /// AGENT → Agent.IdEcole. ELEVE → inscription confirmée de l'année
+        /// (période couvrant <paramref name="dateForYear"/>, sinon année courante).
+        /// </summary>
+        private async Task<IQueryable<Presence>> ApplyTypeEcoleScopeAsync(
+            IQueryable<Presence> query,
+            string typePersonne,
+            int idEcole,
+            DateTime? dateForYear)
+        {
+            if (string.Equals(typePersonne, "AGENT", StringComparison.OrdinalIgnoreCase))
+            {
+                return query.Where(p => p.IdAgent != null && p.Agent != null && p.Agent.IdEcole == idEcole);
+            }
+
+            int idAnnee;
+            if (dateForYear.HasValue)
+            {
+                var day = dateForYear.Value.Date;
+                var annee = await _context.AnneeScolaires
+                    .AsNoTracking()
+                    .Where(a => a.IdEcole == idEcole
+                        && a.Statut == true
+                        && a.DateDebut.Date <= day
+                        && a.DateFin.Date >= day)
+                    .OrderByDescending(a => a.DateDebut)
+                    .FirstOrDefaultAsync();
+
+                if (annee == null)
+                    return query.Where(_ => false);
+
+                idAnnee = annee.IdAnneeScolaire;
+            }
+            else
+            {
+                (_, idAnnee) = await _scope.ResolveEcoleAnneeAsync(idEcole, null);
+            }
+
+            var eleveIds = _scope.GetEleveIdsInEcoleAnnee(idEcole, idAnnee);
+            return query.Where(p => p.IdEleve != null && eleveIds.Contains(p.IdEleve.Value));
         }
 
         public async Task<Presence> CreateAsync(Presence presence)

@@ -1,22 +1,56 @@
 # Intégration portable — Mode Offline / Sync
 
-Guide **réutilisable hors métier énergie** : architecture, contrat HTTP et responsabilités client pour prendre en charge un mode hors ligne (lecture locale + file d’écritures idempotentes).
+Playbook **découplé du métier** pour reproduire un mode hors ligne dans un autre projet (lecture locale + file d’écritures idempotentes).
 
-- Auth : `Authorization: Bearer {jwt}`
-- JSON : **camelCase**
-- Organisation / tenant : dérivée du JWT (`idSociete`) — pas de paramètre query obligatoire sur la plupart des routes
-- Ce document décrit le **noyau portable**. Le mapping métier facture / client / arriéré est en **Annexe A**.
-
-Références historiques (non portables, parfois exemples obsolètes) :
-
-- [`DOCUMENTATION_ENDPOINTS_SYNC.md`](../DOCUMENTATION_ENDPOINTS_SYNC.md)
-- [`docs/FRONTEND_INTEGRATION_MULTIDEVISE_FLEXPAY.md`](./FRONTEND_INTEGRATION_MULTIDEVISE_FLEXPAY.md) (section offline CASH vs FlexPay)
-
-**Source de vérité** : DTOs sous `Models/DTOs/Sync/` et `Controllers/SyncController.cs`.
+Ce document décrit des **patterns** et un **contrat HTTP générique**. Aucun domaine (école, énergie, commerce…) n’est requis pour le comprendre. Le mapping vers KelasiNaBiso est en **Annexe A**.
 
 ---
 
-## 1. Architecture portable
+## Table des matières
+
+1. [Objectif et non-objectifs](#1-objectif-et-non-objectifs)
+2. [Architecture](#2-architecture)
+3. [Vocabulaire abstrait](#3-vocabulaire-abstrait)
+4. [Contrat HTTP générique](#4-contrat-http-générique)
+5. [Batch d’écritures](#5-batch-décritures)
+6. [Cycle client](#6-cycle-client)
+7. [Erreurs et retry](#7-erreurs-et-retry)
+8. [Checklist d’adaptation](#8-checklist-dadaptation)
+9. [Annexe A — Mapping KelasiNaBiso](#annexe-a--mapping-kelasinabiso)
+10. [Annexe B — Backend minimal](#annexe-b--backend-minimal)
+
+---
+
+## 1. Objectif et non-objectifs
+
+### Objectif
+
+Permettre à une app (mobile / web) de :
+
+1. Télécharger un **jeu de données lecture seule** (fiches + éventuels soldes / postes).
+2. Créer localement des **écritures** hors ligne (UUID stable).
+3. Les **remonter** au serveur par batch sans double effet (idempotence).
+4. **Purger** le cache local quand le serveur signale suppressions / désactivations.
+
+### Non-objectifs
+
+| Hors scope | Détail |
+|------------|--------|
+| Choix de store local | SQLite, Hive, Drift, IndexedDB… au choix du client |
+| CRUD offline des fiches syncées | Les entités pullées restent **read-only** hors ligne |
+| Sync temps réel / CRDT | Pas de sync bi-directionnelle concurrente sur les fiches |
+| Flux réseau async | Paiement électronique, 3-D Secure, webhooks — **exclus** de la file |
+| Snippets UI d’un produit | Voir le guide frontend du projet cible |
+
+### Prérequis techniques
+
+- Auth : `Authorization: Bearer {jwt}`
+- JSON : **camelCase**
+- Tenant (organisation) : **dérivé du JWT**, pas d’`idTenant` en query sur les routes sync
+
+---
+
+## 2. Architecture
 
 ```mermaid
 flowchart LR
@@ -38,6 +72,7 @@ flowchart LR
 | **Bootstrap** | Snapshot initial + watermark pour démarrer |
 | **Delta** | Modifications depuis `since` (watermark) |
 | **Cursor** | Pagination opaque des gros volumes |
+| **Snapshot** | Token de cohérence pendant une session de sync |
 | **File d’écritures** | Créations locales hors ligne |
 | **Batch idempotent** | Upload avec `clientRequestId` (UUID) unique |
 | **Deletions** | Purge soft-delete / désactivations du cache local |
@@ -46,65 +81,44 @@ flowchart LR
 
 | Règle | Conséquence |
 |-------|-------------|
-| Fiches métier syncées = **read-only** offline | Pas de CRUD offline des entités lecture |
-| Seule la file d’écritures est créée hors ligne | Encaissements / transactions CASH-like |
-| Chaque écriture a un `clientRequestId` stable | Idempotence (rejeu réseau sans double effet) |
+| Fiches syncées = **read-only** offline | Pas de PUT/PATCH offline sur les entités pullées |
+| Seule la file d’écritures est créée hors ligne | 1 à N types de batch possibles (même pattern) |
+| Chaque écriture a un `clientRequestId` stable | Rejeu réseau sans double effet |
 | Watermark persisté localement | Delta fiable au reconnect |
-| Flux réseau temps réel exclus de la file | Ex. paiement électronique async / 3-D Secure |
+| Flux réseau temps réel exclus de la file | Ex. paiement électronique async |
 
 ---
 
-## 2. Vocabulaire découplé
+## 3. Vocabulaire abstrait
 
-| Concept portable | Équivalent API actuelle |
-|------------------|-------------------------|
-| Organisation / tenant | `idSociete` (JWT) |
-| Fiches métier (lecture) | `GET /api/sync/clients` |
-| Postes à encaisser / soldes | `GET /api/sync/arrears` |
-| Écritures offline | `POST /api/sync/payments/batch` |
-| Watermark | `watermark` / `since` / `nextSince` |
-| Snapshot de session | `snapshot` (cohérence pendant une sync) |
-| Pagination | `cursor` / `nextCursor` / `hasMore` / `pageSize` |
-
----
-
-## 3. Concepts techniques
-
-### Watermark
-
-Chaîne opaque fournie par le serveur. Persister après bootstrap et après chaque page / deletions réussie. Repasser en `since` pour le delta.
-
-### Cursor
-
-Token opaque (souvent Base64 signé). Boucler tant que `hasMore === true` en passant `nextCursor`.
-
-### Snapshot
-
-Token de cohérence de session de sync (query optionnelle `snapshot` sur les endpoints paginés / deletions). Conserver celui renvoyé dans la page courante pour les requêtes suivantes de la même session.
-
-### Idempotence
-
-Chaque item du batch porte un `clientRequestId` (UUID, max 36 caractères). Un rejeu avec le même id → statut `duplicate` (pas de second enregistrement).
-
-### Limites (DTO actuel)
-
-| Paramètre | Défaut | Max |
-|-----------|--------|-----|
-| `pageSize` | `1000` | `5000` |
+| Concept | Signification | Exemple de remplacement |
+|---------|---------------|-------------------------|
+| **Tenant** | Périmètre d’isolation (JWT) | société, école, magasin |
+| **Entity** | Fiche lecture seule pullée | client, élève, article |
+| **BalanceItem** | Poste / solde lié à une Entity | arriéré, frais dû, commande ouverte |
+| **WriteItem** | Écriture créée offline | paiement CASH, pointage, commande |
+| **Watermark** | Curseur temporel opaque serveur | `since` / `nextSince` |
+| **Cursor** | Token de pagination opaque | `cursor` / `nextCursor` |
+| **Snapshot** | Cohérence de session de sync | query `snapshot` |
+| **clientRequestId** | UUID ≤ 36 car. figé à la création locale | clé d’idempotence |
 
 ---
 
-## 4. Contrat HTTP — `/api/sync`
+## 4. Contrat HTTP générique
 
-Tous les endpoints : `[Authorize]`.
+Préfixe typique : `/api/sync`. Tous les endpoints : `[Authorize]`.
 
-| Méthode | Route | Rôle portable |
-|---------|-------|---------------|
+| Méthode | Route générique | Rôle |
+|---------|-----------------|------|
 | `GET` | `/api/sync/bootstrap` | Snapshot initial + watermark |
-| `GET` | `/api/sync/clients` | Delta / pages fiches lecture |
-| `GET` | `/api/sync/arrears` | Delta / pages soldes |
+| `GET` | `/api/sync/{entities}` | Delta / pages fiches lecture |
+| `GET` | `/api/sync/{balance-items}` | Delta / pages soldes (optionnel) |
 | `GET` | `/api/sync/deletions` | Purge soft-delete / désactivations |
-| `POST` | `/api/sync/payments/batch` | Upload écritures + résultats par `clientRequestId` |
+| `POST` | `/api/sync/{writes}/batch` | Upload écritures (répétable par type) |
+
+`{entities}`, `{balance-items}`, `{writes}` sont des **placeholders** : chaque projet choisit ses chemins.
+
+Limites de pagination recommandées : `pageSize` défaut `1000`, max `5000`.
 
 ### 4.1 Bootstrap
 
@@ -112,84 +126,67 @@ Tous les endpoints : `[Authorize]`.
 GET /api/sync/bootstrap
 ```
 
-Réponse (`SyncBootstrapDto`) :
+Réponse (shape générique) :
 
 ```json
 {
-  "watermark": "2024-03-21T10:30:00.000Z_12345",
-  "clients": [ /* ClientSyncDto */ ],
-  "arrears": [ /* ArrearSyncDto */ ]
+  "watermark": "opaque-server-watermark",
+  "entities": [ /* EntitySyncDto */ ],
+  "balanceItems": [ /* BalanceItemSyncDto — optionnel */ ]
 }
 ```
 
-Cas d’usage : première install, reset local, sync forcée après longue inactivité.
+Cas d’usage : première install, reset local, sync forcée après longue inactivité. Si le volume dépasse le plafond bootstrap, enchaîner les endpoints paginés.
 
-### 4.2 Fiches (clients) — page + delta
+### 4.2 Entities — page + delta
 
 ```http
-GET /api/sync/clients?since={watermark}&cursor={cursor}&pageSize=1000&snapshot={snapshot}
+GET /api/sync/{entities}?since={watermark}&cursor={cursor}&pageSize=1000&snapshot={snapshot}
 ```
 
-Query (`SyncRequestDto`) : `cursor`, `pageSize`, `snapshot`, `since` — tous optionnels.
+Query : `since`, `cursor`, `pageSize`, `snapshot` — optionnels.
 
-Réponse (`SyncPageDto<ClientSyncDto>`) :
+Réponse :
 
 ```json
 {
-  "snapshot": "...",
+  "snapshot": "…",
   "items": [
     {
-      "idClient": 1,
-      "nomClient": "Jean Dupont",
-      "adresseClient": "…",
-      "telephone": "…",
-      "emailClient": null,
-      "codeCons": "b/b4/0003",
-      "idSociete": 1,
-      "isActif": true,
-      "statut": true,
-      "isDeleted": false,
-      "updatedAt": "2024-03-21T10:30:00.000Z",
-      "clientUsages": []
+      "idEntity": 1,
+      "displayName": "…",
+      "isActive": true,
+      "updatedAt": "2024-03-21T10:30:00.000Z"
     }
   ],
   "nextCursor": "…",
   "hasMore": true,
-  "nextSince": "2024-03-21T10:30:00.000Z_12345"
+  "nextSince": "opaque-server-watermark"
 }
 ```
 
-Champs géographie / usage (`idAxe`, `idCabine`, `idTypeDeCourant`, `clientUsages`, …) = **extensions métier** : ignorer si hors scope du projet cible.
+Les champs métier (`adresse`, `matricule`, …) sont **extensions** du projet cible : hors scope de ce playbook.
 
-### 4.3 Soldes (arrears) — page + delta
+### 4.3 Balance items — page + delta (optionnel)
 
 ```http
-GET /api/sync/arrears?since={watermark}&cursor={cursor}&pageSize=1000&onlyOutstanding=true
+GET /api/sync/{balance-items}?since={watermark}&cursor={cursor}&pageSize=1000&onlyOutstanding=true
 ```
 
-Query supplémentaire (`SyncArrearsRequestDto`) : `onlyOutstanding` (défaut **`true`**).
-
-Réponse (`SyncPageDto<ArrearSyncDto>`) — item type :
+Item type :
 
 ```json
 {
-  "idClientFacture": 1,
-  "idFacture": 1,
-  "idClient": 1,
-  "numeroFacture": "F2024-001",
-  "dateEmission": "2024-03-01T00:00:00.000Z",
-  "mois": "03",
-  "annees": 2024,
-  "montantTotal": 15000,
-  "montantPaye": 5000,
-  "montantDu": 10000,
-  "libelleUsage": "Résidentiel",
-  "estArrierePreExistant": false,
-  "dateModification": "2024-03-21T10:30:00.000Z"
+  "idBalanceItem": 1,
+  "idEntity": 1,
+  "amountDue": 10000,
+  "amountPaid": 5000,
+  "amountTotal": 15000,
+  "updatedAt": "2024-03-21T10:30:00.000Z"
 }
 ```
 
-Dans un métier non-facturation : mapper mentalement vers « poste à encaisser » (`montantDu`, lien vers fiche `idClient`, id de poste `idClientFacture`).
+Filtre `onlyOutstanding` (défaut souvent `true`) : ne renvoyer que les postes encore dus.
 
 ### 4.4 Deletions — purge cache
 
@@ -197,51 +194,56 @@ Dans un métier non-facturation : mapper mentalement vers « poste à encaisser 
 GET /api/sync/deletions?since={watermark}&snapshot={snapshot}
 ```
 
-`since` est **obligatoire** (`SyncDeletionsRequestDto`).
+`since` est **obligatoire**.
 
-Réponse (`SyncDeletionsDto`) :
+Réponse (listes d’IDs typées par collection) :
 
 ```json
 {
   "snapshot": "…",
-  "deletedClientIds": [123],
-  "deactivatedClientIds": [45],
-  "removedClientFactureIds": [678],
-  "deletedPaymentIds": [],
-  "nextSince": "2024-03-21T10:30:00.000Z_12345"
+  "deletedEntityIds": [123],
+  "deactivatedEntityIds": [45],
+  "removedBalanceItemIds": [678],
+  "deletedWriteIds": [],
+  "nextSince": "opaque-server-watermark"
 }
 ```
 
 Actions locales :
 
-- Retirer du store les IDs de `deletedClientIds` / `deactivatedClientIds`
-- Retirer les postes de `removedClientFactureIds`
-- Optionnel : purger `deletedPaymentIds`
+- Retirer / désactiver les IDs de `deleted*` / `deactivated*`
+- Retirer les postes de `removed*`
+- Persister `nextSince`
 
-### 4.5 Batch d’écritures (paiements)
+### 4.5 Concepts techniques
+
+**Watermark** — chaîne opaque fournie par le serveur. Persister après bootstrap et après chaque page / deletions réussie. Repasser en `since` pour le delta.
+
+**Cursor** — token opaque. Boucler tant que `hasMore === true` en passant `nextCursor`.
+
+**Snapshot** — token de cohérence de session. Conserver celui renvoyé dans la page courante pour les requêtes suivantes de la même session.
+
+---
+
+## 5. Batch d’écritures
+
+Un projet peut exposer **N endpoints batch** (paiement, pointage, inventaire…) : **même contrat**.
 
 ```http
-POST /api/sync/payments/batch
+POST /api/sync/{writes}/batch
 Content-Type: application/json
 ```
 
-Corps (`PaymentBatchRequestDto`) — propriété **`items`** (pas `payments`) :
+Corps — propriété **`items`** (pas le nom du métier) :
 
 ```json
 {
   "items": [
     {
       "clientRequestId": "550e8400-e29b-41d4-a716-446655440000",
-      "idClient": 1,
-      "idClientFacture": 1,
-      "idFacture": 1,
-      "montantPaye": 5000,
-      "datePaiementUtc": "2024-03-21T10:30:00.000Z",
-      "methodePaiement": "Espèces",
-      "referenceTransaction": null,
-      "commentaire": "Encaissement offline",
-      "deviceId": "device-abc",
-      "codeDevisePaiement": "CDF"
+      "idEntity": 1,
+      "/* champs métier WriteItem */": "…",
+      "deviceId": "device-abc"
     }
   ]
 }
@@ -250,15 +252,10 @@ Corps (`PaymentBatchRequestDto`) — propriété **`items`** (pas `payments`) :
 | Champ | Obligatoire | Notes |
 |-------|-------------|-------|
 | `clientRequestId` | oui | UUID stable, max 36 |
-| `idClient` | oui | Fiche liée |
-| `montantPaye` | oui | > 0 |
-| `datePaiementUtc` | oui | UTC |
-| `methodePaiement` | oui | CASH-like (Espèces, virement, chèque…) |
-| `idClientFacture` / `idFacture` | selon métier | Ciblage du poste |
-| `codeDevisePaiement` | non | Aligné devise du poste si multi-devise |
-| `deviceId` | non | Traçabilité appareil |
+| Champs métier | selon batch | montant, date, cible… |
+| `deviceId` | non | Traçabilité appareil (body, pas header) |
 
-Réponse (`PaymentBatchResultDto`) :
+Réponse :
 
 ```json
 {
@@ -266,9 +263,8 @@ Réponse (`PaymentBatchResultDto`) :
     {
       "clientRequestId": "550e8400-e29b-41d4-a716-446655440000",
       "status": "created",
-      "idPaiement": 456,
-      "newMontantDu": 5000,
-      "message": "…",
+      "resourceId": 456,
+      "message": null,
       "errorCode": null
     }
   ],
@@ -282,38 +278,43 @@ Réponse (`PaymentBatchResultDto`) :
 }
 ```
 
+Le batch répond **HTTP 200** même si des items sont rejetés (traitement item-level).
+
 | `status` | Action file locale |
 |----------|-------------------|
 | `created` | Succès — retirer de la file |
 | `duplicate` | Déjà traité — retirer (idempotence OK) |
-| `rejected` | Rejet métier — sortir de la file + UX erreur (`errorCode` / `message`) |
+| `rejected` | Rejet métier — sortir de la file + UX (`errorCode` / `message`) |
 | `error` | Erreur technique — **garder** et retry plus tard |
 
+Ne jamais régénérer un `clientRequestId` pour la même écriture locale.
+
 ---
 
-## 5. Cycle client recommandé
+## 6. Cycle client
 
-1. **Cold start** : `GET /bootstrap` → persister `clients`, `arrears`, `watermark`
-2. **Online périodique** : pages `clients` + `arrears` avec `since` / `cursor` → mettre à jour le store → mémoriser `nextSince`
+1. **Cold start** : `GET /bootstrap` → persister entities (+ balance items) + `watermark`
+2. **Online périodique** : pages `{entities}` (+ `{balance-items}`) avec `since` / `cursor` → store → mémoriser `nextSince`
 3. **Purge** : `GET /deletions?since=…` → appliquer les listes d’IDs
-4. **Offline** : créer des écritures en file locale avec UUID figé à la création
-5. **Reconnect** : `POST /payments/batch` → traiter chaque `status` (tableau ci-dessus)
-6. **Après upload** : re-sync `arrears` (et éventuellement `clients`) pour rafraîchir les soldes
+4. **Offline** : créer des WriteItems en file locale avec UUID figé à la création
+5. **Reconnect** : `POST /{writes}/batch` (pour chaque type de file) → traiter chaque `status`
+6. **Après upload** : re-sync balance items (et éventuellement entities) pour rafraîchir les soldes
 
-Responsabilités client (sans imposer SQLite / Hive / Drift) :
+Responsabilités client (sans imposer une techno de store) :
 
-- Store local des fiches + soldes
-- File d’écritures persistante (survit au kill app)
+- Store local des fiches (+ soldes)
+- File(s) d’écritures persistante(s) (survit au kill app)
 - Indicateur online/offline + déclencheur de sync
-- Ne jamais régénérer un `clientRequestId` pour la même écriture
+- UUID stable dès la création locale
 
 ---
 
-## 6. Erreurs fréquentes
+## 7. Erreurs et retry
 
 | HTTP / cas | Cause | UI / client |
 |------------|-------|-------------|
 | 401 | JWT absent / expiré | Re-login avant sync |
+| 400 | Tenant manquant / `since` absent sur deletions / body invalide | Corriger la requête |
 | 500 | Erreur serveur | Retry avec backoff ; ne pas vider la file |
 | Batch `rejected` | Validation métier | Afficher `message` / `errorCode` ; ne pas boucler à l’infini |
 | Batch `duplicate` | Rejeu du même UUID | Traiter comme succès idempotent |
@@ -324,130 +325,94 @@ Corps d’erreur serveur typique : `{ "message": "…" }`.
 
 ---
 
-## 7. Checklist d’intégration (neutre)
+## 8. Checklist d’adaptation
+
+À remplir **dans le projet cible** avant d’implémenter.
+
+| Décision | Votre choix |
+|----------|-------------|
+| Claim JWT du tenant | ex. `idSociete`, `idEcole`, `idStore` |
+| Collection(s) Entity (pull) | 1–N routes `/api/sync/...` |
+| Collection(s) BalanceItem | 0–N (optionnel) |
+| Type(s) de WriteItem / batch | 1–N ; mêmes `status` partout |
+| Limite items / batch | ex. 100, 200 |
+| Source des deletions | AuditLogs, soft-statut, table `DeletedAt`… |
+| Codes `errorCode` métier | liste figée documentée côté API |
+| Flux exclus de la file | paiements réseau, signatures, etc. |
+| Store local client | au choix |
+| Permissions sur les batches | ex. `Xxx.Create` |
+
+### Checklist d’intégration
 
 - [ ] JWT sur toutes les routes `/api/sync/*`
 - [ ] Bootstrap au premier lancement ; watermark persisté
 - [ ] Delta via `since` + pagination via `cursor` / `hasMore`
 - [ ] Fiches = lecture seule offline
-- [ ] File d’écritures avec `clientRequestId` UUID unique et stable
-- [ ] Upload via `items` (pas `payments`)
+- [ ] File(s) d’écritures avec `clientRequestId` UUID unique et stable
+- [ ] Upload via `{ items: [...] }`
 - [ ] Traitement des 4 `status` : `created` / `duplicate` / `rejected` / `error`
-- [ ] Purge via `deletions` (`deleted*` / `deactivated*` / `removed*`)
+- [ ] Purge via `deletions`
 - [ ] Flux réseau temps réel **exclus** de la file offline
-- [ ] Re-sync soldes après batch réussi
-- [ ] États loading / empty / error / « en attente de sync »
+- [ ] Re-sync soldes après batch réussi (si applicable)
+- [ ] États UI : loading / empty / error / « en attente de sync »
 
 ---
 
-## Annexe A — Mapping Kenergie (non portable)
+## Annexe A — Mapping KelasiNaBiso
 
-| Portable | Kenergie |
-|----------|----------|
-| Fiche | `Client` (`ClientSyncDto`) |
-| Poste à encaisser | `ClientFacture` / arriéré (`ArrearSyncDto`) |
-| Écriture | `Paiement` (batch sync) |
-| Organisation | Société JWT |
+Référence produit (non portable). Détail frontend : [DOCUMENTATION_INTEGRATION_FRONTEND_OFFLINE_SYNC_VUE_FLUTTER.md](DOCUMENTATION_INTEGRATION_FRONTEND_OFFLINE_SYNC_VUE_FLUTTER.md).
 
-Règles métier Kenergie :
+| Concept portable | KelasiNaBiso |
+|------------------|--------------|
+| Tenant (JWT) | `IdEcole` / `idEcole` |
+| Entity | `GET /api/sync/eleves` (alias `/clients`) |
+| BalanceItem | `GET /api/sync/frais-dus` (alias `/arrears`) |
+| WriteItem (paiement) | `POST /api/sync/payments/batch` — CASH-like uniquement |
+| WriteItem (présence) | `POST /api/sync/presences/batch` |
+| Deletions | `GET /api/sync/deletions` |
+| Journal d’idempotence | table `SyncClientRequests` |
 
-- Clients **non créés / modifiés** offline (read-only)
-- Seuls les paiements **CASH-like** (espèces, virement, chèque…) dans la file
-- **Ne pas** mettre FlexPay / Mobile Money async en file offline (réseau obligatoire) — voir [`FRONTEND_INTEGRATION_MULTIDEVISE_FLEXPAY.md`](./FRONTEND_INTEGRATION_MULTIDEVISE_FLEXPAY.md) § offline
-- Multi-devise : `codeDevisePaiement` aligné sur la devise du poste
+Règles produit :
 
-Docs détaillées métier :
-
-- [`DOCUMENTATION_ENDPOINTS_SYNC.md`](../DOCUMENTATION_ENDPOINTS_SYNC.md)
-- [`EXEMPLES_UTILISATION_SYNC.md`](../EXEMPLES_UTILISATION_SYNC.md)
+- Élèves / frais dus : **read-only** offline
+- Paiements réseau (ex. Moko) : **exclus** de la file
+- Création : une année scolaire courante scope les pulls
 
 ---
 
-## Annexe B — Clients HTTP minimaux
+## Annexe B — Backend minimal
 
-### TypeScript
+À reproduire dans tout projet qui adopte ce pattern (indépendamment du langage).
 
-```ts
-export const syncApi = {
-  bootstrap: () => api.get('/api/sync/bootstrap'),
-  clients: (params?: {
-    since?: string
-    cursor?: string
-    pageSize?: number
-    snapshot?: string
-  }) => api.get('/api/sync/clients', { params }),
-  arrears: (params?: {
-    since?: string
-    cursor?: string
-    pageSize?: number
-    snapshot?: string
-    onlyOutstanding?: boolean
-  }) => api.get('/api/sync/arrears', { params }),
-  deletions: (params: { since: string; snapshot?: string }) =>
-    api.get('/api/sync/deletions', { params }),
-  paymentsBatch: (body: { items: Record<string, unknown>[] }) =>
-    api.post('/api/sync/payments/batch', body),
-}
-```
+### Table d’idempotence
 
-### Dart (Dio)
+Unicité : `(TenantId, ClientRequestId)`.
 
-```dart
-class SyncApi {
-  SyncApi(this._dio);
-  final Dio _dio;
+| Colonne | Rôle |
+|---------|------|
+| `TenantId` | Isolation multi-tenant |
+| `ClientRequestId` | UUID client ≤ 36 |
+| `ResourceType` | Type de WriteItem (`payment`, `presence`, …) |
+| `ResourceId` | ID serveur si `created` |
+| `Status` | `created` \| `duplicate` \| `rejected` \| `error` |
+| `Message` / `ErrorCode` | Rejeu / UX |
+| `ResultJson` | Payload pour rejouer un `duplicate` |
+| `DeviceId` | Optionnel |
+| `DateCreation` | Audit |
 
-  Future<Map<String, dynamic>> bootstrap() async {
-    final r = await _dio.get('/api/sync/bootstrap');
-    return r.data as Map<String, dynamic>;
-  }
+### Services (rôles)
 
-  Future<Map<String, dynamic>> clients({
-    String? since,
-    String? cursor,
-    int? pageSize,
-    String? snapshot,
-  }) async {
-    final r = await _dio.get('/api/sync/clients', queryParameters: {
-      if (since != null) 'since': since,
-      if (cursor != null) 'cursor': cursor,
-      if (pageSize != null) 'pageSize': pageSize,
-      if (snapshot != null) 'snapshot': snapshot,
-    });
-    return r.data as Map<String, dynamic>;
-  }
+| Service | Responsabilité |
+|---------|----------------|
+| **Pull** | Bootstrap + pages Entity (+ BalanceItem) + watermark / cursor / snapshot |
+| **Idempotency** | Register / lookup `clientRequestId` ; renvoyer `duplicate` avec résultat stocké |
+| **Batch** (× N) | Valider métier, créer ressource, journaliser statut item-level |
+| **Deletions** | Agréger IDs soft-deleted / désactivés depuis `since` |
 
-  Future<Map<String, dynamic>> arrears({
-    String? since,
-    String? cursor,
-    int? pageSize,
-    String? snapshot,
-    bool onlyOutstanding = true,
-  }) async {
-    final r = await _dio.get('/api/sync/arrears', queryParameters: {
-      if (since != null) 'since': since,
-      if (cursor != null) 'cursor': cursor,
-      if (pageSize != null) 'pageSize': pageSize,
-      if (snapshot != null) 'snapshot': snapshot,
-      'onlyOutstanding': onlyOutstanding,
-    });
-    return r.data as Map<String, dynamic>;
-  }
+### Transfert depuis une implémentation existante
 
-  Future<Map<String, dynamic>> deletions({
-    required String since,
-    String? snapshot,
-  }) async {
-    final r = await _dio.get('/api/sync/deletions', queryParameters: {
-      'since': since,
-      if (snapshot != null) 'snapshot': snapshot,
-    });
-    return r.data as Map<String, dynamic>;
-  }
-
-  Future<Map<String, dynamic>> paymentsBatch(List<Map<String, dynamic>> items) async {
-    final r = await _dio.post('/api/sync/payments/batch', data: {'items': items});
-    return r.data as Map<String, dynamic>;
-  }
-}
-```
+1. Copier le **contrat** (sections 2–7), pas les DTOs métier.
+2. Remplacer Entity / BalanceItem / WriteItem par le domaine cible.
+3. Garder la table d’idempotence et la matrice des `status`.
+4. Documenter les `errorCode` et les flux exclus de la file.
+5. Écrire le guide frontend **du produit** à part (ce playbook reste générique).

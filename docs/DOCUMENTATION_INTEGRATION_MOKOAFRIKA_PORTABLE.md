@@ -6,11 +6,16 @@ différentes. Il sépare :
 
 - le contrat technique MokoAfrika, qui doit rester stable ;
 - l'orchestration de paiement, commune à la plupart des projets ;
-- les règles métier de l'application hôte, à brancher via un adaptateur.
+- le **PayOut** (file de règlement + worker + ledger) — pattern à recopier tel
+  quel, indépendamment du métier ;
+- les règles métier de l'application hôte, à brancher via un adaptateur
+  (annexe Kelasi).
 
 Les exemples utilisent des valeurs fictives. Les clés, numéros et URL de
 production doivent être fournis par MokoAfrika et stockés dans un gestionnaire
 de secrets.
+
+Référence gateway brut (payloads) : [`../integration-moko-afrika-projet-tiers.md`](../integration-moko-afrika-projet-tiers.md).
 
 ## 1. Périmètre et vocabulaire
 
@@ -62,8 +67,10 @@ ensuite si la commande, la facture ou tout autre objet peut passer à l'état
 5. **Orchestrateur PayIn** : validation, création, appel, confirmation.
 6. **Handler webhook** : signature, parsing, idempotence et routage.
 7. **Job de réconciliation** : interrogation périodique des transactions
-   toujours en attente.
-8. **PayOut worker** (facultatif) : reversement après règlement disponible.
+   PayIn toujours en attente.
+8. **SettlementQueue + PayOut worker** (facultatif mais recommandé si
+   reversement) : enqueue après PayIn `success`, poll, `credit`, retries — voir
+   §10 (ce n’est pas un `POST /payout` synchrone).
 
 ## 3. Configuration
 
@@ -83,7 +90,9 @@ Exemple adaptable à `appsettings.json`, `.env` ou un secret manager :
     "StaticCustomerFirstName": "BUSINESS",
     "StaticCustomerLastName": "MERCHANT",
     "StaticCustomerEmail": "payments@example.com",
-    "TimeoutSeconds": 120
+    "TimeoutSeconds": 120,
+    "PayoutSettlementDelayMinutes": 3,
+    "PayInUssdWindowSeconds": 120
   }
 }
 ```
@@ -94,8 +103,10 @@ Exemple adaptable à `appsettings.json`, `.env` ou un secret manager :
 | `HmacKey` | Secret utilisé pour vérifier le callback |
 | `IsProduction` | Sélectionne l'URL de test ou de production |
 | `CallbackUrl` | HTTPS public, accessible par MokoAfrika |
-| `StaticCustomer*` | Profil marchand envoyé dans les requêtes |
+| `StaticCustomer*` | Profil marchand envoyé dans les requêtes ; `StaticCustomerEmail` sert aussi d’alerte ops PayOut |
 | `TimeoutSeconds` | Ne pas confondre timeout HTTP et statut métier |
+| `PayoutSettlementDelayMinutes` | Délai par défaut avant premier essai de PayOut (fallback si le tenant n’a pas sa propre valeur) |
+| `PayInUssdWindowSeconds` | Fenêtre pendant laquelle un `Error` ambigu PayIn ne doit pas tuer un `pending` |
 
 Ne jamais exposer `SecretKey` ou `HmacKey` au frontend, dans les logs, dans
 Swagger public ou dans le contrôle de version. Le callback doit être configuré
@@ -354,39 +365,213 @@ Le polling frontend doit être limité (intervalle, durée maximale et arrêt su
 `success`, `error` ou `timeout`). Un worker backend doit réconcilier les
 transactions abandonnées, car le frontend peut être fermé.
 
-## 10. PayOut (reversement facultatif)
+## 10. PayOut — pattern file + worker + ledger
 
-Le PayOut est une nouvelle transaction :
+Le PayOut n’est **pas** un simple `POST credit` synchrone déclenché par le
+frontend. L’implémentation de référence (et le pattern à recopier) est une
+**orchestration locale** :
 
-1. vérifier qu'un solde ou une autorisation de reversement est disponible ;
-2. réserver le montant de façon atomique ;
-3. créer un `credit` avec une nouvelle référence ;
-4. appeler MokoAfrika avec le téléphone bénéficiaire ;
-5. attendre callback ou `verify` ;
-6. libérer le règlement sur succès ;
-7. recréditer la réserve sur échec définitif ;
-8. limiter les retries et appliquer un backoff.
+1. PayIn confirmé (`debit` → `success`) ;
+2. crédit ledger en **pending** ;
+3. enqueue dans une **file de règlement** (`SettlementQueue`) avec `ScheduledAt` ;
+4. **worker** qui poll la file et exécute `action: credit` ;
+5. retries / recrédit selon soft vs hard failure ;
+6. callback `credit` qui met à jour la même machine d’états.
 
-Un ledger (`pending`, `available`, mouvements débit/reversal) est recommandé
-plutôt qu'un simple champ de solde. Le PayOut peut être désactivé si le projet
-ne fait que collecter.
+Sans PayOut (collecte seule), désactiver l’enqueue (`autoPayout = false`) et
+ignorer ce chapitre.
+
+Vocabulaire abstrait :
+
+| Terme | Rôle |
+|---|---|
+| **Tenant** | Organisation isolée (magasin, école, société) |
+| **Beneficiary** | Numéro Mobile Money du destinataire du `credit` |
+| **SettlementQueue** | File durable des reversements à exécuter |
+| **Ledger** | Soldes `pending` / `available` + mouvements auditables |
+
+### 10.1 Séquence
+
+```mermaid
+sequenceDiagram
+  participant PayIn as PayIn_confirm
+  participant Wallet as Ledger
+  participant Queue as SettlementQueue
+  participant Worker as PayoutWorker
+  participant Gw as MokoGateway
+
+  PayIn->>Wallet: credit_pending
+  PayIn->>Queue: enqueue_pending_ScheduledAt
+  Worker->>Queue: claim_pending_due
+  Worker->>Wallet: release_available
+  Worker->>Wallet: payout_debit
+  Worker->>Gw: action_credit
+  alt success
+    Gw-->>Worker: success
+    Worker->>Queue: success
+  else soft_error
+    Worker->>Queue: pending_plus_2min
+  else hard_fail
+    Worker->>Wallet: payout_reversal
+    Worker->>Queue: retry_or_failed
+  end
+```
+
+### 10.2 Enqueue après confirmation PayIn
+
+Déclencher **uniquement** quand le PayIn local passe à `success` (callback ou
+`verify`), dans la même transaction DB que la confirmation métier :
+
+| Condition | Action |
+|---|---|
+| `autoPayout == true` | Insérer une ligne file `pending` |
+| `autoPayout == false` | Ne rien enqueue ; le solde reste gérable manuellement |
+| Délai | `ScheduledAt = now + settlementDelayMinutes` (tenant ou config globale, défaut **3** min) |
+
+Champs recommandés de la file :
+
+```text
+SettlementQueueItem
+  id
+  payInReference           lien vers le debit parent
+  tenantId
+  businessPaymentId        optionnel (facture / paiement local)
+  amountNet                montant à reverser (devise ledger)
+  currency
+  method                   opérateur (airtel, orange, …)
+  beneficiaryPhone         snapshot ou résolu à l’exécution
+  scheduledAt
+  payOutReference          nullable jusqu’à l’essai
+  status                   pending | processing | success | failed
+  retryCount
+  errorMessage
+  createdAt / updatedAt / processedAt
+```
+
+Index utiles : `(status, scheduledAt)`, `payInReference`.
+
+### 10.3 Machine d’états de la file
+
+```text
+pending ──► processing ──► success
+    ▲            │
+    │            ├── soft failure ──► pending (ScheduledAt += 2 min)
+    │            └── hard failure ──► pending (backoff) ou failed
+    └────────────────────────────────┘
+```
+
+| Statut | Signification |
+|---|---|
+| `pending` | Éligible au worker quand `ScheduledAt <= now` |
+| `processing` | Essai en cours (ne pas reprendre) |
+| `success` | `credit` gateway réussi |
+| `failed` | Échecs épuisés (`retryCount >= maxRetries`) |
+| `cancelled` | Réservé ; **non branché** dans l’implémentation de référence |
+
+### 10.4 Worker
+
+Background service (ou job schedulé) :
+
+| Paramètre de référence | Valeur |
+|---|---|
+| Intervalle de poll | **30 s** |
+| Batch | jusqu’à **10** lignes `pending` avec `ScheduledAt <= now`, tri `ScheduledAt` |
+| Exécution | une ligne à la fois ; erreur d’une ligne ≠ arrêt du batch |
+
+**Multi-instances** : le worker de référence **n’a pas de lock distribué**.
+Deux instances peuvent revendiquer la même ligne. Pour la prod multi-nœuds :
+verrou DB (`SELECT … FOR UPDATE SKIP LOCKED`), lease, ou une seule instance
+autorisée à tourner le worker.
+
+### 10.5 Exécution d’une ligne (`ExecuterPayOut`)
+
+Ordre recommandé (atomique autant que possible) :
+
+1. Guard : ignorer si déjà `success` ou déjà `processing`.
+2. Passer en `processing`.
+3. Ledger : **release** `pending` → `available` (si pas déjà fait).
+4. Résoudre le **Beneficiary** actif pour la méthode.
+5. Générer une **nouvelle** référence PayOut (`MKO_…`) ; lier `parentReference = payInReference`.
+6. Créer la transaction locale `action=credit` en `pending`.
+7. Ledger : **`PAYOUT_DEBIT`** (débiter le disponible).
+8. Appeler le gateway `action: "credit"` avec `customer_number` = bénéficiaire.
+9. Interpréter la réponse :
+
+| Cas | Effet file | Effet ledger | Effet tx credit |
+|---|---|---|---|
+| Gateway `IsSuccess` | `success` | inchangé (déjà débité) | `success` |
+| Soft error (HTTP OK mais pas succès métier) | remettre `pending`, `ScheduledAt += 2 min` | inchangé ou selon politique | rester `pending` |
+| Hard fail (HTTP ≥ 400 ou exception) | voir retries | **`PAYOUT_REVERSAL`** (recrédit) | `error` |
+
+Réinitialiser `payOutReference = null` avant un nouvel essai hard pour forcer
+une nouvelle référence gateway.
+
+### 10.6 Retries et alertes
+
+| Règle | Valeur de référence |
+|---|---|
+| Max retries | **5** |
+| Backoff hard | `ScheduledAt = now + (5 × retryCount)` minutes |
+| Soft | +**2** minutes, sans forcément incrémenter comme un hard fail |
+| Alerte | email vers `StaticCustomerEmail` (ou canal ops) sur échec terminal / exception |
+
+Le **callback `credit`** doit appliquer la **même** logique (succès → file
+`success` ; échec → recrédit + retry ou `failed`). Ne pas traiter un callback
+`credit` comme un PayIn.
+
+### 10.7 Ledger (mouvements)
+
+Ordre métier après un PayIn réussi avec PayOut auto :
+
+```text
+PAYIN_CREDIT_PENDING
+  → (à l’exécution PayOut) PAYIN_RELEASE_AVAILABLE
+  → PAYOUT_DEBIT
+  → (si échec hard) PAYOUT_REVERSAL
+```
+
+Ne jamais se contenter d’un champ `balance` unique : sans `pending` /
+`available`, un PayOut trop tôt ou un double débit devient indébuggable.
+
+### 10.8 Retry manuel (ops)
+
+Endpoint optionnel, réservé aux admins :
+
+```http
+POST /api/payments/moko/payout/retry?payInReference={ref}
+```
+
+Comportement : retrouver ou recréer la ligne file, forcer `pending` +
+`ScheduledAt = now`, puis exécuter immédiatement (ou laisser le worker).
+
+Ce n’est **pas** le flux principal : le flux principal est **enqueue auto +
+worker**.
+
+### 10.9 Pièges
+
+- Soft `Error` USSD côté PayIn ≠ échec définitif (fenêtre `PayInUssdWindowSeconds`).
+- HTTP `200` gateway ≠ succès financier : lire `resultCode` / statut normalisé.
+- Ne pas exposer un `POST /payout` public sans garde-fous ledger + file.
+- `cancelled` documenté dans l’enum mais inutilisé : ne pas s’y appuyer.
+- Une seule callback URL pour `debit` et `credit` ; router sur `tx.Action`.
 
 ## 11. Sécurité, fiabilité et observabilité
 
 - Utiliser HTTPS pour le gateway et le callback.
 - Ne pas faire confiance au montant, à la devise ou à l'identité envoyés par le
   frontend : recharger et valider l'objet métier côté serveur.
-- Ajouter un index unique sur `reference`.
+- Ajouter un index unique sur `reference` (transactions) et sur la file
+  `(status, scheduledAt)`.
 - Utiliser une clé d'idempotence applicative par tentative de paiement.
 - Protéger les endpoints internes par authentification et autorisation.
 - Ne jamais considérer un retour HTTP `200` seul comme un succès financier.
-- Définir des timeouts, une politique de retry uniquement pour les erreurs
-  réseau et une limite de retries.
+- Définir des timeouts, une politique de retry distincte soft / hard, et un
+  plafond de retries PayOut.
 - Journaliser référence, action, code HTTP, statut et durée, mais pas les clés.
-- Mesurer les transactions `pending` anciennes, callbacks rejetés et écarts de
-  réconciliation.
-- Ajouter des alertes sur les erreurs de signature et les réponses gateway
-  vides ou non JSON.
+- Mesurer : PayIn `pending` anciens, file PayOut en retard, callbacks rejetés,
+  soldes ledger incohérents.
+- Alertes : signature HMAC invalide, PayOut `failed`, réponses gateway non JSON.
+- En multi-instances : lock distribué sur la file PayOut (voir §10.4).
 
 ## 12. Contrat applicatif minimal à exposer
 
@@ -395,11 +580,15 @@ Les routes ci-dessous sont un exemple, pas une obligation :
 | Route | Rôle |
 |---|---|
 | `GET /api/payments/moko/fees` | Estimer les frais |
-| `POST /api/payments/moko/payin` | Créer une collecte |
+| `POST /api/payments/moko/payin` | Créer une collecte (`debit`) |
 | `GET /api/payments/moko/{reference}` | Lire le statut local |
-| `POST /api/payments/moko/{reference}/check` | Réconcilier avec MokoAfrika |
-| `POST /api/payments/moko/callback` | Recevoir le webhook |
-| `POST /api/payments/moko/payout` | Créer un reversement, si nécessaire |
+| `POST /api/payments/moko/{reference}/check` | Réconcilier avec MokoAfrika (`verify`) |
+| `POST /api/payments/moko/callback` | Webhook HMAC (`debit` **et** `credit`) |
+| `POST /api/payments/moko/payout/retry` | Retry ops (optionnel, admin) |
+| `GET …/settlement-queue` ou équivalent | Lecture file / wallet (ops / back-office) |
+
+**Flux PayOut principal** : pas de `POST /payout` sync imposé. Après PayIn
+`success` + `autoPayout`, l’API **enqueue** ; le **worker** exécute.
 
 Réponses HTTP conseillées :
 
@@ -425,9 +614,12 @@ Avant de copier l'intégration, définir ces décisions métier :
 | Qui peut payer ? | client connecté, guichetier, invité |
 | Une tentative pending bloque-t-elle l'objet ? | oui pendant 10 minutes |
 | Quand l'objet devient-il payé ? | uniquement après `success` |
-| Faut-il un PayOut ? | oui après délai, ou non |
+| Faut-il un PayOut auto ? | oui / non |
+| Délai de règlement ? | 3 min, 24 h, fin de journée |
+| Bénéficiaire ? | un par tenant, ou par méthode / compte |
+| Multi-instances API ? | lock file requis ou worker unique |
 | Quelle devise et quelle conversion ? | CDF, USD, taux figé |
-| Que faire après timeout ? | réconciliation manuelle ou nouvelle tentative |
+| Que faire après timeout PayIn ? | réconciliation manuelle ou nouvelle tentative |
 | Quelles notifications produire ? | reçu, email, push, webhook interne |
 
 Créer ensuite un adaptateur du type :
@@ -436,13 +628,16 @@ Créer ensuite un adaptateur du type :
 PaymentBusinessAdapter
   ValidatePayable(objectId, payer, amount, currency)
   CreatePendingPayment(objectId, transaction)
-  ConfirmPayment(transaction)
+  ConfirmPayment(transaction)      // + enqueue SettlementQueue si autoPayout
   FailPayment(transaction, reason)
+  ResolveBeneficiary(tenantId, method)
 ```
 
-L'adaptateur peut être spécifique à chaque projet, tandis que le client
-MokoAfrika, la vérification HMAC, le parser de statuts et le repository de
-transactions restent partagés.
+L'adaptateur est spécifique au projet. Partagés : client gateway, HMAC, parser
+de statuts, repository transactions, **file + worker + ledger** PayOut.
+
+Contrat gateway brut (payloads multi-langues) : voir aussi
+[`../integration-moko-afrika-projet-tiers.md`](../integration-moko-afrika-projet-tiers.md).
 
 ## 14. Tests indispensables
 
@@ -458,7 +653,11 @@ Tester au minimum :
 - callback JSON invalide ou référence inconnue ;
 - échec terminal et expiration de la fenêtre USSD ;
 - concurrence entre deux demandes pour le même objet ;
-- PayOut réussi, échoué, recrédit et retry limité ;
+- **enqueue PayOut** uniquement si `autoPayout` et PayIn `success` ;
+- worker : claim `pending` dus, ignore `processing` / `success` ;
+- soft fail → `pending` +2 min ; hard fail → recrédit + backoff ;
+- max retries → `failed` + alerte ;
+- callback `credit` aligné sur la file ;
 - absence de secrets dans les logs et les réponses API.
 
 ## 15. Checklist de mise en production
@@ -470,26 +669,45 @@ Tester au minimum :
 - [ ] Le montant et l'objet payable sont recalculés côté serveur.
 - [ ] `pending` n'est jamais traité comme `success`.
 - [ ] Le callback et `verify` partagent la même logique idempotente.
-- [ ] Un worker de réconciliation existe, même si le frontend fait du polling.
+- [ ] Un worker de réconciliation PayIn existe, même si le frontend poll.
+- [ ] Si PayOut auto : file + worker + ledger pending/available.
+- [ ] Soft vs hard PayOut testés ; plafond de retries configuré.
+- [ ] Multi-instances : lock file ou worker unique.
 - [ ] Les timeouts, retries et fenêtres USSD sont configurables.
 - [ ] Les données sensibles sont masquées dans les logs.
 - [ ] Les tests de panne, doublon et concurrence passent.
-- [ ] Une procédure de rapprochement manuel est documentée.
+- [ ] Une procédure de rapprochement manuel / retry ops est documentée.
 
-## 16. Particularités de l'implémentation de référence
+## Annexe A — Mapping KelasiNaBiso (non portable)
 
-Dans KelasiNaBiso, l'objet métier est un frais scolaire et les routes concrètes
-sont notamment `POST /api/MokoAfrika/payin/frais-scolaire`,
-`POST /api/MokoAfrika/callback` et
-`POST /api/MokoAfrika/status/{reference}/check`. Ces noms, les rôles, le wallet
-par école et les règles d'éligibilité élève/frais sont **spécifiques à ce
-projet** et ne doivent pas être copiés dans un autre domaine.
+Référence produit. Ne pas copier les noms de routes / champs scolaires dans un
+autre domaine.
 
-Pour une nouvelle application, conserver le protocole et les garanties décrits
-ci-dessus, mais remplacer :
+| Concept portable | KelasiNaBiso |
+|---|---|
+| Tenant | `IdEcole` |
+| Objet payé | Frais scolaire / `Paiement` + `IdEleve` / `IdFrais` |
+| PayIn | `POST /api/MokoAfrika/payin/frais-scolaire` |
+| Callback | `POST /api/MokoAfrika/callback` |
+| Verify | `POST /api/MokoAfrika/status/{reference}/check` |
+| SettlementQueue | table `FilePayoutsMoko` |
+| Worker | `MokoPayoutWorker` (30 s, batch 10) |
+| Ledger | `EcoleWallet` + `EcoleWalletMouvement` |
+| autoPayout / délai | `EcoleInfoPaiementMobile.PayoutAutomatique` / `DelaiReglementMinutes` |
+| Beneficiary | `EcoleBeneficiaireMomo` |
+| Retry ops | `POST /api/MokoAfrika/payout/retry` (Super-Admin) |
+| Config école | `/api/Ecole/{idEcole}/paiement-mobile/*` |
+
+Docs produit :
+
+- Frontend : [`../DOCUMENTATION_FRONTEND_PAIEMENT_MOKO.md`](../DOCUMENTATION_FRONTEND_PAIEMENT_MOKO.md)
+- Analyse backend : [`../DOCUMENTATION_ANALYSE_MOKOAFRIKA.md`](../DOCUMENTATION_ANALYSE_MOKOAFRIKA.md)
+
+Pour une nouvelle application, conserver le protocole et le pattern PayOut
+(file + worker + ledger), mais remplacer :
 
 - `IdEleve` / `IdFrais` par l'identifiant de l'objet facturable ;
 - les règles d'école par le validateur métier du nouveau projet ;
-- le wallet par le ledger ou le compte de règlement approprié ;
-- les permissions par les rôles et politiques de la nouvelle application ;
+- le wallet école par le ledger du tenant cible ;
+- les permissions / rôles par la politique de la nouvelle application ;
 - les notifications scolaires par les effets métier nécessaires.

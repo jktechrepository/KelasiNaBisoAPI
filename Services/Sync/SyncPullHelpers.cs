@@ -41,6 +41,13 @@ namespace KelasiNaBiso.Services.Sync
         public static string FormatEleveCursor(int idEleve)
             => idEleve.ToString(CultureInfo.InvariantCulture);
 
+        public static bool TryParseAgentCursor(string? cursor, out int idAgent)
+            => int.TryParse(cursor, NumberStyles.Integer, CultureInfo.InvariantCulture, out idAgent)
+               && idAgent > 0;
+
+        public static string FormatAgentCursor(int idAgent)
+            => idAgent.ToString(CultureInfo.InvariantCulture);
+
         public static bool TryParseFraisDuCursor(string? cursor, out int idEleve, out int idFrais)
         {
             idEleve = 0;

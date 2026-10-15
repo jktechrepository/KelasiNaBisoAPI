@@ -9,7 +9,7 @@ namespace KelasiNaBiso.Controllers
 {
     /// <summary>
     /// Endpoints offline / sync (contrat portable adapté KelasiNaBiso).
-    /// Étape 1 : pull lecture (bootstrap, eleves, frais-dus).
+    /// Pull lecture : bootstrap, eleves, frais-dus, agents.
     /// </summary>
     [ApiController]
     [Route("api/sync")]
@@ -38,7 +38,7 @@ namespace KelasiNaBiso.Controllers
 
         /// <summary>
         /// Snapshot initial + watermark (année courante, max 5000 / collection).
-        /// Si volumes &gt; 5000 : enchaîner <c>/eleves</c> et <c>/frais-dus</c>.
+        /// Si volumes &gt; 5000 : enchaîner <c>/eleves</c>, <c>/frais-dus</c> et <c>/agents</c>.
         /// </summary>
         [HttpGet("bootstrap")]
         [ProducesResponseType(typeof(SyncBootstrapDto), StatusCodes.Status200OK)]
@@ -52,10 +52,11 @@ namespace KelasiNaBiso.Controllers
 
             var dto = await _pull.GetBootstrapAsync(idEcole, cancellationToken);
             _logger.LogInformation(
-                "Sync bootstrap école {IdEcole}: {NbEleves} élèves, {NbFrais} frais dus",
+                "Sync bootstrap école {IdEcole}: {NbEleves} élèves, {NbFrais} frais dus, {NbAgents} agents",
                 idEcole,
                 dto.Eleves.Count,
-                dto.FraisDus.Count);
+                dto.FraisDus.Count,
+                dto.Agents.Count);
             return Ok(dto);
         }
 
@@ -111,6 +112,22 @@ namespace KelasiNaBiso.Controllers
             [FromQuery] SyncFraisDusRequestDto request,
             CancellationToken cancellationToken)
             => GetFraisDus(request, cancellationToken);
+
+        /// <summary>Delta / pages agents actifs de l'école (lecture seule offline, pointage).</summary>
+        [HttpGet("agents")]
+        [ProducesResponseType(typeof(SyncPageDto<AgentSyncDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<SyncPageDto<AgentSyncDto>>> GetAgents(
+            [FromQuery] SyncRequestDto request,
+            CancellationToken cancellationToken)
+        {
+            var idEcole = ResolveIdEcole(out var error);
+            if (error != null)
+                return error;
+
+            var page = await _pull.GetAgentsPageAsync(idEcole, request ?? new SyncRequestDto(), cancellationToken);
+            return Ok(page);
+        }
 
         /// <summary>
         /// Upload batch paiements CASH-like offline (idempotent).
@@ -226,10 +243,12 @@ namespace KelasiNaBiso.Controllers
                     cancellationToken);
 
                 _logger.LogInformation(
-                    "Sync deletions école {IdEcole}: deletedEleves={D} deactivated={A} removedFrais={F}",
+                    "Sync deletions école {IdEcole}: deletedEleves={D} deactivatedEleves={A} deletedAgents={DA} deactivatedAgents={AA} removedFrais={F}",
                     idEcole,
                     dto.DeletedEleveIds.Count,
                     dto.DeactivatedEleveIds.Count,
+                    dto.DeletedAgentIds.Count,
+                    dto.DeactivatedAgentIds.Count,
                     dto.RemovedFraisIds.Count);
 
                 return Ok(dto);

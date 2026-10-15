@@ -3,7 +3,7 @@
 Guide d’intégration frontend pour le mode hors ligne KelasiNaBiso (lecture locale + file d’écritures idempotentes).
 
 **Références :**
-- [PORTABLE_INTEGRATION_OFFLINE_SYNC.md](PORTABLE_INTEGRATION_OFFLINE_SYNC.md) — contrat portable (vocabulaire clients / arrears)
+- [PORTABLE_INTEGRATION_OFFLINE_SYNC.md](PORTABLE_INTEGRATION_OFFLINE_SYNC.md) — playbook offline découplé du métier (patterns, contrat générique, checklist d’adaptation ; mapping Kelasi en annexe)
 - [DOCUMENTATION_INTEGRATION_FRONTEND_CONTROLEUR_VUE_FLUTTER.md](DOCUMENTATION_INTEGRATION_FRONTEND_CONTROLEUR_VUE_FLUTTER.md) — pointage Controleur
 - [DOCUMENTATION_INTEGRATION_FRONTEND_CAISSIER_VUE_FLUTTER.md](DOCUMENTATION_INTEGRATION_FRONTEND_CAISSIER_VUE_FLUTTER.md) — encaissement Caissier
 
@@ -31,10 +31,11 @@ Guide d’intégration frontend pour le mode hors ligne KelasiNaBiso (lecture lo
 
 | Inclus | Exclu |
 |--------|--------|
-| Pull élèves + frais dus (année courante) | CRUD offline des fiches élèves / frais |
+| Pull élèves + frais dus (année courante) | CRUD offline des fiches élèves / frais / agents |
+| Pull agents actifs (école JWT) | `PUT` agent offline |
 | Batch présences (élève XOR agent) | `PUT` présence offline |
 | Batch paiements **CASH-like** | Moko / Mobile Money / Carte offline |
-| Deletions / désactivations (purge cache) | Sync agents (option P1b, plus tard) |
+| Deletions / désactivations (purge cache) | — |
 
 **Permissions :**
 - Pull / deletions : JWT valide + `IdEcole`
@@ -52,6 +53,7 @@ Guide d’intégration frontend pour le mode hors ligne KelasiNaBiso (lecture lo
 | `GET` | `/api/sync/bootstrap` | Snapshot initial (max 5000 / collection) |
 | `GET` | `/api/sync/eleves` | Pages / delta élèves (`since`, `cursor`, `pageSize`, `snapshot`) |
 | `GET` | `/api/sync/frais-dus` | Pages / delta soldes (`onlyOutstanding` défaut `true`) |
+| `GET` | `/api/sync/agents` | Pages / delta agents actifs (`since`, `cursor`, `pageSize`, `snapshot`) |
 | `GET` | `/api/sync/deletions` | Purge — **`since` obligatoire** |
 | `POST` | `/api/sync/presences/batch` | Upload pointages |
 | `POST` | `/api/sync/payments/batch` | Upload encaissements CASH |
@@ -68,7 +70,7 @@ Aliases portables (masqués Swagger) : `/clients` → eleves, `/arrears` → fra
 flowchart TD
   bootstrap[GET bootstrap]
   store[Store local read-only]
-  delta[GET eleves + frais-dus]
+  delta[GET eleves + frais-dus + agents]
   deletions[GET deletions]
   queue[File écritures UUID]
   batchP[POST presences/batch]
@@ -82,10 +84,10 @@ flowchart TD
   batchPay --> delta
 ```
 
-1. **Cold start** : `GET /bootstrap` → persister `eleves`, `fraisDus`, `watermark`, `snapshot`
-2. Si `eleves` ou `fraisDus` saturés (5000) : enchaîner les pages `/eleves` et `/frais-dus`
+1. **Cold start** : `GET /bootstrap` → persister `eleves`, `fraisDus`, `agents`, `watermark`, `snapshot`
+2. Si une collection est saturée (5000) : enchaîner les pages `/eleves`, `/frais-dus` et `/agents`
 3. **Online périodique** : pages avec `since` + `cursor` → mémoriser `nextSince`
-4. **Purge** : `GET /deletions?since={watermark}` → retirer les IDs du store → mémoriser `nextSince`
+4. **Purge** : `GET /deletions?since={watermark}` → retirer les IDs du store (élèves **et** agents) → mémoriser `nextSince`
 5. **Offline** : créer des items en file avec `clientRequestId` UUID **figé à la création**
 6. **Reconnect** : `POST .../batch` → traiter chaque `status` → re-sync `frais-dus` après paiements
 
@@ -102,8 +104,9 @@ flowchart TD
   "watermark": "2026-09-22T09:00:00.0000000Z_638...",
   "snapshot": "eco13_...",
   "idEcole": 13,
-  "eleves": [ { "idEleve": 1, "matricule": "...", "nom": "...", "idClasse": 10, "nomClasse": "6e A", "isActif": true, "updatedAt": "..." } ],
-  "fraisDus": [ { "idFrais": 5, "idEleve": 1, "libelle": "Minerval", "montantTotal": 100, "montantPaye": 40, "montantDu": 60, "codeDevise": "USD" } ]
+  "eleves": [ { "idEleve": 1, "matricule": "...", "nom": "...", "serialNumber": "SN-...", "idClasse": 10, "nomClasse": "6e A", "isActif": true, "updatedAt": "..." } ],
+  "fraisDus": [ { "idFrais": 5, "idEleve": 1, "libelle": "Minerval", "montantTotal": 100, "montantPaye": 40, "montantDu": 60, "codeDevise": "USD" } ],
+  "agents": [ { "idAgent": 448, "matricule": "...", "nom": "Kalala", "postnom": "...", "prenom": "...", "fonction": "Enseignant" } ]
 }
 ```
 
@@ -121,6 +124,7 @@ flowchart TD
 
 - Cursor élèves : `IdEleve` (ex. `"42"`)
 - Cursor frais dus : `IdEleve:IdFrais` (ex. `"1:5"`)
+- Cursor agents : `IdAgent` (ex. `"448"`)
 
 ### Deletions
 
@@ -133,6 +137,8 @@ GET /api/sync/deletions?since={watermark}&snapshot={snapshot}
   "snapshot": "...",
   "deletedEleveIds": [50],
   "deactivatedEleveIds": [2, 3],
+  "deletedAgentIds": [88],
+  "deactivatedAgentIds": [20, 21],
   "removedFraisIds": [9],
   "deletedPresenceIds": [],
   "deletedPaymentIds": [77],
@@ -142,6 +148,7 @@ GET /api/sync/deletions?since={watermark}&snapshot={snapshot}
 
 Actions locales :
 - Retirer `deletedEleveIds` + `deactivatedEleveIds` du store élèves
+- Retirer `deletedAgentIds` + `deactivatedAgentIds` du store agents
 - Retirer postes `removedFraisIds` (tous les `idEleve` liés à ce frais, ou re-sync frais-dus)
 - Optionnel : purger `deletedPresenceIds` / `deletedPaymentIds`
 
@@ -224,6 +231,8 @@ export const syncApi = {
   fraisDus: (params?: {
     since?: string; cursor?: string; pageSize?: number; snapshot?: string; onlyOutstanding?: boolean
   }) => api.get('/api/sync/frais-dus', { params }),
+  agents: (params?: { since?: string; cursor?: string; pageSize?: number; snapshot?: string }) =>
+    api.get('/api/sync/agents', { params }),
   deletions: (params: { since: string; snapshot?: string }) =>
     api.get('/api/sync/deletions', { params }),
   presencesBatch: (items: Record<string, unknown>[]) =>
@@ -270,6 +279,16 @@ class SyncApi {
     return r.data as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> agents({String? since, String? cursor, int? pageSize, String? snapshot}) async {
+    final r = await _dio.get('/api/sync/agents', queryParameters: {
+      if (since != null) 'since': since,
+      if (cursor != null) 'cursor': cursor,
+      if (pageSize != null) 'pageSize': pageSize,
+      if (snapshot != null) 'snapshot': snapshot,
+    });
+    return r.data as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> deletions({required String since, String? snapshot}) async {
     final r = await _dio.get('/api/sync/deletions', queryParameters: {
       'since': since,
@@ -298,12 +317,12 @@ Persistance locale (au choix de l’app) : store fiches + soldes, file d’écri
 
 - [ ] JWT + claim `IdEcole` sur toutes les routes `/api/sync/*`
 - [ ] Bootstrap au 1er lancement ; watermark persisté
-- [ ] Delta via `since` + pagination `cursor` / `hasMore`
+- [ ] Delta via `since` + pagination `cursor` / `hasMore` (élèves, frais-dus, **agents**)
 - [ ] Fiches = lecture seule offline
 - [ ] File avec `clientRequestId` UUID stable
 - [ ] Upload via `items` (pas `payments` / `presences` au top-level)
 - [ ] Traitement des 4 `status`
-- [ ] Purge via `deletions` (`since` obligatoire)
+- [ ] Purge via `deletions` (`since` obligatoire) — y compris `deletedAgentIds` / `deactivatedAgentIds`
 - [ ] Moko **exclu** de la file paiements
 - [ ] Re-sync `frais-dus` après batch paiements réussi
 - [ ] États loading / empty / error / « en attente de sync »

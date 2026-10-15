@@ -35,8 +35,10 @@ namespace KelasiNaBiso.Tests.Unit.Services
             _context.AnneeScolaires.Add(
                 TestDataBuilder.CreateAnneeScolaire(100, 1, "Courante", _now.AddMonths(-3), _now.AddMonths(6)));
 
+            var eleveAvecSerial = TestDataBuilder.CreateEleve(1, null, "Alpha");
+            eleveAvecSerial.SerialNumber = "SN-ALPHA-001";
             _context.Eleves.AddRange(
-                TestDataBuilder.CreateEleve(1, null, "Alpha"),
+                eleveAvecSerial,
                 TestDataBuilder.CreateEleve(2, null, "Beta"),
                 TestDataBuilder.CreateEleve(3, null, "Gamma"));
 
@@ -61,6 +63,13 @@ namespace KelasiNaBiso.Tests.Unit.Services
                 DatePaiement = _now
             });
 
+            _context.Agents.AddRange(
+                TestDataBuilder.CreateAgent(101, "Kalala", idEcole: 1),
+                TestDataBuilder.CreateAgent(102, "Ilunga", idEcole: 1),
+                TestDataBuilder.CreateAgent(103, "Mukendi", idEcole: 1),
+                TestDataBuilder.CreateAgent(201, "AutreEcole", idEcole: 2),
+                TestDataBuilder.CreateAgent(104, "Inactif", idEcole: 1, statut: false));
+
             _context.SaveChanges();
         }
 
@@ -73,6 +82,8 @@ namespace KelasiNaBiso.Tests.Unit.Services
             page.HasMore.Should().BeFalse();
             page.Items.Select(e => e.IdEleve).Should().BeEquivalentTo(new[] { 1, 2, 3 });
             page.Items.Should().OnlyContain(e => e.IdClasse == 10 && e.NomClasse == "6e A");
+            page.Items.Single(e => e.IdEleve == 1).SerialNumber.Should().Be("SN-ALPHA-001");
+            page.Items.Where(e => e.IdEleve != 1).Should().OnlyContain(e => e.SerialNumber == null);
             page.NextSince.Should().NotBeNullOrWhiteSpace();
             page.Snapshot.Should().NotBeNullOrWhiteSpace();
         }
@@ -139,6 +150,36 @@ namespace KelasiNaBiso.Tests.Unit.Services
         }
 
         [Fact]
+        public async Task GetAgentsPage_ReturnsActiveAgentsOfSchoolOnly()
+        {
+            var page = await _sut.GetAgentsPageAsync(1, new SyncRequestDto { PageSize = 50 });
+
+            page.Items.Should().HaveCount(3);
+            page.Items.Select(a => a.IdAgent).Should().BeEquivalentTo(new[] { 101, 102, 103 });
+            page.Items.Should().NotContain(a => a.IdAgent == 201 || a.IdAgent == 104);
+            page.HasMore.Should().BeFalse();
+            page.NextSince.Should().NotBeNullOrWhiteSpace();
+        }
+
+        [Fact]
+        public async Task GetAgentsPage_RespectsCursorAndPageSize()
+        {
+            var page1 = await _sut.GetAgentsPageAsync(1, new SyncRequestDto { PageSize = 2 });
+            page1.Items.Should().HaveCount(2);
+            page1.HasMore.Should().BeTrue();
+            page1.NextCursor.Should().Be("102");
+
+            var page2 = await _sut.GetAgentsPageAsync(1, new SyncRequestDto
+            {
+                PageSize = 2,
+                Cursor = page1.NextCursor,
+                Snapshot = page1.Snapshot
+            });
+            page2.Items.Should().ContainSingle(a => a.IdAgent == 103);
+            page2.HasMore.Should().BeFalse();
+        }
+
+        [Fact]
         public async Task GetBootstrap_PopulatesElevesAndFraisDus()
         {
             var dto = await _sut.GetBootstrapAsync(1);
@@ -146,6 +187,8 @@ namespace KelasiNaBiso.Tests.Unit.Services
             dto.IdEcole.Should().Be(1);
             dto.Eleves.Should().HaveCount(3);
             dto.FraisDus.Should().HaveCount(3);
+            dto.Agents.Should().HaveCount(3);
+            dto.Agents.Select(a => a.IdAgent).Should().BeEquivalentTo(new[] { 101, 102, 103 });
             dto.Watermark.Should().NotBeNullOrWhiteSpace();
         }
 

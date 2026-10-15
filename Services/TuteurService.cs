@@ -2,6 +2,7 @@ using KelasiNaBiso.Data;
 using KelasiNaBiso.Helpers;
 using KelasiNaBiso.Models;
 using KelasiNaBiso.Models.DTOs;
+using KelasiNaBiso.Models.DTOs.Pagination;
 using KelasiNaBiso.Services.Repositories;
 using Microsoft.EntityFrameworkCore;
 
@@ -55,6 +56,65 @@ namespace KelasiNaBiso.Services
                 .ToListAsync();
 
             return EleveAnneeScopeHelper.Wrap<IEnumerable<Tuteur>>(data, ecole, annee);
+        }
+
+        public async Task<ElevesAnneeScopedResult<PagedResult<Tuteur>>> GetByEcolePagedAsync(
+            int idEcole,
+            PagedRequest request,
+            int? idAnneeScolaire = null,
+            CancellationToken cancellationToken = default)
+        {
+            request ??= new PagedRequest();
+            var (ecole, annee) = await _scope.ResolveEcoleAnneeAsync(idEcole, idAnneeScolaire);
+            var query = _inscriptionResolver.FilterTuteursInEcole(
+                _context.Tuteurs.AsNoTracking(),
+                ecole,
+                annee);
+
+            var totalRecords = await query.CountAsync(cancellationToken);
+            var data = await query
+                .OrderBy(t => t.NomComplet)
+                .ThenBy(t => t.IdTuteur)
+                .Skip((request.PageNumber - 1) * request.PageSize)
+                .Take(request.PageSize)
+                .ToListAsync(cancellationToken);
+
+            var result = new PagedResult<Tuteur>(
+                data,
+                totalRecords,
+                request.PageNumber,
+                request.PageSize);
+
+            return EleveAnneeScopeHelper.Wrap(result, ecole, annee);
+        }
+
+        public async Task<IEnumerable<TuteurRechercheDto>> SearchByNomCompletAsync(
+            string nomComplet,
+            int? idEcole = null)
+        {
+            var searchTerm = nomComplet.Trim().ToLower();
+            var query = _context.Tuteurs
+                .AsNoTracking()
+                .Where(t => t.Statut == true
+                    && t.NomComplet != null
+                    && t.NomComplet.ToLower().Contains(searchTerm));
+
+            if (idEcole.HasValue)
+            {
+                query = _inscriptionResolver.FilterTuteursInEcole(query, idEcole.Value);
+            }
+
+            return await query
+                .OrderBy(t => t.NomComplet)
+                .ThenBy(t => t.IdTuteur)
+                .Select(t => new TuteurRechercheDto(
+                    t.IdTuteur,
+                    t.NomComplet,
+                    t.Genre,
+                    t.Email,
+                    t.Telephone,
+                    t.Statut))
+                .ToListAsync();
         }
 
         public async Task<Tuteur> CreateAsync(Tuteur tuteur)

@@ -51,6 +51,7 @@ namespace KelasiNaBiso.Services.Sync
                     a.DateAction > sinceLocal
                     && (a.IdEcole == null || a.IdEcole == idEcole)
                     && (a.TableName == "Eleve"
+                        || a.TableName == "Agent"
                         || a.TableName == "Frais"
                         || a.TableName == "Presence"
                         || a.TableName == "Paiement")
@@ -67,6 +68,8 @@ namespace KelasiNaBiso.Services.Sync
 
             var deletedEleves = new HashSet<int>();
             var deactivatedEleves = new HashSet<int>();
+            var deletedAgents = new HashSet<int>();
+            var deactivatedAgents = new HashSet<int>();
             var removedFrais = new HashSet<int>();
             var deletedPresences = new HashSet<int>();
             var deletedPayments = new HashSet<int>();
@@ -79,6 +82,9 @@ namespace KelasiNaBiso.Services.Sync
                     {
                         case "Eleve":
                             deletedEleves.Add(row.RecordId);
+                            break;
+                        case "Agent":
+                            deletedAgents.Add(row.RecordId);
                             break;
                         case "Frais":
                             removedFrais.Add(row.RecordId);
@@ -99,6 +105,11 @@ namespace KelasiNaBiso.Services.Sync
                 {
                     deactivatedEleves.Add(row.RecordId);
                 }
+                else if (row.TableName == "Agent"
+                         && LooksLikeDeactivation(row.ChangedFields, row.NewValues))
+                {
+                    deactivatedAgents.Add(row.RecordId);
+                }
                 else if (row.TableName == "Frais"
                          && LooksLikeDeactivation(row.ChangedFields, row.NewValues))
                 {
@@ -116,6 +127,14 @@ namespace KelasiNaBiso.Services.Sync
             foreach (var id in softEleves)
                 deactivatedEleves.Add(id);
 
+            var softAgents = await _context.Agents.AsNoTracking()
+                .Where(a => a.IdEcole == idEcole && a.Statut != true)
+                .Select(a => a.IdAgent)
+                .Take(MaxIds)
+                .ToListAsync(cancellationToken);
+            foreach (var id in softAgents)
+                deactivatedAgents.Add(id);
+
             var softFrais = await _context.Frais.AsNoTracking()
                 .Where(f => f.IdEcole == idEcole && f.Statut != true)
                 .Select(f => f.IdFrais)
@@ -124,8 +143,9 @@ namespace KelasiNaBiso.Services.Sync
             foreach (var id in softFrais)
                 removedFrais.Add(id);
 
-            // Ne pas lister un élève à la fois deleted et deactivated
+            // Ne pas lister à la fois deleted et deactivated
             deactivatedEleves.ExceptWith(deletedEleves);
+            deactivatedAgents.ExceptWith(deletedAgents);
 
             return new SyncDeletionsDto
             {
@@ -133,6 +153,8 @@ namespace KelasiNaBiso.Services.Sync
                 NextSince = nextSince,
                 DeletedEleveIds = Cap(deletedEleves),
                 DeactivatedEleveIds = Cap(deactivatedEleves),
+                DeletedAgentIds = Cap(deletedAgents),
+                DeactivatedAgentIds = Cap(deactivatedAgents),
                 RemovedFraisIds = Cap(removedFrais),
                 DeletedPresenceIds = Cap(deletedPresences),
                 DeletedPaymentIds = Cap(deletedPayments)

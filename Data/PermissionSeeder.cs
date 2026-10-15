@@ -31,6 +31,7 @@ namespace KelasiNaBiso.Data
                 await EnsureBulletinPermissionsAsync(context);
                 await EnsureDepensePermissionsAsync(context);
                 await EnsureHoraireDeCoursPermissionsAsync(context);
+                await EnsureFinancierInscriptionUpdateAsync(context);
                 return;
             }
 
@@ -452,8 +453,8 @@ namespace KelasiNaBiso.Data
                     (p.Categorie == "Eleve" && (p.Action == "Read" || p.Action == "ReadAll")) ||
                     // Classes : Lecture seule (pour les frais par classe)
                     (p.Categorie == "Classe" && (p.Action == "Read" || p.Action == "ReadAll")) ||
-                    // Inscriptions : Lecture seule
-                    (p.Categorie == "Inscription" && (p.Action == "Read" || p.Action == "ReadAll"))
+                    // Inscriptions : Lecture + modification (pas Create/Delete)
+                    (p.Categorie == "Inscription" && (p.Action == "Read" || p.Action == "ReadAll" || p.Action == "Update"))
                 ).ToList();
 
                 foreach (var permission in financierPermissions)
@@ -465,7 +466,7 @@ namespace KelasiNaBiso.Data
                         DateAttribution = DateTime.UtcNow
                     });
                 }
-                Console.WriteLine($"✅ {financierPermissions.Count} permissions assignées à Financier (Paiement.Update et Paiement.Delete exclus)");
+                Console.WriteLine($"✅ {financierPermissions.Count} permissions assignées à Financier (Inscription.Update inclus ; Paiement.Update/Delete exclus)");
             }
 
             // ═══════════════════════════════════════════════════════════════════
@@ -560,8 +561,48 @@ namespace KelasiNaBiso.Data
             await EnsureDirecteurPermissionsAsync(context);
             await EnsureElevePermissionsAsync(context);
             await EnsureBulletinPermissionsAsync(context);
+            await EnsureFinancierInscriptionUpdateAsync(context);
 
             await context.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// Assigne (idempotent) Inscription.Update au rôle Financier.
+        /// Appelé au démarrage même si le catalogue Permissions existe déjà.
+        /// </summary>
+        public static async Task EnsureFinancierInscriptionUpdateAsync(KelasiNaBisoDbContext context)
+        {
+            var financierRole = await context.Roles.FirstOrDefaultAsync(r => r.Nom == UserRoles.FINANCIER);
+            if (financierRole == null)
+            {
+                Console.WriteLine("⚠️ Le rôle Financier n'existe pas. Impossible d'assigner Inscription.Update.");
+                return;
+            }
+
+            var permission = await context.Permissions
+                .FirstOrDefaultAsync(p => p.Nom == "Inscription.Update" && p.Statut == true);
+            if (permission == null)
+            {
+                Console.WriteLine("⚠️ Permission Inscription.Update introuvable. Initialise d'abord le catalogue Permissions.");
+                return;
+            }
+
+            var alreadyAssigned = await context.RolePermissions
+                .AnyAsync(rp => rp.IdRole == financierRole.IdRole && rp.IdPermission == permission.IdPermission);
+            if (alreadyAssigned)
+            {
+                Console.WriteLine("✅ Financier a déjà Inscription.Update.");
+                return;
+            }
+
+            context.RolePermissions.Add(new RolePermission
+            {
+                IdRole = financierRole.IdRole,
+                IdPermission = permission.IdPermission,
+                DateAttribution = DateTime.UtcNow
+            });
+            await context.SaveChangesAsync();
+            Console.WriteLine("✅ Inscription.Update assignée au rôle Financier.");
         }
 
         /// <summary>

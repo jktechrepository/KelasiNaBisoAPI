@@ -218,11 +218,17 @@ namespace KelasiNaBiso.Controllers
                 }
             }
 
-            // GET: api/Agent/5
-            [HttpGet("{id}")]
-        public async Task<ActionResult<Agent>> GetAgent(int id)
+        // GET: api/Agent/5
+        /// <summary>
+        /// Fiche agent : champs existants + titulairesActifs (classes titulaires de l'année courante, liste vide si aucun).
+        /// L'historique reste sur GET /api/TitulaireClasse/agent/{idAgent}.
+        /// </summary>
+        [HttpGet("{id}")]
+        [ProducesResponseType(typeof(AgentDetailDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<AgentDetailDto>> GetAgent(int id, CancellationToken cancellationToken)
         {
-            var agent = await _agentRepository.GetByIdAsync(id);
+            var agent = await _agentRepository.GetDetailByIdAsync(id, cancellationToken);
             if (agent == null)
             {
                 return NotFound();

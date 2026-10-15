@@ -11,6 +11,7 @@ namespace KelasiNaBiso.Models.DTOs.Sync
         public int IdEcole { get; set; }
         public List<EleveSyncDto> Eleves { get; set; } = new();
         public List<FraisDuSyncDto> FraisDus { get; set; } = new();
+        public List<AgentSyncDto> Agents { get; set; } = new();
     }
 
     /// <summary>Fiche élève pour store local (lecture seule offline). Contenu enrichi en P1.</summary>
@@ -21,6 +22,7 @@ namespace KelasiNaBiso.Models.DTOs.Sync
         public string? Nom { get; set; }
         public string? Postnom { get; set; }
         public string? Prenom { get; set; }
+        public string? SerialNumber { get; set; }
         public int? IdClasse { get; set; }
         public string? NomClasse { get; set; }
         public bool IsActif { get; set; } = true;

@@ -1,5 +1,6 @@
 using KelasiNaBiso.Models;
 using KelasiNaBiso.Models.DTOs;
+using KelasiNaBiso.Models.DTOs.Pagination;
 
 namespace KelasiNaBiso.Services.Repositories
 {
@@ -8,6 +9,9 @@ namespace KelasiNaBiso.Services.Repositories
         Task<IEnumerable<Tuteur>> GetAllAsync();
         Task<Tuteur> GetByIdAsync(int id);
         Task<ElevesAnneeScopedResult<IEnumerable<Tuteur>>> GetByEcoleAsync(int idEcole, int? idAnneeScolaire = null);
+        Task<ElevesAnneeScopedResult<PagedResult<Tuteur>>> GetByEcolePagedAsync(
+            int idEcole, PagedRequest request, int? idAnneeScolaire = null, CancellationToken cancellationToken = default);
+        Task<IEnumerable<TuteurRechercheDto>> SearchByNomCompletAsync(string nomComplet, int? idEcole = null);
         Task<Tuteur> CreateAsync(Tuteur tuteur);
         Task<CreateTuteurResultDto> CreateWithCompteAsync(CreateTuteurDto dto, int idEcole);
         Task<Tuteur> UpdateAsync(Tuteur tuteur);

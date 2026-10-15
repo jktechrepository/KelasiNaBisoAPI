@@ -15,5 +15,10 @@ namespace KelasiNaBiso.Services.Sync
             int idEcole,
             SyncFraisDusRequestDto request,
             CancellationToken cancellationToken = default);
+
+        Task<SyncPageDto<AgentSyncDto>> GetAgentsPageAsync(
+            int idEcole,
+            SyncRequestDto request,
+            CancellationToken cancellationToken = default);
     }
 }

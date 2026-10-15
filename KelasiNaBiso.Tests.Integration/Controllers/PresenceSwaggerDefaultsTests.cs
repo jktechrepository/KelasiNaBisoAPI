@@ -115,7 +115,20 @@ namespace KelasiNaBiso.Tests.Integration.Controllers
                 .GetProperty("parameters")
                 .EnumerateArray()
                 .ToDictionary(parameter => parameter.GetProperty("name").GetString()!);
-            Assert.False(parameters.ContainsKey("idEcole"));
+            Assert.True(parameters.ContainsKey("idEcole"));
+            Assert.Equal("query", parameters["idEcole"].GetProperty("in").GetString());
+            Assert.False(parameters["idEcole"].GetProperty("required").GetBoolean());
+
+            var typeOnlyParameters = document.RootElement
+                .GetProperty("paths")
+                .GetProperty("/api/Presence/type/{typePersonne}")
+                .GetProperty("get")
+                .GetProperty("parameters")
+                .EnumerateArray()
+                .ToDictionary(parameter => parameter.GetProperty("name").GetString()!);
+            Assert.True(typeOnlyParameters.ContainsKey("idEcole"));
+            Assert.Equal("query", typeOnlyParameters["idEcole"].GetProperty("in").GetString());
+            Assert.False(typeOnlyParameters["idEcole"].GetProperty("required").GetBoolean());
 
             var typeParameter = parameters["typePersonne"];
             Assert.Equal("Agent", typeParameter.GetProperty("schema").GetProperty("default").GetString());

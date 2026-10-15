@@ -7,6 +7,11 @@ namespace KelasiNaBiso.Services.Repositories
     {
         Task<IEnumerable<Agent>> GetAllAsync();
         Task<Agent> GetByIdAsync(int id);
+
+        /// <summary>
+        /// Fiche agent : mêmes champs que l'entité plus les titulaires de classe actifs (année courante).
+        /// </summary>
+        Task<AgentDetailDto?> GetDetailByIdAsync(int id, CancellationToken cancellationToken = default);
         Task<Agent> GetByMatriculeAsync(string matricule);
         Task<IEnumerable<Agent>> GetByEcoleAsync(int idEcole);
       //  Task<IEnumerable<Agent>> GetBySpecialiteAsync(string specialite);

@@ -1,5 +1,6 @@
 using KelasiNaBiso.Models;
 using KelasiNaBiso.Models.DTOs;
+using KelasiNaBiso.Models.DTOs.Pagination;
 using KelasiNaBiso.Services.Repositories;
 using KelasiNaBiso.Attributes;
 using KelasiNaBiso.Services;
@@ -68,6 +69,70 @@ namespace KelasiNaBiso.Controllers
             {
                 return BadRequest(new { message = ex.Message });
             }
+        }
+
+        // GET: api/Tuteur/ecole/5/paged?pageNumber=1&pageSize=15&idAnneeScolaire=12
+        [HttpGet("ecole/{idEcole}/paged")]
+        [ProducesResponseType(typeof(ElevesAnneeScopedResult<PagedResult<Tuteur>>), 200)]
+        [ProducesResponseType(400)]
+        public async Task<IActionResult> GetTuteursByEcolePaged(
+            int idEcole,
+            [FromQuery] PagedRequest request,
+            [FromQuery] int? idAnneeScolaire = null,
+            CancellationToken cancellationToken = default)
+        {
+            var deny = this.ForbidIfWrongSchool(idEcole);
+            if (deny != null)
+                return deny;
+
+            try
+            {
+                return Ok(await _tuteurRepository.GetByEcolePagedAsync(
+                    idEcole,
+                    request,
+                    idAnneeScolaire,
+                    cancellationToken));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        // GET: api/Tuteur/recherche?nomComplet=Jean
+        /// <summary>
+        /// Recherche les tuteurs actifs par correspondance partielle sur le nom complet.
+        /// </summary>
+        [HttpGet("recherche")]
+        [ProducesResponseType(typeof(IEnumerable<TuteurRechercheDto>), 200)]
+        [ProducesResponseType(400)]
+        public async Task<IActionResult> SearchTuteurs([FromQuery] string? nomComplet)
+        {
+            if (string.IsNullOrWhiteSpace(nomComplet) || nomComplet.Trim().Length < 2)
+            {
+                return BadRequest(new
+                {
+                    message = "Le paramètre nomComplet doit contenir au moins 2 caractères."
+                });
+            }
+
+            var isGlobalSearch = User.IsInRole(UserRoles.SUPER_ADMIN)
+                || User.IsInRole(UserRoles.IT_SUPPORT);
+            var idEcole = isGlobalSearch ? null : this.GetCurrentUserSchoolId();
+
+            if (!isGlobalSearch && !idEcole.HasValue)
+            {
+                return BadRequest(new
+                {
+                    message = "L'école de l'utilisateur est absente ou invalide dans le token JWT."
+                });
+            }
+
+            var tuteurs = await _tuteurRepository.SearchByNomCompletAsync(
+                nomComplet,
+                idEcole);
+
+            return Ok(tuteurs);
         }
 
         // GET: api/Tuteur/5/eleves

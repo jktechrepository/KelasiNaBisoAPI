@@ -71,13 +71,27 @@ namespace KelasiNaBiso.Tests.Unit.Services
             presences.Select(p => p.IdAgent.GetValueOrDefault()).Should().Equal(11);
         }
 
+        [Fact]
+        public async Task GetByTypePersonneAsync_ScopesElevesToCurrentYearAndAgentsToSchool()
+        {
+            var eleves = await _service.GetByTypePersonneAsync("ELEVE", idEcole: 1);
+            eleves.Should().NotBeEmpty();
+            eleves.Select(p => p.IdEleve.GetValueOrDefault()).Distinct().Should().Equal(2);
+
+            var agents = await _service.GetByTypePersonneAsync("AGENT", idEcole: 1);
+            agents.Select(p => p.IdAgent.GetValueOrDefault()).Distinct().Should().Equal(11);
+        }
+
         private void Seed()
         {
+            var now = DateTime.Now;
             _context.AnneeScolaires.AddRange(
                 TestDataBuilder.CreateAnneeScolaire(
                     100, 1, "2024-2025", new DateTime(2024, 9, 1), new DateTime(2025, 6, 30)),
                 TestDataBuilder.CreateAnneeScolaire(
                     101, 1, "2025-2026", new DateTime(2025, 9, 1), new DateTime(2026, 6, 30)),
+                TestDataBuilder.CreateAnneeScolaire(
+                    102, 1, "Courante", now.AddMonths(-2), now.AddMonths(6)),
                 TestDataBuilder.CreateAnneeScolaire(
                     201, 2, "2025-2026", new DateTime(2025, 9, 1), new DateTime(2026, 6, 30)));
 
@@ -93,7 +107,8 @@ namespace KelasiNaBiso.Tests.Unit.Services
                 TestDataBuilder.CreateInscription(3, 2, 1, 10, 101),
                 TestDataBuilder.CreateInscription(4, 3, 1, 10, 100),
                 TestDataBuilder.CreateInscription(5, 4, 2, 20, 201),
-                TestDataBuilder.CreateInscription(6, 5, 1, 10, 101, statutInscription: "En attente"));
+                TestDataBuilder.CreateInscription(6, 5, 1, 10, 101, statutInscription: "En attente"),
+                TestDataBuilder.CreateInscription(7, 2, 1, 10, 102));
 
             _context.Agents.AddRange(
                 TestDataBuilder.CreateAgent(11, "School one", idEcole: 1),
@@ -108,7 +123,9 @@ namespace KelasiNaBiso.Tests.Unit.Services
                 CreatePresence(6, "ELEVE", idEleve: 4, date: new DateTime(2025, 9, 10)),
                 CreatePresence(7, "AGENT", idAgent: 11, date: new DateTime(2025, 9, 10)),
                 CreatePresence(8, "AGENT", idAgent: 22, date: new DateTime(2025, 9, 10)),
-                CreatePresence(9, "ELEVE", idEleve: 5, date: new DateTime(2025, 9, 10)));
+                CreatePresence(9, "ELEVE", idEleve: 5, date: new DateTime(2025, 9, 10)),
+                CreatePresence(10, "ELEVE", idEleve: 2, date: now.Date),
+                CreatePresence(11, "ELEVE", idEleve: 3, date: now.Date));
 
             _context.SaveChanges();
         }
